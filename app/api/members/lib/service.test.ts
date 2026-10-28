@@ -366,3 +366,12 @@ it('Web同期の週次記録を受け付け、未知のWeb機能名は拒否す�
   expect((await db.get<any>(`members/${auth.memberId}`))!.value.usageFeatures).toEqual(['web_sync']);
   await expect(service.recordUsage(auth,'2026-W44',['web_unknown'],true,0,3)).rejects.toThrow();
 });
+
+
+it('accepts intentional-reading and Web-entry evidence but still rejects arbitrary feature names',async()=>{
+  const db=new MemoryDb(),service=new MemberService(db,()=>new Date('2026-10-28T12:00:00Z'));
+  await service.register(auth);
+  await service.recordUsage(auth,'2026-W44',['note_read','web_guide_open'],true,0,3);
+  expect((await db.get<any>(`members/${auth.memberId}`))!.value.usageFeatures).toEqual(['note_read','web_guide_open']);
+  await expect(service.recordUsage(auth,'2026-W44',['note_text'],true,0,3)).rejects.toThrow();
+});

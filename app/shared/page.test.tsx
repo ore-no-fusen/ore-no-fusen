@@ -6,6 +6,7 @@ import SharedNotesPage from './page';
 
 const mocks = vi.hoisted(() => ({
   trackWebFeature: vi.fn(),
+  setWebUsageExcluded: vi.fn(),
   refreshAccessToken: vi.fn(),
   appendWebEdit: vi.fn(),
   revokeWebNote: vi.fn(),
@@ -15,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   renderSecureMermaid: vi.fn(),
 }));
 
-vi.mock('./lib/usage', () => ({ trackWebFeature: mocks.trackWebFeature }));
+vi.mock('./lib/usage', () => ({ trackWebFeature: mocks.trackWebFeature, isWebUsageExcluded: () => false, setWebUsageExcluded: mocks.setWebUsageExcluded }));
 vi.mock('@/app/viewer/lib/drive', () => ({ refreshAccessToken: mocks.refreshAccessToken }));
 vi.mock('@/app/utils/mermaid', () => ({ renderSecureMermaid: mocks.renderSecureMermaid }));
 vi.mock('./lib/drive', () => ({
@@ -56,6 +57,28 @@ async function editCurrentNote() {
 }
 
 describe('shared note editor', () => {
+  it('counts a successful empty list separately from note viewing and never counts a failed load', async()=>{
+    mocks.loadSharedNotes.mockResolvedValueOnce({notes:[],files:[]});
+    const view=await renderSharedNotes();
+    await waitFor(()=>expect(mocks.trackWebFeature).toHaveBeenCalledWith('web_list_loaded'));
+    expect(mocks.trackWebFeature).not.toHaveBeenCalledWith('web_view');
+    view.unmount();mocks.trackWebFeature.mockClear();
+    mocks.loadSharedNotes.mockRejectedValueOnce(new Error('load failed'));
+    await renderSharedNotes();await screen.findByText('load failed');
+    expect(mocks.trackWebFeature).not.toHaveBeenCalledWith('web_list_loaded');
+  });
+  it('shows saved exclusion only after persistence succeeds, preserving the note draft', async()=>{
+    await renderSharedNotes();await editCurrentNote();
+    fireEvent.change(screen.getByRole('textbox',{name:'付箋本文'}),{target:{value:'未送信の本文'}});
+    const checkbox=screen.getByLabelText('このブラウザーの動作確認を利用集計から除外する');
+    mocks.setWebUsageExcluded.mockImplementationOnce(()=>{throw new Error('blocked');});
+    fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText(/設定を保存できませんでした/)).toBeTruthy();
+    fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('textbox',{name:'付箋本文'}) as HTMLTextAreaElement).value).toBe('未送信の本文');
+  });
   it('実際に閲覧できた時だけ記録し、保存失敗は編集利用に数えない', async () => {
     await renderSharedNotes();
     expect(mocks.trackWebFeature).toHaveBeenCalledWith('web_view');
@@ -376,7 +399,7 @@ describe('shared note editor', () => {
     await renderSharedNotes();
     await screen.findByRole('checkbox', { name: '牛乳' });
     expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['•説明', '•店で買う']);
-    expect(screen.getAllByRole('checkbox').map((checkbox) => checkbox.getAttribute('aria-label'))).toEqual(['牛乳', '卵', 'パン']);
+    expect(screen.getAllByRole('checkbox').filter(node => node.getAttribute('role') === 'checkbox').map((checkbox) => checkbox.getAttribute('aria-label'))).toEqual(['牛乳', '卵', 'パン']);
   });
 
   it('http/httpsだけをリンクにし、危険なURLは文字として表示する', async () => {
@@ -435,7 +458,7 @@ describe('shared note editor', () => {
     expect(screen.getByText('強調前', { selector: 'strong' })).toBeTruthy();
     expect(screen.getByText('強調後', { selector: 'strong' })).toBeTruthy();
     expect(screen.getAllByRole('img', { name: '図' })).toHaveLength(2);
-    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect(screen.getByRole('article').querySelectorAll('[role=checkbox]')).toHaveLength(1);
     expect(screen.queryByRole('checkbox', { name: /コード中/ })).toBeNull();
     expect(screen.getAllByRole('img')).toHaveLength(2);
     expect(screen.getByRole('article').textContent).toContain(`\`${imageRef}\``);

@@ -715,3 +715,17 @@ test('既存Web画面アクセスと新しい操作記録を別々に表示す�
   assert.match(html,/>2人</);
   assert.match(html,/画面アクセス: 取得済み ／ 操作別記録: 取得できませんでした/);
 });
+
+
+test('少数の利用も小数割合で表示し、GA4人数と通信人数を実操作と呼ばない', () => {
+  const week = isoWeek();
+  const members = Array.from({length:250}, (_,i)=>({generalNumber:10000+i,usageConsent:true,usageWeek:week,usageFeatures:i===0?['note_created']:[]}));
+  const stats=featureUsageStats(members,week);
+  assert.equal(stats.rows.find(row=>row.name==='note_created').percent,0.4);
+  const html=generateHtml([],250,10249,0,0,[],[],'2026/10/28',{today:77,week:145,unknown:0},false,'production',stats);
+  assert.match(html,/0\.4%/);
+  assert.match(html,/GA4で観測した利用者（本日）/);
+  assert.match(html,/PCの実操作会員数とは異なります/);
+  assert.match(html,/最近の通信状況/);
+  assert.doesNotMatch(html,/本日アクティブ|実利用者 \(DAU\)|起動\/セッション数/);
+});

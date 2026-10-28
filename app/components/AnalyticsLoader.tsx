@@ -6,7 +6,7 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { safeUnlisten } from '../utils/safeUnlisten';
 import { clearMemberFeatureQueue, flushMemberFeatureQueue } from '../utils/memberUsageQueue';
-import { flushWebFeatures } from '../shared/lib/usage';
+import { flushWebFeatures, isWebUsageExcluded } from '../shared/lib/usage';
 
 const GA_ID = 'G-MGPKF0MQH4';
 type AnalyticsWindow = Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; __FUSEN_ANALYTICS_GRANTED__?: boolean; 'ga-disable-G-MGPKF0MQH4'?: boolean };
@@ -77,7 +77,7 @@ async function runDesktopBackground(cancelled:()=>boolean) {
 
 export default function AnalyticsLoader({isTauriBuild}:{isTauriBuild:boolean}){
   useEffect(()=>{
-    if(!isTauriBuild){loadGa4(true);flushWebFeatures();return;}
+    if(!isTauriBuild){if(isWebUsageExcluded()){(window as AnalyticsWindow)['ga-disable-G-MGPKF0MQH4']=true;return;}loadGa4(true);flushWebFeatures();return;}
     let windowLabel: string;
     try {
       windowLabel=getCurrentWindow().label;
