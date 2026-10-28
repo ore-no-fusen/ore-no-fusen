@@ -7,7 +7,7 @@ export type Member = { memberId: string; generalNumber: number; analyticsSubject
 type UsageFeatureCount = {count:number;activeDays:string[];lastUsedDay:string;firstUsedAt?:string|null;lastUsedAt?:string|null};
 type UsageHistoryWeek = { week: string; schema: number; appVersion: string; features: Record<string,UsageFeatureCount>; days: Record<string,{observedAt?:string|null;observedThrough?:string|null;supportedFeatures?:string[];features:Record<string,UsageFeatureCount>}>; measurementStartedAt?: string|null; supportedFeatures: string[] };
 
-const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'launcher_store', 'outline_toggle', 'image_attach', 'web_sync']);
+const featureNames = new Set(['note_created', 'note_edited', 'tag_add', 'alarm_set', 'iphone_send', 'iphone_receive', 'search_open', 'note_duplicate', 'note_archive', 'launcher_store', 'outline_toggle', 'image_attach', 'web_sync', 'note_read', 'web_guide_open']);
 const isoInstant = (value: unknown): value is string => typeof value==='string' && Number.isFinite(Date.parse(value));
 const isoDay = (value: unknown): value is string => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
 function minInstant(...values:(string|null|undefined)[]) {return values.filter(isoInstant).sort((a,b)=>Date.parse(a!)-Date.parse(b!))[0]??undefined;}
@@ -40,7 +40,7 @@ function usageSnapshot(week: unknown, features: unknown, consent: unknown, openM
 function matchesServerAudience(segment: string, number: number): boolean {
   if (segment === 'all' || segment === 'feature_active' || segment === 'feature_inactive') return true;
   if (segment === 'iphone_week_unused') return true;
-  if (/^feature_week_(used|unused):(note_created|note_edited|tag_add|alarm_set|iphone_send|iphone_receive|search_open|note_duplicate|note_archive|outline_toggle|image_attach|web_sync)$/.test(segment)) return true;
+  if (/^feature_week_(used|unused):(note_created|note_edited|tag_add|alarm_set|iphone_send|iphone_receive|search_open|note_duplicate|note_archive|outline_toggle|image_attach|web_sync|note_read|web_guide_open)$/.test(segment)) return true;
   if (segment === 'veteran') return number < 10050;
   if (segment === 'newcomer') return number >= 10100;
   return segment === `member:${number}`;

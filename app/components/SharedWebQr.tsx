@@ -1,5 +1,6 @@
 'use client';
 
+import { trackEvent } from '../utils/analytics';
 import React, { useEffect, useState } from 'react';
 
 export const SHARED_WEB_PUBLIC_URL = 'https://ore-no-fusen.vercel.app/shared';
@@ -33,9 +34,9 @@ export default function SharedWebQr({ isEnglish, webSyncBusy, onSync, onOpen }: 
             <button type="button" onClick={onSync} disabled={webSyncBusy} className="rounded border border-sky-900 px-2 py-1 hover:bg-zinc-800 disabled:opacity-50">{webSyncBusy ? (isEnglish ? 'Syncing…' : '同期中…') : (isEnglish ? '↻ Sync' : '↻ 同期')}</button>
             <span aria-hidden="true" className="px-2 text-zinc-500">→</span>
             <div className="flex items-center border-l border-zinc-600 pl-1">
-                <button type="button" onClick={onOpen} aria-label={isEnglish ? 'Open Web on this PC' : 'このPCでWebを開く'} className="rounded px-2 py-1 hover:bg-zinc-800">PC</button>
+                <button type="button" onClick={() => { trackEvent('feature_used', {feature_name:'web_guide_open'}); onOpen(); }} aria-label={isEnglish ? 'Open Web on this PC' : 'このPCでWebを開く'} className="rounded px-2 py-1 hover:bg-zinc-800">PC</button>
                 <span aria-hidden="true" className="text-zinc-600">／</span>
-                <button type="button" aria-label={isEnglish ? 'Open Web on phone (QR)' : 'スマホでWebを開く（QR）'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)} className="rounded px-2 py-1 hover:bg-zinc-800">{isEnglish ? 'Phone' : 'スマホ'}</button>
+                <button type="button" aria-label={isEnglish ? 'Open Web on phone (QR)' : 'スマホでWebを開く（QR）'} aria-expanded={expanded} onClick={() => { if (!expanded) trackEvent('feature_used', {feature_name:'web_guide_open'}); setExpanded(!expanded); }} className="rounded px-2 py-1 hover:bg-zinc-800">{isEnglish ? 'Phone' : 'スマホ'}</button>
             </div>
         </div>
         {expanded && <div className="mt-2 rounded border border-zinc-700 bg-zinc-900 p-3 text-zinc-100">

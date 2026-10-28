@@ -15,7 +15,7 @@ const propertyId = '524376317';
 const GA_START_DATE = '2026-09-08';
 const USAGE_STATES = {
   recorded: { label: '使った機能が分かる', description: '今週使った機能名が届いています。', color: 'text-emerald-300' },
-  empty: { label: '機能名の記録なし（実利用は不明）', description: '今週の通信は届きましたが機能名はありません。未使用か記録漏れかは判定できません。', color: 'text-amber-300' },
+  empty: { label: '機能名の記録なし（実利用は不明）', description: '今週の通信は届きましたが機能名はありません。閲覧のみ・未使用・記録漏れを区別できません。', color: 'text-amber-300' },
   stale: { label: '今週分はまだ届いていない', description: '以前の情報はありますが、今週の使い方はまだ分かりません。', color: 'text-sky-300' },
   disabled: { label: '利用情報の送信がオフ', description: '最後に届いた情報では、利用記録を送らない設定でした。現在の設定は未確認です。', color: 'text-slate-300' },
   postponed: { label: '保留（今は決めない）', description: '「今は決めない」が届いています。機能利用の情報は収集しません。', color: 'text-amber-300' },
@@ -35,7 +35,7 @@ const FEATURE_LABELS = {
   note_created: '付箋の作成', note_edited: '付箋の編集', tag_add: 'タグの追加',
   alarm_set: 'アラームの設定', iphone_send: 'iPhoneへ送信', iphone_receive: 'iPhoneから受信',
   search_open: '検索画面を開く', note_duplicate: '付箋の複製', note_archive: 'フォルダーへしまう', launcher_store: 'クイックランチャーへしまう',
-  outline_toggle: '付箋の折りたたみ', image_attach: '画像の添付', web_sync: 'Webと同期（PC）',
+  outline_toggle: '付箋の折りたたみ', image_attach: '画像の添付', web_sync: 'Webと同期（PC）', note_read: '付箋の閲覧確認（操作後5秒表示）', web_guide_open: 'Webを開く・QRを表示（PC）',
 };
 
 function isoWeek(date = new Date()) {
@@ -86,7 +86,7 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
     consentVersions.set(version, item);
   }
   const consentByVersion = [...consentVersions.values()]
-    .map(item => ({ ...item, cooperationRate: item.members ? Math.round(item.granted / item.members * 100) : null }))
+    .map(item => ({ ...item, cooperationRate: item.members ? Math.round(item.granted / item.members * 1000) / 10 : null }))
     .sort((a, b) => {
       if (a.version === b.version) return 0;
       if (a.version === '不明') return 1;
@@ -129,7 +129,7 @@ function featureUsageStats(members, week = isoWeek(), historyRows = []) {
       });
       const users = measured.filter(member => Array.isArray(member.usageFeatures) && member.usageFeatures.includes(name)
         || recordedBySubject.get(member.analyticsSubject)?.has(name) === true).length;
-      return { name, label, users, reporting: measured.length, percent: members.length ? Math.round(users / members.length * 100) : 0 };
+      return { name, label, users, reporting: measured.length, percent: members.length ? Math.round(users / members.length * 1000) / 10 : 0 };
     }),
   };
 }
@@ -185,7 +185,7 @@ function comparisonMarkup(data) {
   const counts=data.classificationCounts;
   const labels={active:'アクティブ',churn_candidate:'離脱候補',new:'新規・初回7日未満',legacy_unmeasured:'旧版・初回未計測',unmeasured:'未計測',observation_insufficient:'観測不足',consent_denied:'同意拒否',consent_unknown:'同意不明'};
   const chart=data.features.map(f=>`<tr class="border-b border-slate-800"><td class="py-2 pr-3">${f.label}</td><td class="py-2">${f.active.users} / ${f.active.denominator}<small class="ml-1 text-slate-400">${f.active.rate===null?'—':f.active.rate+'%'}</small><div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-emerald-400" style="width:${f.active.rate??0}%"></div></div></td><td class="py-2">${f.churn_candidate.users} / ${f.churn_candidate.denominator}<small class="ml-1 text-slate-400">${f.churn_candidate.rate===null?'—':f.churn_candidate.rate+'%'}</small><div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-amber-400" style="width:${f.churn_candidate.rate??0}%"></div></div></td><td class="py-2 text-right">${f.differencePp===null?'—':(f.differencePp>0?'+':'')+f.differencePp+' pp'}</td></tr>`).join('');
-  const candidates=data.candidates.map((f,i)=>`<li>${i+1}. ${f.label} <strong>+${f.differencePp} pp</strong>（${f.active.users}/${f.active.denominator} 対 ${f.churn_candidate.users}/${f.churn_candidate.denominator}）</li>`).join('')||'<li>現時点で正の差を確認できる候補はありません。</li>';
+  const candidates=data.candidates.map((f,i)=>`<li>${i+1}. ${f.label} <strong>+${f.differencePp} pp</strong>（${f.active.users}/${f.active.denominator} 対 ${f.churn_candidate.users}/${f.churn_candidate.denominator}）</li>`).join('')||'<li>比較可能な両群の分母と利用記録が必要です。差を確認できないことは、離脱がない・案内改善が不要という意味ではありません。</li>';
   return `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">${Object.entries(labels).map(([key,label])=>`<div class="rounded bg-slate-900 p-2 text-sm">${label}: <b>${counts[key]??0}</b></div>`).join('')}</div><p class="text-xs text-amber-300">比較対象：初回実利用から7日経過し、その間の日別観測と機能対応がそろった会員。各群20人未満は参考値。最近の通信だけでアクティブとは判定しません。</p><h3 class="font-semibold">案内強化候補（利用率差が大きい順）</h3><ol class="list-none space-y-1">${candidates}</ol><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left">機能</th><th class="text-left">アクティブの初回7日</th><th class="text-left">離脱候補の初回7日</th><th class="text-right">差</th></tr></thead><tbody>${chart}</tbody></table></div>`;
 }
 function firestoreRoot(environment = 'production') {
@@ -486,7 +486,7 @@ async function fetchFirestoreUsageHistory(token, environment = 'production') {
   return results;
 }
 
-const WEB_FEATURE_LABELS = { web_page_open: 'Web画面へアクセス（ログイン前を含む）', web_view: 'Webで付箋を閲覧', web_edit: 'Webで編集・チェックを保存', web_create: 'Webで新規付箋を保存' };
+const WEB_FEATURE_LABELS = { web_login_start: 'WebでGoogle接続を開始', web_list_loaded: 'Webで一覧の取得に成功（空を含む）', web_page_open: 'Web画面へアクセス（ログイン前を含む）', web_view: 'Webで付箋を閲覧', web_edit: 'Webで編集・チェックを保存', web_create: 'Webで新規付箋を保存' };
 function webUsageRows(data) {
   if (!data || data.rowCount > 1000) return null;
   return (data.rows ?? []).flatMap(row => {
@@ -587,18 +587,20 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <td class="py-3 px-4 text-slate-300 font-mono">${s.date} (${s.dayOfWeek})</td>
       <td class="py-3 px-4 text-right font-semibold text-indigo-400">+${s.memberCount}</td>
       <td class="py-3 px-4 text-right font-semibold text-emerald-400">${s.memberCumulative}</td>
-      <td class="py-3 px-4 text-right font-semibold text-sky-400">${s.activeUsers}人</td>
-      <td class="py-3 px-4 text-right font-mono text-slate-400">${s.sessions}回</td>
+      <td class="py-3 px-4 text-right font-semibold text-sky-400">${s.activeUsers == null ? '—' : s.activeUsers + '人'}</td>
+      <td class="py-3 px-4 text-right font-mono text-slate-400">${s.sessions == null ? '—' : s.sessions + '回'}</td>
     </tr>
   `).join('');
 
-  const todayDau = combinedStats[combinedStats.length - 1]?.activeUsers ?? 0;
+  const observation = featureStats.gaObservation;
+  const hasGaObservation = observation && /^\d{4}-\d{2}-\d{2}$/.test(observation.date) && Number.isSafeInteger(observation.users) && observation.users >= 0;
+  const todayDau = hasGaObservation ? observation.users : '—';
   const featureUsageRows = featureStats.rows.map(feature => `
     <tr class="border-b border-slate-800">
       <td class="py-2 pr-4">${feature.label}</td>
 <td class="py-2 text-right">${feature.reporting ? feature.users + "人" : "不明"}</td>
       <td class="py-2 text-right">${feature.reporting ? feature.percent + "%" : "—"}</td>
-      <td class="py-2 text-right">${feature.reporting ? Math.round(feature.users / feature.reporting * 100) + "%" : "—"}</td>
+      <td class="py-2 text-right">${feature.reporting ? (Math.round(feature.users / feature.reporting * 1000) / 10) + "%" : "—"}</td>
 <td class="py-2 text-right">${feature.reporting}人</td>
     </tr>
   `).join('');
@@ -659,17 +661,17 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
         <div class="text-3xl font-extrabold text-indigo-300 mt-2">+${yesterdayNew} <span class="text-base font-normal text-slate-400">人</span></div>
       </div>
       <div class="glass p-5 rounded-2xl shadow-xl">
-        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">本日アクティブ</div>
-        <div class="text-3xl font-extrabold text-sky-400 mt-2">${todayDau} <span class="text-base font-normal text-slate-400">人</span></div>
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">GA4で観測した利用者（最新の記録日）</div>
+        <div class="text-3xl font-extrabold text-sky-400 mt-2">${todayDau} <span class="text-base font-normal text-slate-400">人</span></div><p class="text-xs text-slate-400 mt-2">${hasGaObservation ? "記録日: " + observation.date : "記録日・人数を確認できません。"} GA4全体の集計。Web・PWA等を含み、PCの実操作会員数とは異なります。</p>
       </div>
     </div>
 
     <!-- Communication dates and activity windows use Japan time. -->
     <div class="glass p-6 rounded-2xl shadow-xl space-y-3">
-      <h2 class="text-lg font-bold">最近の利用状況</h2>
-      <p class="text-sm text-slate-400">最終通信日（日本時間）で集計。今日 ${survival.today}人 / 過去7日 ${survival.week}人 / 日付未確認 ${survival.unknown}人</p>
+      <h2 class="text-lg font-bold">最近の通信状況</h2>
+      <p class="text-sm text-slate-400">最終通信日（日本時間）で集計。起動・同期等の通信を含み、付箋を操作した人数ではありません。今日 ${survival.today}人 / 過去7日 ${survival.week}人 / 日付未確認 ${survival.unknown}人</p>
       <div class="h-4 rounded-full bg-slate-700 overflow-hidden"><div class="h-full bg-emerald-400" style="width:${totalMembers ? Math.min(100, survival.week / totalMembers * 100) : 0}%"></div></div>
-      <p class="text-sm text-emerald-300">過去7日: ${totalMembers ? Math.round(survival.week / totalMembers * 100) : 0}%（${survival.week} / ${totalMembers}人）</p>
+      <p class="text-sm text-emerald-300">過去7日: ${totalMembers ? Math.round(survival.week / totalMembers * 1000) / 10 : 0}%（${survival.week} / ${totalMembers}人）</p>
     </div>
 
     <div class="glass p-6 rounded-2xl space-y-3" id="versionSummary">
@@ -710,7 +712,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
       <div id="usageStateCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         ${(featureStats.usageStates ?? []).map(state => `<button type="button" data-usage-state="${state.key}" class="text-left rounded-xl border border-slate-600 bg-slate-900 p-4"><div class="text-sm ${state.color}">${state.label}</div><div class="text-2xl font-bold mt-1 ${state.color}">${state.count}人</div><p class="text-xs text-slate-400 mt-2">${state.description}</p></button>`).join('')}
       </div>
-      <p class="text-sm text-amber-300">届いた利用記録に機能名があれば確認できます。機能名がない場合は、未使用か記録漏れかを判定できません。</p>
+      <p class="text-sm text-amber-300">届いた利用記録に機能名があれば確認できます。機能名がない場合は、閲覧のみ・未使用・記録漏れを区別できません。</p>
       <p id="usageStateUpdated" class="text-xs text-slate-400">確認日時: ${nowJst} (JST)・人数を押すと会員一覧へ移動します。</p>
       <p id="featureRefreshStatus" class="text-sm text-amber-300" role="status"></p>
     </div>
@@ -724,14 +726,14 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">Web機能の利用状況（直近28日・週別）</h2>
       <p class="text-sm text-amber-300">同じ週・機能内で重複を除いたブラウザー利用者数です。会員人数ではなく、開発者の確認操作も含み得ます。端末・機能間の人数は合計できません。</p>
-      <p class="text-sm text-slate-400">画面アクセスは既存のページ閲覧記録で、付箋の閲覧・保存成功とは別です。操作別の記録は計測対応版の公開後からです。GA4の反映遅延・計測拒否・広告ブロックによる欠測があります。週境界はGA4の設定タイムゾーン、最古の週と今週は部分期間です。</p>
+      <p class="text-sm text-slate-400">画面アクセスは既存のページ閲覧記録で、付箋の閲覧・保存成功とは別です。操作別の記録は計測対応版の公開後からです。作者の動作確認を含む可能性があります。機能間の人数は重複するため、合算や段階別の転換率には使えません。GA4の反映遅延・計測拒否・広告ブロックによる欠測があります。週境界はGA4の設定タイムゾーン、最古の週と今週は部分期間です。</p>
       <p class="text-sm text-amber-300">画面アクセス: ${featureStats.webAccess ? '取得済み' : '取得できませんでした'} ／ 操作別記録: ${featureStats.webUsage ? '取得済み' : '取得できませんでした'}。未取得・記録なしを利用ゼロとは判断しません。</p>
       <table class="w-full text-sm"><thead><tr class="border-b border-slate-600 text-left text-slate-400"><th class="py-2">週</th><th>機能</th><th class="text-right">利用者数</th><th class="text-right">操作記録数</th></tr></thead><tbody>${[...(featureStats.webAccess ?? []), ...(featureStats.webUsage ?? [])].sort((a,b) => b.week.localeCompare(a.week) || a.label.localeCompare(b.label)).map(row => `<tr class="border-b border-slate-800"><td class="py-2">${row.week}</td><td>${row.label}</td><td class="text-right">${row.users}人</td><td class="text-right">${row.count}件</td></tr>`).join('') || '<tr><td colspan="4">記録はまだ確認できません。</td></tr>'}</tbody></table>
     </div>
     <div data-dashboard-group="features" class="glass p-6 rounded-2xl shadow-xl space-y-3">
       <h2 class="text-lg font-bold">今週の機能別利用者</h2>
       <p class="text-sm text-slate-400"><span id="featureWeek">${featureStats.week}</span>（UTC）・利用人数は会員ごとに1回だけ数えます。全会員比の分母は全会員 <span id="featureTotal">${totalMembers}</span>人です。</p>
-      <p class="text-sm text-amber-300">今週の報告者: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。機能別の今週の報告者内記録率は「記録あり人数 ÷ 判定できた人数」です。利用記録があるか、今週の対応情報で計測可能と確認できた報告者だけを分母にします。機能名なし・未計測・情報不足は未使用とは扱いません。判定できた人数が0人なら割合は不明です。</p>
+      <p class="text-sm text-amber-300">今週の報告者: <span id="featureReporting">${featureStats.reporting}</span> / <span id="featureCoverageTotal">${totalMembers}</span>人。機能別の今週の報告者内記録率は「記録あり人数 ÷ 判定できた人数」です。利用記録があるか、今週の対応情報で計測可能と確認できた報告者だけを分母にします。閲覧確認は本文への操作後に5秒間表示した記録で、読了や閲覧だけの利用を保証しません。旧版の閲覧は不明です。機能名なし・未計測・情報不足は未使用とは扱いません。判定できた人数が0人なら割合は不明です。</p>
       <p class="text-sm text-slate-400">クイックランチャーへしまうは計測対応版から届いた情報だけで判定します。旧版の未計測は利用ゼロではありません。タグ一括格納は成功した付箋1枚につき1回記録します。</p>
       <p id="featureEvidence" class="text-sm text-amber-300">${featureStats.reporting ? "今週の報告者のうち、機能ごとに計測可否を確認できる会員を分母にします。未計測は未使用ではありません。" : "今週の利用情報はまだ届いていません。全会員が利用ゼロという意味ではありません。"}</p>
       <p class="text-sm text-slate-400">アプリが起動していた時間は約5分単位で記録し、お便り確認と一緒に${environment === 'development' ? '開発環境では約5分ごと、本番では前回成功から24時間後' : '前回成功から24時間後'}に送信します。送信前の時間はまだ反映されません。</p>
@@ -803,7 +805,7 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
 
       <!-- DAU & Sessions Chart -->
       <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
-        <h2 class="text-lg font-bold text-slate-200">日別アクティブユーザー数（DAU）と起動回数</h2>
+        <h2 class="text-lg font-bold text-slate-200">GA4の日別観測利用者数とセッション数</h2>
         <div class="h-72 w-full">
           <canvas id="dauChart"></canvas>
         </div>
@@ -841,8 +843,8 @@ function generateHtml(combinedStats, totalMembers, latestNumber, todayNew, yeste
               <th class="py-3 px-4">日付</th>
               <th class="py-3 px-4 text-right">新規登録</th>
               <th class="py-3 px-4 text-right">累計会員</th>
-              <th class="py-3 px-4 text-right">実利用者 (DAU)</th>
-              <th class="py-3 px-4 text-right">起動/セッション</th>
+              <th class="py-3 px-4 text-right">GA4観測利用者</th>
+              <th class="py-3 px-4 text-right">GA4セッション</th>
             </tr>
           </thead>
           <tbody>
@@ -860,7 +862,7 @@ const fetchWithDeadline = (url, init = {}) => fetch(url, { ...init, signal: Abor
     function renderRetentionComparison(data) {
       const labels={active:'アクティブ',churn_candidate:'離脱候補',new:'新規・初回7日未満',legacy_unmeasured:'旧版・初回未計測',unmeasured:'未計測',observation_insufficient:'観測不足',consent_denied:'同意拒否',consent_unknown:'同意不明'};
       const counts=Object.entries(labels).map(([key,label])=>'<div class="rounded bg-slate-900 p-2 text-sm">'+label+': <b>'+(data.classificationCounts[key]||0)+'</b></div>').join('');
-      const candidates=data.candidates.map((f,i)=>'<li>'+(i+1)+'. '+f.label+' <strong>+'+f.differencePp+' pp</strong>（'+f.active.users+'/'+f.active.denominator+' 対 '+f.churn_candidate.users+'/'+f.churn_candidate.denominator+'）</li>').join('')||'<li>現時点で正の差を確認できる候補はありません。</li>';
+      const candidates=data.candidates.map((f,i)=>'<li>'+(i+1)+'. '+f.label+' <strong>+'+f.differencePp+' pp</strong>（'+f.active.users+'/'+f.active.denominator+' 対 '+f.churn_candidate.users+'/'+f.churn_candidate.denominator+'）</li>').join('')||'<li>比較可能な両群の分母と利用記録が必要です。差を確認できないことは、離脱がない・案内改善が不要という意味ではありません。</li>';
       const rows=data.features.map(f=>'<tr class="border-b border-slate-800"><td class="py-2 pr-3">'+f.label+'</td><td class="py-2">'+f.active.users+' / '+f.active.denominator+' ('+(f.active.rate===null?'—':f.active.rate+'%')+')<div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-emerald-400" style="width:'+(f.active.rate||0)+'%"></div></div></td><td class="py-2">'+f.churn_candidate.users+' / '+f.churn_candidate.denominator+' ('+(f.churn_candidate.rate===null?'—':f.churn_candidate.rate+'%')+')<div class="h-2 rounded bg-slate-700"><div class="h-2 rounded bg-amber-400" style="width:'+(f.churn_candidate.rate||0)+'%"></div></div></td><td class="py-2 text-right">'+(f.differencePp===null?'—':(f.differencePp>0?'+':'')+f.differencePp+' pp')+'</td></tr>').join('');
       return '<div class="grid grid-cols-2 md:grid-cols-4 gap-2">'+counts+'</div><p class="text-xs text-amber-300">初回実利用から7日経過し、日別観測と機能対応がそろった会員のみ比較。各群20人未満は参考値。通信だけでアクティブとは判定しません。</p><h3 class="font-semibold">案内強化候補</h3><ol class="list-none space-y-1">'+candidates+'</ol><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left">機能</th><th class="text-left">アクティブの初回7日</th><th class="text-left">離脱候補の初回7日</th><th class="text-right">差</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     }
@@ -895,7 +897,7 @@ const fetchWithDeadline = (url, init = {}) => fetch(url, { ...init, signal: Abor
         for (const feature of stats.rows) {
           const row = document.createElement('tr');
           row.className = 'border-b border-slate-800';
-          for (const value of [feature.label, feature.reporting ? String(feature.users) + '人' : '不明', feature.reporting ? String(feature.percent) + '%' : '—', feature.reporting ? Math.round(feature.users / feature.reporting * 100) + '%' : '—', String(feature.reporting) + '人']) {
+          for (const value of [feature.label, feature.reporting ? String(feature.users) + '人' : '不明', feature.reporting ? String(feature.percent) + '%' : '—', feature.reporting ? (Math.round(feature.users / feature.reporting * 1000) / 10) + '%' : '—', String(feature.reporting) + '人']) {
             const cell = document.createElement('td');
             cell.className = 'py-2';
             cell.textContent = value;
@@ -1086,7 +1088,7 @@ const fetchWithDeadline = (url, init = {}) => fetch(url, { ...init, signal: Abor
         labels: dates,
         datasets: [
           {
-            label: 'アクティブ利用者数',
+            label: 'GA4観測利用者数',
             data: ${dauJson},
             borderColor: '#38bdf8',
             backgroundColor: 'rgba(56, 189, 248, 0.15)',
@@ -1096,7 +1098,7 @@ const fetchWithDeadline = (url, init = {}) => fetch(url, { ...init, signal: Abor
             yAxisID: 'y',
           },
           {
-            label: '起動/セッション数',
+            label: 'GA4セッション数',
             data: ${sessionsJson},
             borderColor: '#a78bfa',
             borderDash: [4, 4],
@@ -1223,7 +1225,7 @@ async function collectStatsData(environment, canPublish) {
     cumulative += mCount;
     const dateObj = new Date(`${date}T00:00:00+09:00`);
     const dayOfWeek = daysOfWeek[dateObj.getDay()];
-    const ga = gaDauMap[date] ?? { activeUsers: 0, sessions: 0 };
+    const ga = gaDauMap[date] ?? { activeUsers: null, sessions: null };
     return {
       date,
       memberCount: mCount,
@@ -1238,6 +1240,8 @@ async function collectStatsData(environment, canPublish) {
   const survival = survivalStats(members);
   const featureStats = featureUsageStats(members, isoWeek(), history);
   const comparison=buildUsageComparison(members,history,new Date(),analysisKey());
+  const latestGaDate = Object.keys(gaDauMap).sort().at(-1);
+  featureStats.gaObservation = latestGaDate ? {date:latestGaDate,users:gaDauMap[latestGaDate].activeUsers} : null;
   featureStats.webUsage = gaData.webUsage ?? null;
   featureStats.webAccess = gaData.webAccess ?? null;
   const ga4WeeklyFeatures=weeklyGaFeatureRows(gaData.weeklyFeatureData);

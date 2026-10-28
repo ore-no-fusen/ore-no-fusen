@@ -8,7 +8,7 @@ import { copySharedConnectionDiagnostics, logSharedConnection } from './lib/conn
 import { markSharedLoginReturn } from './lib/login-return';
 import { appendWebEdit, clearSharedRecordCache, downloadSharedImage, loadSharedNotes, pendingCreatedNote, setWebSharing, type SharedNote } from './lib/drive';
 import { NewNote } from './NewNote';
-import { trackWebFeature } from './lib/usage';
+import { isWebUsageExcluded, setWebUsageExcluded, trackWebFeature } from './lib/usage';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
 import { VisibleImage } from './VisibleImage';
 import { clearEditDraft, editBaseline, listOtherEditDrafts, recoverEditDraft, readEditDraft, writeEditDraft, type EditDraft } from './lib/edit-draft';
@@ -133,6 +133,10 @@ export default function SharedNotesPage() {
   const [showStopped, setShowStopped] = useState(false);
   const [sharingConfirmation, setSharingConfirmation] = useState<{ note: SharedNote; paused: boolean } | null>(null);
   const pageActive = useRef(true);
+  const [usageExcluded, setUsageExcluded] = useState(false);
+  const [usagePreferenceMessage, setUsagePreferenceMessage] = useState('');
+  const listUsageRecorded = useRef(false);
+  useEffect(() => { setUsageExcluded(isWebUsageExcluded()); }, []);
 
   useEffect(() => {
     pageActive.current = true;
@@ -174,6 +178,7 @@ export default function SharedNotesPage() {
       const allNotes = [...loaded.notes, ...(loaded.stoppedNotes ?? [])];
       setNotes(allNotes);
       setFiles(loaded.files);
+      if (!listUsageRecorded.current) { trackWebFeature('web_list_loaded'); listUsageRecorded.current = true; }
       if (loaded.notes.length > 0) trackWebFeature('web_view');
       let remembered=-1;
       try {const account=allNotes[0]?.scope.accountSubject;if(account) {const id=sessionStorage.getItem(`onf-shared-selected:${account}`);remembered=allNotes.findIndex(note=>note.scope.noteId===id);}} catch {/* Selection is optional; a draft is retained separately. */}
@@ -332,6 +337,7 @@ export default function SharedNotesPage() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {token && <button style={button} disabled={busy||editing} onClick={()=>setCreating(true)}>＋新規</button>}
           {!token && <a href="/viewer?shared=1" onClick={() => {
+            trackWebFeature('web_login_start');
             markSharedLoginReturn();
             logSharedConnection('shared_connect_clicked', { targetPath: '/viewer', sharedMode: true });
           }} style={{ ...button, textDecoration: 'none' }}>Google接続</a>}
@@ -505,6 +511,18 @@ export default function SharedNotesPage() {
           finally { setBusy(false); }
         })();
       }} />}
+    <details style={{ marginTop: 24, fontSize: 13 }}>
+      <summary>利用状況の集計設定</summary>
+      <label><input type="checkbox" checked={usageExcluded} onChange={event => {
+        const excluded = event.target.checked;
+        try {
+          setWebUsageExcluded(excluded); setUsageExcluded(excluded);
+          setUsagePreferenceMessage('保存しました。画面を開き直すと設定が全体に反映されます。');
+        } catch { setUsagePreferenceMessage('設定を保存できませんでした。ブラウザーの保存設定を確認してください。'); }
+      }} /> このブラウザーの動作確認を利用集計から除外する</label>
+      <p>作者やテスト用のブラウザーで設定してください。過去の記録は変わりません。同じブラウザーのWeb・PWAのGA4集計に適用されます。</p>
+      {usagePreferenceMessage && <p role="status">{usagePreferenceMessage}</p>}
+    </details>
     <style jsx>{`.shared-grid{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(0,2fr);gap:20px}@media(max-width:680px){.shared-grid{grid-template-columns:minmax(0,1fr)}}`}</style>
   </main></ImageContext.Provider>;
 }

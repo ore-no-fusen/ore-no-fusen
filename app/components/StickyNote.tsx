@@ -11,6 +11,7 @@
  */
 
 'use client';
+import { useNoteReading } from '../hooks/useNoteReading';
 import { storeFavoriteInOrder } from '../utils/shelfMotion';
 import { useStoreFavoriteListener } from '../hooks/useStoreFavoriteListener';
 
@@ -253,6 +254,9 @@ const StickyNote = memo(function StickyNote() {
         },
         onSaveError: () => setShowSaveError(true),
     });
+    useNoteReading(noteContentRef, urlPath ?? '', !loading && !isPoolRef.current && !!note && !!content.trim()
+        && note?.meta.context !== 'はじめての付箋（消してOK）'
+        && note?.meta.context !== 'Your first note (safe to delete)');
     const collapsedOutlineLines = useMemo(() => readCollapsedLines(rawFrontmatter), [rawFrontmatter]);
     const updateCollapsedOutlineLines = useCallback((lines: number[]) => {
         const nextFrontmatter = updateFrontmatterValue(
