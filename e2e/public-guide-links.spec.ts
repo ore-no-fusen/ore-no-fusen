@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mockTauriAPI } from './mock-tauri';
 
 for (const language of ['ja', 'en'] as const) {
-    test(`${language}: settings opens user guides instead of code and internal designs`, async ({ page }) => {
+    test(`${language}: settings opens user guides instead of code and internal designs`, { tag: '@ci-guide' }, async ({ page }) => {
         await mockTauriAPI(page, { language });
         await page.goto('/');
         await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));

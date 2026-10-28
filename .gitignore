@@ -106,3 +106,4 @@ wiki-temp/
 
 # Per-run CI diagnostic, uploaded as an artifact
 /msix-ci-status.json
+/.ci-validation/

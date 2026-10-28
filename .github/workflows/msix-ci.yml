@@ -1,13 +1,23 @@
 name: MSIX CI
-on:
-  workflow_dispatch:
+'on':
+  workflow_dispatch: null
   workflow_call:
     inputs:
       prevalidated:
         type: boolean
         default: false
+    outputs:
+      reused:
+        value: ${{ jobs.build-install-smoke.outputs.reused }}
+      source_run:
+        value: ${{ jobs.build-install-smoke.outputs.source_run }}
+      source_attempt:
+        value: ${{ jobs.build-install-smoke.outputs.source_attempt }}
+      source_pr:
+        value: ${{ jobs.build-install-smoke.outputs.source_pr }}
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: msix-ci-${{ github.ref }}
   cancel-in-progress: false
@@ -21,35 +31,44 @@ jobs:
       GDRIVE_CLIENT_SECRET: msix-ci-placeholder
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare noninteractive CI test certificate
-        id: certificate
-        timeout-minutes: 2
-        shell: pwsh
-        run: .\scripts\ci-msix-certificate.ps1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - name: Verify equivalent PR validation
+        id: validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-validation-reuse.mjs check msix
+      - name: Prepare noninteractive CI test certificate
+        id: certificate
+        timeout-minutes: 2
+        shell: pwsh
+        run: .\scripts\ci-msix-certificate.ps1
+        if: steps.validation.outputs.reused != 'true'
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+        if: steps.validation.outputs.reused != 'true'
       - name: Install JavaScript dependencies
         id: npm_ci
         timeout-minutes: 5
         run: npm ci
+        if: steps.validation.outputs.reused != 'true'
       - name: Frontend unit tests (standalone invocation)
         id: frontend_tests
-        if: ${{ !inputs.prevalidated }}
+        if: steps.validation.outputs.reused != 'true' && (!inputs.prevalidated)
         timeout-minutes: 5
         run: npm test
       - name: Next.js Web and API production build
         id: next_build
         timeout-minutes: 10
         run: npm run build
+        if: steps.validation.outputs.reused != 'true'
       - name: Rust all-target tests (standalone invocation)
         id: rust_tests
-        if: ${{ !inputs.prevalidated }}
+        if: steps.validation.outputs.reused != 'true' && (!inputs.prevalidated)
         timeout-minutes: 15
         working-directory: src-tauri
         run: cargo test --locked
@@ -57,27 +76,38 @@ jobs:
         id: tauri_build
         timeout-minutes: 25
         run: npx tauri build --no-bundle --ci
+        if: steps.validation.outputs.reused != 'true'
       - name: Create and sign local test MSIX
         id: msix_create
         timeout-minutes: 5
         shell: pwsh
         run: .\packaging\msix\test-msix.ps1 -SkipBuild -NoInstall
+        if: steps.validation.outputs.reused != 'true'
       - name: Verify MSIX signature
         id: msix_verify
         timeout-minutes: 2
         shell: pwsh
-        run: |
+        run: >
           $msix = '.\packaging\msix\dev\out\ore-no-fusen-dev.msix'
+
           $signature = Get-AuthenticodeSignature -LiteralPath $msix
-          $expected = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new('.\packaging\msix\dev\certs\ore-no-fusen-dev.cer')
-          if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $expected.Thumbprint -or $signature.Status -ne 'Valid') { throw 'MSIX signature is not valid and trusted' }
+
+          $expected =
+          [System.Security.Cryptography.X509Certificates.X509Certificate2]::new('.\packaging\msix\dev\certs\ore-no-fusen-dev.cer')
+
+          if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $expected.Thumbprint -or
+          $signature.Status -ne 'Valid') { throw 'MSIX signature is not valid and trusted' }
+        if: steps.validation.outputs.reused != 'true'
       - name: Install and launch packaged application
         id: msix_smoke
         timeout-minutes: 3
         shell: pwsh
-        run: .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix -CertificatePath .\packaging\msix\dev\certs\ore-no-fusen-dev.cer
+        run: >-
+          .\scripts\ci-msix-smoke.ps1 -MsixPath .\packaging\msix\dev\out\ore-no-fusen-dev.msix -CertificatePath
+          .\packaging\msix\dev\certs\ore-no-fusen-dev.cer
+        if: steps.validation.outputs.reused != 'true'
       - name: Record run-specific status
-        if: always()
+        if: steps.validation.outputs.reused != 'true' && (always())
         timeout-minutes: 1
         env:
           JOB_STATUS: ${{ job.status }}
@@ -85,7 +115,7 @@ jobs:
           STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/msix-status.mjs
       - name: Save status and package for this run only
-        if: always()
+        if: steps.validation.outputs.reused != 'true' && (always())
         timeout-minutes: 3
         uses: actions/upload-artifact@v4
         with:
@@ -96,3 +126,32 @@ jobs:
             packaging/msix/dev/out/ore-no-fusen-dev.msix
             msix-ci-status.json
             ${{ runner.temp }}/appx-deployment-events.txt
+      - name: Describe reused MSIX validation
+        if: success() && steps.validation.outputs.reused == 'true'
+        run: node scripts/ci-validation-reuse.mjs status msix
+      - name: Save reused validation status
+        if: success() && steps.validation.outputs.reused == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: msix-ci-status.json
+          retention-days: 1
+          if-no-files-found: error
+      - name: Record successful validation inputs
+        id: receipt
+        if: success() && steps.validation.outputs.reused != 'true'
+        run: node scripts/ci-validation-reuse.mjs record msix
+      - name: Save validation receipt
+        if: steps.receipt.outputs.eligible == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-msix-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci-validation/msix.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+    outputs:
+      reused: ${{ steps.validation.outputs.reused }}
+      source_run: ${{ steps.validation.outputs.source_run }}
+      source_attempt: ${{ steps.validation.outputs.source_attempt }}
+      source_pr: ${{ steps.validation.outputs.source_pr }}
