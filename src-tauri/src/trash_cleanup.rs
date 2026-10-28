@@ -200,7 +200,13 @@ fn plan(root: &Path, log: &Path, now: DateTime<Utc>) -> Result<Plan, String> {
     {
         let record: Record = serde_json::from_str(line)
             .map_err(|_| "Invalid Trash operation log; cleanup stopped")?;
-        records.insert(PathBuf::from(&record.destination), record);
+        // Windows temp/config paths may use an 8.3 alias while the scan uses
+        // the full canonical name. Compare identities in the same namespace.
+        if let Ok(destination) = dunce::canonicalize(&record.destination) {
+            if destination.starts_with(&root) {
+                records.insert(destination, record);
+            }
+        }
     }
     let mut bodies = BTreeMap::new();
     let mut snapshot = Vec::new();
@@ -519,6 +525,7 @@ mod tests {
         let log = d.path().join("operations.jsonl");
         let now = Utc::now();
         fs::write(&log,serde_json::json!({"destination":note,"timestamp":(now-chrono::Duration::days(age)).to_rfc3339(),"fingerprint":fingerprint(&note).unwrap()}).to_string()+"\n").unwrap();
+        let root = dunce::canonicalize(&root).unwrap();
         (d, root, log, now)
     }
     #[test]
@@ -536,6 +543,32 @@ mod tests {
         let p = preview(&r, &l, n).unwrap();
         assert_eq!(p.eligible_count, 0);
         assert_eq!(p.preserved_count, 2);
+    }
+    #[test]
+    fn operation_path_aliases_match_canonical_scan_but_outside_records_do_not() {
+        let (_d, r, l, n) = fixture(91);
+        let path = r.join("Trash/../Trash/old.md");
+        fs::write(&l, serde_json::json!({"destination":path,"timestamp":(n-chrono::Duration::days(91)).to_rfc3339(),"fingerprint":fingerprint(&path).unwrap()}).to_string()+"\n").unwrap();
+        assert_eq!(preview(&r, &l, n).unwrap().eligible_count, 1);
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            use windows::{core::PCWSTR, Win32::Storage::FileSystem::GetShortPathNameW};
+            let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            let mut short = vec![0u16; 32768];
+            // SAFETY: both buffers are valid and the source is null terminated.
+            let length =
+                unsafe { GetShortPathNameW(PCWSTR(wide.as_ptr()), Some(&mut short)) } as usize;
+            assert!(length > 0 && length < short.len());
+            let short = String::from_utf16(&short[..length]).unwrap();
+            fs::write(&l, serde_json::json!({"destination":short,"timestamp":(n-chrono::Duration::days(91)).to_rfc3339(),"fingerprint":fingerprint(&path).unwrap()}).to_string()+"\n").unwrap();
+            assert_eq!(preview(&r, &l, n).unwrap().eligible_count, 1);
+        }
+        let external = r.parent().unwrap().join("outside.md");
+        fs::write(&external, "outside").unwrap();
+        fs::write(&l, serde_json::json!({"destination":external,"timestamp":(n-chrono::Duration::days(91)).to_rfc3339(),"fingerprint":fingerprint(&external).unwrap()}).to_string()+"\n").unwrap();
+        assert_eq!(preview(&r, &l, n).unwrap().eligible_count, 0);
+        assert_eq!(fs::read_to_string(external).unwrap(), "outside");
     }
     #[test]
     fn expired_note_is_deleted_but_all_images_are_retained() {
