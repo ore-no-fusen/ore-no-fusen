@@ -9,6 +9,8 @@
 
 "use client"
 
+import TrashRetentionSettings from "@/app/components/TrashRetentionSettings"
+
 import { publicGuideLinks } from '@/lib/public-links';
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
@@ -1529,6 +1531,7 @@ function DataSection({
 
     return (
         <div className="flex flex-col gap-8">
+            <TrashRetentionSettings basePath={settings.base_path} language={settings.language} />
             <div className="order-1 mb-2">
                 <h2 className="text-2xl font-bold tracking-tight text-slate-950 mb-2">{t('settings.data.title')}</h2>
                 <p className="text-gray-500 text-sm">{t('settings.data.description')}</p>

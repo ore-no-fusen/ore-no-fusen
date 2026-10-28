@@ -20,7 +20,7 @@ pub const RECIPES_DIR_NAME: &str = "Recipes";
 pub const QA_DIR_NAME: &str = "QA";
 pub const TERMS_DIR_NAME: &str = "Terms";
 static SETTINGS_IO_LOCK: Mutex<()> = Mutex::new(());
-static NOTE_WRITE_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static NOTE_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -331,6 +331,7 @@ pub fn append_trash_operation(
         "source": source.to_string_lossy(),
         "destination": destination.to_string_lossy(),
         "origin": origin,
+        "fingerprint": crate::trash_cleanup::fingerprint(destination).ok(),
     });
     let mut file = fs::OpenOptions::new()
         .create(true)
@@ -998,7 +999,8 @@ pub fn rename_note_if_unchanged(
     let _guard = NOTE_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let current = fs::read_to_string(old_path).map_err(|e| format!("付箋の再確認に失敗しました: {e}"))?;
+    let current =
+        fs::read_to_string(old_path).map_err(|e| format!("付箋の再確認に失敗しました: {e}"))?;
     if current != expected {
         return Err("同期中にWindows付箋が変更されました。名前変更を保留しました".to_string());
     }
@@ -1063,6 +1065,7 @@ fn write_note_unlocked(path: &str, content: &str) -> Result<(), String> {
 }
 
 pub fn rename_note(old_path: &str, new_path: &str) -> Result<(), String> {
+    let _guard = NOTE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     fs::rename(old_path, new_path).map_err(|e| e.to_string())
 }
 
@@ -1502,7 +1505,10 @@ mod tests {
         assert!(!new_path.exists());
 
         assert!(write_note_if_absent(&old_path.to_string_lossy(), "overwrite").is_err());
-        assert_eq!(fs::read_to_string(&old_path).unwrap(), "latest Windows version");
+        assert_eq!(
+            fs::read_to_string(&old_path).unwrap(),
+            "latest Windows version"
+        );
     }
 
     #[test]

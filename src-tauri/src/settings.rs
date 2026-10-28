@@ -47,6 +47,11 @@ pub fn save_settings<R: Runtime>(
         storage::validate_storage_path(base_path)?;
     }
 
+    // A new data location always requires a new explicit Trash cleanup opt-in.
+    if settings.base_path != existing_settings.base_path {
+        crate::trash_cleanup::set_policy(&crate::trash_policy_path()?, None)?;
+    }
+
     // 1. ファイルに保存
     storage::save_settings(&settings)?;
     if let Err(e) = crate::hotkey_manager::sync_quick_launcher_triple_right_click(

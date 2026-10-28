@@ -34,6 +34,7 @@ mod settings;
 mod sound; // [NEW] サウンド機能
 mod state;
 mod storage;
+mod trash_cleanup;
 mod tray;
 mod triple_right_click;
 #[allow(dead_code)] // 接続処理は同期UIとDrive層の安全ゲート後に追加する
@@ -328,6 +329,98 @@ fn fusen_backup(
     storage::save_settings(&settings)?;
     let _ = app.emit("settings_updated", &settings);
     Ok(count)
+}
+
+fn trash_context() -> Result<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf), String> {
+    let settings = storage::load_settings()?;
+    let root = dunce::canonicalize(settings.base_path.ok_or("No data location")?)
+        .map_err(|e| e.to_string())?;
+    let config = storage::get_settings_path()?
+        .parent()
+        .ok_or("No config directory")?
+        .to_path_buf();
+    Ok((
+        root,
+        config.join("trash_operations.jsonl"),
+        config.join("trash_cleanup_operations.jsonl"),
+    ))
+}
+fn authorize_trash_cleanup(root: &Path, automatic: bool) -> Result<(), String> {
+    let settings = storage::load_settings()?;
+    let current = dunce::canonicalize(settings.base_path.ok_or("No data location")?)
+        .map_err(|e| e.to_string())?;
+    if current != root || (automatic && !trash_cleanup::policy_enabled(&trash_policy_path()?, root)?) {
+        return Err("Cleanup disabled or data location changed".into());
+    }
+    Ok(())
+}
+#[tauri::command]
+async fn fusen_trash_cleanup_preview() -> Result<trash_cleanup::Preview, String> {
+    tauri::async_runtime::spawn_blocking(move || fusen_trash_cleanup_preview_blocking()).await.map_err(|e| e.to_string())?
+}
+fn fusen_trash_cleanup_preview_blocking() -> Result<trash_cleanup::Preview, String> {
+    let _guard = storage::NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let (root, log, _) = trash_context()?;
+    trash_cleanup::preview(&root, &log, chrono::Utc::now())
+}
+#[tauri::command]
+async fn fusen_trash_cleanup_run(token: String) -> Result<trash_cleanup::CleanupResult, String> {
+    tauri::async_runtime::spawn_blocking(move || fusen_trash_cleanup_run_blocking(token)).await.map_err(|e| e.to_string())?
+}
+fn fusen_trash_cleanup_run_blocking(token: String) -> Result<trash_cleanup::CleanupResult, String> {
+    let _guard = storage::NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let (root, log, audit) = trash_context()?;
+    trash_cleanup::execute(&root, &log, &audit, &token, chrono::Utc::now(), || {
+        authorize_trash_cleanup(&root, false)
+    })
+}
+fn trash_policy_path() -> Result<std::path::PathBuf, String> {
+    Ok(storage::get_settings_path()?.with_file_name("trash_cleanup.json"))
+}
+#[tauri::command]
+fn fusen_trash_cleanup_status() -> Result<bool, String> {
+    let (root, _, _) = trash_context()?;
+    trash_cleanup::policy_enabled(&trash_policy_path()?, &root)
+}
+#[tauri::command]
+async fn fusen_set_trash_cleanup(enabled: bool, token: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || fusen_set_trash_cleanup_blocking(enabled, token)).await.map_err(|e| e.to_string())?
+}
+fn fusen_set_trash_cleanup_blocking(enabled: bool, token: Option<String>) -> Result<(), String> {
+    if !enabled { return trash_cleanup::set_policy(&trash_policy_path()?, None); }
+    let _guard = storage::NOTE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (root, log, _) = trash_context()?;
+    let preview = trash_cleanup::preview(&root, &log, chrono::Utc::now())?;
+    if token.as_deref() != Some(&preview.token) {
+        return Err("Trash changed; preview again before enabling cleanup".into());
+    }
+    trash_cleanup::set_policy(&trash_policy_path()?, Some(&root))
+}
+fn automatic_trash_cleanup() -> Result<(), String> {
+    if !fusen_trash_cleanup_status()? {
+        return Ok(());
+    }
+    let _guard = storage::NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let (root, log, audit) = trash_context()?;
+    let preview = trash_cleanup::preview(&root, &log, chrono::Utc::now())?;
+    let result = trash_cleanup::execute(
+        &root,
+        &log,
+        &audit,
+        &preview.token,
+        chrono::Utc::now(),
+        || authorize_trash_cleanup(&root, true),
+    )?;
+    if !result.errors.is_empty() {
+        return Err(result.errors.join("; "));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -6408,6 +6501,10 @@ pub fn run() {
             fusen_pick_folder,
             fusen_import_from_folder,
             fusen_backup,
+            fusen_trash_cleanup_status,
+            fusen_trash_cleanup_preview,
+            fusen_trash_cleanup_run,
+            fusen_set_trash_cleanup,
             fusen_monthly_backup_due,
             fusen_snooze_monthly_backup,
             fusen_run_monthly_backup,
@@ -6645,6 +6742,17 @@ pub fn run() {
                 });
             }
 
+            tauri::async_runtime::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                loop {
+                    match tauri::async_runtime::spawn_blocking(automatic_trash_cleanup).await {
+                        Ok(Err(error)) => logger::log_warn(&format!("[trash cleanup] stopped: {error}")),
+                        Err(error) => logger::log_warn(&format!("[trash cleanup] worker failed: {error}")),
+                        _ => {}
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                }
+            });
             logger::log_info("アプリの初期化が完了しました");
             Ok(())
         })
