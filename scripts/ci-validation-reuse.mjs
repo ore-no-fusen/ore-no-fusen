@@ -20,6 +20,14 @@ export function parentsFromCommit(raw) {
 // git show %P hides parents at a shallow boundary; raw commit headers do not.
 const headParents = () => parentsFromCommit(git('cat-file', '-p', 'HEAD'));
 
+export function assertCleanInputs(cwd = process.cwd()) {
+  const names = args => execFileSync('git', args, { cwd, encoding: 'utf8' }).split('\0').filter(Boolean);
+  const changed = names(['diff', '--name-only', '--no-renames', '-z', 'HEAD']);
+  if (changed.length) throw Error(`Tracked validation inputs changed: ${JSON.stringify(changed)}`);
+  const untracked = names(['ls-files', '--others', '--exclude-standard', '-z']);
+  if (untracked.length) throw Error(`Untracked validation inputs exist: ${JSON.stringify(untracked)}`);
+}
+
 export function environment(suite, env = process.env) {
   const values = {
     platform: process.platform, arch: process.arch, node: process.version,
@@ -243,8 +251,7 @@ export async function main([command, suite], env = process.env) {
     output({ eligible: 'false' }); return;
   }
   if (c.parents.length !== 2 || c.parents[0] !== pr.base.sha || c.parents[1] !== pr.head.sha) throw Error('Tested merge parents do not match PR');
-  execFileSync('git', ['diff', 'HEAD', '--exit-code', '--quiet']);
-  if (execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z']).length) throw Error('Untracked validation inputs exist');
+  assertCleanInputs();
   const proof = {
     schema: 1, mode: 'executed', result: 'success', suite, repository: c.repository,
     run: Number(env.GITHUB_RUN_ID), attempt: Number(env.GITHUB_RUN_ATTEMPT),

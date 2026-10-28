@@ -7,7 +7,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { auditReuse, eligiblePush, matchesProof, readReceiptZip, findProof, TTL_MS, parentsFromCommit } from './ci-validation-reuse.mjs';
+import { auditReuse, eligiblePush, matchesProof, readReceiptZip, findProof, TTL_MS, parentsFromCommit, assertCleanInputs } from './ci-validation-reuse.mjs';
+
+test('receipt refuses changed tracked and unknown inputs while allowing ignored generated output',()=>{
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'validation-inputs-'));
+ const git=(...args)=>execFileSync('git',['-c','user.name=Validation fixture','-c','user.email=fixture@example.invalid','-c','core.hooksPath=disabled-hooks','-c','commit.gpgsign=false',...args],{cwd:folder,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ try {
+  git('init','--quiet');fs.writeFileSync(path.join(folder,'.gitignore'),'generated.map\n');
+  fs.writeFileSync(path.join(folder,'source.ts'),'original');git('add','.');git('commit','--quiet','-m','base');
+  fs.writeFileSync(path.join(folder,'generated.map'),'generated');assert.doesNotThrow(()=>assertCleanInputs(folder));
+  fs.writeFileSync(path.join(folder,'source.ts'),'changed');assert.throws(()=>assertCleanInputs(folder),/Tracked.*source.ts/);
+  git('add','source.ts');assert.throws(()=>assertCleanInputs(folder),/Tracked.*source.ts/);
+  git('restore','--staged','--worktree','source.ts');
+  fs.writeFileSync(path.join(folder,'unknown.ts'),'unknown');assert.throws(()=>assertCleanInputs(folder),/Untracked.*unknown.ts/);
+  fs.unlinkSync(path.join(folder,'unknown.ts'));git('add','-f','generated.map');git('commit','--quiet','-m','tracked generation fixture');
+  fs.writeFileSync(path.join(folder,'generated.map'),'regenerated');assert.throws(()=>assertCleanInputs(folder),/Tracked.*generated.map/);
+  git('rm','--cached','-f','generated.map');git('commit','--quiet','-m','untrack generated output');assert.doesNotThrow(()=>assertCleanInputs(folder));
+ } finally { if(path.resolve(folder).startsWith(path.join(os.tmpdir(),'validation-inputs-')))fs.rmSync(folder,{recursive:true,force:true}); }
+});
 
 const A='a'.repeat(40), B='b'.repeat(40), C='c'.repeat(40), T='d'.repeat(40), P='e'.repeat(40);
 const now=Date.parse('2026-10-28T01:00:00Z');

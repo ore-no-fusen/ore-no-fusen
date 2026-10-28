@@ -65,7 +65,7 @@ iPhone 実機テストはコストが高いため、リリースごとに全異�
 
 通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。手動全件実行は診断用として残す。
 
-develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。詳細は開発リポジトリの `docs/CI_MERGE_POLICY.md` に従う。
+develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全検査へ戻す際はActionsのRe-run all jobs（全ジョブ再実行）を選び、成功済みの再利用jobも再実行する。詳細は開発リポジトリの `docs/CI_MERGE_POLICY.md` に従う。
 
 ```mermaid
 sequenceDiagram

@@ -113,7 +113,7 @@ T01は文書形式やリンク処理の検査であり、設計内容の妥当�
 |設計書build・リンク検査|旧T31|設計書変更時の独立した分岐|設計書変更時|—|◎ docs-v2変更時|◎ docs-v2変更時|既存：Testから1回だけ呼ぶ。独立pushとの二重起動を解消|
 |実際の変更範囲の判定|旧T17|CIでは判定器の回帰合格後|手動調査時|hook独自判定|◎ 全変更|◎ 全変更|文書コンテンツ判定をPC/CIで共通化。移動元も検査|
 |テストカバレッジ集計|旧T38|必要時、単体テストと併せて集計|必要時のみ|—|—|—|常時実行ではない。不要な毎回実行を追加しない|
-|Tauri用画面の静的build|旧T21|MSIX対象時はTauri exeのbeforeBuild、対象外はfrontend末尾|必要時|—|◎ 通常（1回）|◎ 通常（1回）|MSIX時はexe作成に集約。対象外はfrontendで検査し、どちらの失敗もgateで拒否|
+|Tauri用画面の静的build|旧T21|MSIX対象時はTauri exeのbeforeBuild、対象外はfrontend末尾|必要時|—|◎ 通常（実検査1回）|◎ 通常（実検査1回／証跡再利用0回）|MSIX時はexe作成に集約。対象外はfrontendで検査し、どちらの失敗もgateで拒否|
 |Web/API用の本番build|旧T22|CIのMSIX内（Tauri exeより前）|必要時|—|◎ MSIX対象時|◎ MSIX対象時|Tauri用画面の静的buildとは対象/出力が異なる。Vercelとの同等性は別確認|
 |CI結果の集約・統合可否|旧T18|各PR・統合後CIの末尾|リリース時にも照合|—|◎ 全変更|◎ 全変更|残す。必要な検査の失敗/不明/予期しないskipは拒否|
 |VercelのWeb/API自動build|旧T43|PR/統合後に独立起動、対象実機より前|—|—|◎ 外部サービス|◎ 外部サービス|候補：文書変更の外部buildは今回の削減対象外。設定/環境の別確認が必要|
@@ -149,7 +149,7 @@ T03-08〜11はリリース・復旧・結果判定・保全のロジックを試
 
 ## 統合後の実行・証跡照合
 
-GitHub欄の◎は必要な検証を示します。PR/mainは実検査、develop統合後のfrontend・rust・msixは条件が一致すれば現在SHAのジョブでPR成功証跡を照合します。tree全体・base/head・同じrepoの最新成功run/attempt・OS image/Node/Rust/設定・24時間以内・artifact digestの全一致が条件です。失敗・未完了・キャンセル・不明は成功にしません。欠落や不一致なら全検査へ戻り、gateは参照元の変化を拒否します。再実行は全検査です。詳細は[CI運用規則](CI_MERGE_POLICY.md)を参照します。
+GitHub欄の◎は必要な検証を示します。PR/mainは実検査、develop統合後のfrontend・rust・msixは条件が一致すれば現在SHAのジョブでPR成功証跡を照合します。tree全体・base/head・同じrepoの最新成功run/attempt・OS image/Node/Rust/設定・24時間以内・artifact digestの全一致が条件です。失敗・未完了・キャンセル・不明は成功にしません。欠落や不一致なら全検査へ戻り、gateは参照元の変化を拒否します。全検査へ戻すときはActionsのRe-run all jobsを選びます。失敗jobだけの再実行では成功済みjobは走り直しません。詳細は[CI運用規則](CI_MERGE_POLICY.md)を参照します。
 
 T06-05/06の再利用は新規パッケージの署名・導入を意味せず、同じ入力を検査した参照元runの結果照合です。正式提出物、PC/iPhone実機、main、独立した文書・分析・Vercelの検査は省略しません。短い回帰や異なる配信環境の検査は独立した失敗を検知するため残します。
 

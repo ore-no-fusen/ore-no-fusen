@@ -42,7 +42,7 @@ status JSONはrun ID・attempt・SHAごとの成果物へ保存する。必須�
 
 develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全条件は [CI_MERGE_POLICY.md](CI_MERGE_POLICY.md) に従う。
 
-ログの `Verified ... identical tree/parents/environment` と参照元run、gateの `Audited ... remains successful` を確認する。MSIX状態は `overall: reused` / `created: false` と参照元を記録し、新規パッケージは生成しない。署名・導入の成功根拠は参照元runに残る。新規診断パッケージが必要なら手動MSIXを使う。参照元の変化でgateが失敗したら原因を調べ、ActionsのRe-run jobsで全検査を行う。確認待ちだけを理由に同じSHAを再実行しない。
+ログの `Verified ... identical tree/parents/environment` と参照元run、gateの `Audited ... remains successful` を確認する。MSIX状態は `overall: reused` / `created: false` と参照元を記録し、新規パッケージは生成しない。署名・導入の成功根拠は参照元runに残る。新規診断パッケージが必要なら手動MSIXを使う。参照元の変化でgateが失敗したら原因を調べ、Actionsの **Re-run all jobs（全ジョブ再実行）** で全検査を行う。失敗jobだけでは成功済みの再利用jobが走り直さないため、全件復旧時には選ばない。確認待ちだけを理由に同じSHAを再実行しない。
 
 小さなsuite別JSON証跡も1日保持とする。整理後は次の統合時に全検査へ戻る。PC署名鍵・常設runnerは追加しない。
 

@@ -235,7 +235,7 @@ sequenceDiagram
 
 ---
 
-通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。通常CIは変更範囲を判定します。文書コンテンツだけの場合は文書の差分と必要な文書build/リンク検査を実施し、フロント・Rust・分析・MSIX検査は起動しません。文書内の設定/スクリプト/依存やアプリ変更が混在する場合は、全単体・型・Rustを検査し、対象変更ではWeb/API production buildとMSIXの梱包・署名・導入・起動も検証します。必要な検査の失敗や不明はgateで拒否し、docs-v2のbuildも同じTestに集約します。単独MSIX実行では前提テストを省略しません。工程ごとの期限とrun固有の状態・1日保持の診断成果物を使い、共有statusブランチへ書込みません。ローカル静的ビルドは隔離コピーを用い、元APIソースを移動せず、生成物切替えをtransactionで回復します。詳細は開発リポジトリの `docs/AUTOMATION_OPERATIONS.md`を参照します。
+通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全検査へ戻す際はActionsのRe-run all jobs（全ジョブ再実行）を選び、成功済みの再利用jobも再実行する。通常CIは変更範囲を判定します。文書コンテンツだけの場合は文書の差分と必要な文書build/リンク検査を実施し、フロント・Rust・分析・MSIX検査は起動しません。文書内の設定/スクリプト/依存やアプリ変更が混在する場合は、全単体・型・Rustを検査し、対象変更ではWeb/API production buildとMSIXの梱包・署名・導入・起動も検証します。必要な検査の失敗や不明はgateで拒否し、docs-v2のbuildも同じTestに集約します。単独MSIX実行では前提テストを省略しません。工程ごとの期限とrun固有の状態・1日保持の診断成果物を使い、共有statusブランチへ書込みません。ローカル静的ビルドは隔離コピーを用い、元APIソースを移動せず、生成物切替えをtransactionで回復します。詳細は開発リポジトリの `docs/AUTOMATION_OPERATIONS.md`を参照します。
 
 ## 9 制約と検証
 
