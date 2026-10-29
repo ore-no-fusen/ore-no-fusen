@@ -683,23 +683,24 @@ fn is_reserved_basic_shortcut(shortcut: &str) -> bool {
 }
 
 fn save_bindings(bindings: &HotKeyBindings) -> Result<(), String> {
-    let mut settings = storage::load_settings()?;
-    settings.disabled_hotkeys = bindings.disabled_hotkeys.clone();
-    settings.shortcut_new_note = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::NewNote],
-    ));
-    settings.new_note_trigger = Some(bindings.new_note_trigger.clone());
-    settings.shortcut_toggle_visibility = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::ToggleVisibility],
-    ));
-    settings.shortcut_arrange = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::Arrange],
-    ));
-    settings.shortcut_quick_launcher = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::QuickLauncher],
-    ));
-    settings.quick_launcher_triple_right_click = Some(bindings.quick_launcher_triple_right_click);
-    storage::save_settings(&settings)
+    storage::update_settings(|settings| {
+        settings.disabled_hotkeys = bindings.disabled_hotkeys.clone();
+        settings.shortcut_new_note = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::NewNote],
+        ));
+        settings.new_note_trigger = Some(bindings.new_note_trigger.clone());
+        settings.shortcut_toggle_visibility = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::ToggleVisibility],
+        ));
+        settings.shortcut_arrange = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::Arrange],
+        ));
+        settings.shortcut_quick_launcher = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::QuickLauncher],
+        ));
+        Ok(())
+    })
+    .map(|_| ())
 }
 
 #[cfg(test)]

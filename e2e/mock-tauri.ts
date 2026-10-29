@@ -322,7 +322,6 @@ updated: 2026-01-31
         (window as any).__MOCK_LISTENER_COUNT__ = (event: string) => listeners.get(event)?.length ?? 0;
 
         // Testからイベントを発火するためのヘルパー
-        (window as any).__MOCK_HAS_LISTENER__ = (event: string) => (listeners.get(event)?.length ?? 0) > 0;
         (window as any).__MOCK_EMIT__ = (event: string, payload: any) => {
             console.log(`[Mock Tauri] Manually emitting event: ${event}`, payload);
             const handlers = listeners.get(event) || [];

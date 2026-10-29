@@ -386,6 +386,7 @@ export function useStickyNoteContextMenu({
             const [freshTags, hotkeyBindings] = await Promise.all([
                 invoke<string[]>('fusen_get_all_tags'),
                 invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
+                    disabled_hotkeys: [] as string[],
                     new_note_trigger: 'shortcut',
                     new_note: 'ctrl+n',
                     arrange: 'ctrl+shift+l',

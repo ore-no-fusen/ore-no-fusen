@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { centeredNoteBounds, currentScreenNoteBounds } from './newNotePosition';
+import { centeredNoteBounds, currentScreenNoteBounds, placeNewNotePhysically } from './newNotePosition';
 
 const api = vi.hoisted(() => ({ cursorPosition: vi.fn(), monitorFromPoint: vi.fn(), primaryMonitor: vi.fn() }));
 vi.mock('@tauri-apps/api/window', () => api);
@@ -40,4 +40,24 @@ describe('new note display selection', () => {
         api.primaryMonitor.mockResolvedValue(null);
         await expect(currentScreenNoteBounds()).rejects.toThrow('No display');
     });
+});
+
+it('places a newly created fallback window in physical pixels on a 200% secondary monitor', async () => {
+    const window = { setSize: vi.fn().mockResolvedValue(undefined), setPosition: vi.fn().mockResolvedValue(undefined), show: vi.fn().mockResolvedValue(undefined), setFocus: vi.fn().mockResolvedValue(undefined) };
+    const bounds = centeredNoteBounds({ position: { x: 1920, y: 0 }, size: { width: 1920, height: 1080 } }, 2);
+    await placeNewNotePhysically(window, bounds);
+    expect(window.setPosition.mock.calls[0][0]).toMatchObject({ type: 'Physical', x: 2480, y: 240 });
+    expect(window.setSize.mock.calls[0][0]).toMatchObject({ type: 'Physical', width: 800, height: 600 });
+    expect(window.show).toHaveBeenCalledOnce();
+    expect(window.setPosition.mock.calls).toHaveLength(2);
+    expect(window.setPosition.mock.invocationCallOrder[0]).toBeLessThan(window.setSize.mock.invocationCallOrder[0]);
+    expect(window.setSize.mock.invocationCallOrder[0]).toBeLessThan(window.setPosition.mock.invocationCallOrder[1]);
+    expect(window.setPosition.mock.invocationCallOrder[0]).toBeLessThan(window.show.mock.invocationCallOrder[0]);
+});
+
+it('does not show or focus a fallback window if physical placement fails', async () => {
+    const window = { setSize: vi.fn(), setPosition: vi.fn().mockRejectedValue(new Error('display removed')), show: vi.fn(), setFocus: vi.fn() };
+    await expect(placeNewNotePhysically(window, { x: 100, y: 100, width: 400, height: 300 })).rejects.toThrow('display removed');
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.setFocus).not.toHaveBeenCalled();
 });

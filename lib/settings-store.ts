@@ -140,7 +140,7 @@ export function useSettings() {
                         settings_theme: normalizeSettingsTheme(parsed.settings_theme ?? parsed.settingsTheme),
                         iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
                         disabled_hotkeys: parsed.disabled_hotkeys ?? [],
-                    shortcut_new_note: parsed.shortcut_new_note ?? DEFAULT_SETTINGS.shortcut_new_note,
+                        shortcut_new_note: parsed.shortcut_new_note ?? DEFAULT_SETTINGS.shortcut_new_note,
                         new_note_trigger: parsed.new_note_trigger ?? DEFAULT_SETTINGS.new_note_trigger,
                         shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
                         shortcut_arrange: parsed.shortcut_arrange ?? DEFAULT_SETTINGS.shortcut_arrange,

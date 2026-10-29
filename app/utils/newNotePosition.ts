@@ -23,3 +23,20 @@ export async function currentScreenNoteBounds() {
     if (!monitor) throw new Error('No display is available for the new note');
     return { ...centeredNoteBounds(monitor.workArea, monitor.scaleFactor), scaleFactor: monitor.scaleFactor };
 }
+
+/** Never convert a global physical coordinate into a monitor-local logical coordinate. */
+export async function placeNewNotePhysically(window: {
+    setPosition(position: import('@tauri-apps/api/dpi').PhysicalPosition): Promise<void>;
+    setSize(size: import('@tauri-apps/api/dpi').PhysicalSize): Promise<void>;
+    show(): Promise<void>;
+    setFocus(): Promise<void>;
+}, bounds: { x: number; y: number; width: number; height: number }) {
+    const { PhysicalPosition, PhysicalSize } = await import('@tauri-apps/api/dpi');
+    // Moving between monitors changes DPI and may rescale the current size.
+    // Set the final physical size only after entering the target monitor.
+    await window.setPosition(new PhysicalPosition(bounds.x, bounds.y));
+    await window.setSize(new PhysicalSize(bounds.width, bounds.height));
+    await window.setPosition(new PhysicalPosition(bounds.x, bounds.y));
+    await window.show();
+    await window.setFocus();
+}
