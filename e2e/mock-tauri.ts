@@ -14,6 +14,8 @@ export async function mockTauriAPI(page: Page, options: { settings?: Partial<App
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
         };
+        const persisted = localStorage.getItem('mock-hotkeys');
+        if (persisted) mockOptions.settings = { ...mockOptions.settings, ...JSON.parse(persisted) };
         const iphoneCalls: Array<{ cmd: string; args: any }> = [];
         (window as any).__MOCK_IPHONE_CALLS__ = iphoneCalls;
         // --- Windowsアプリ側コマンドの処理定義 ---
@@ -98,6 +100,25 @@ updated: 2026-01-31
                         ...mockOptions.settings,
                     };
 
+                case 'hotkey_get_bindings': {
+                    const settings = mockOptions.settings;
+                    return {
+                        new_note_trigger: settings?.new_note_trigger ?? 'shortcut',
+                        new_note: settings?.shortcut_new_note ?? 'ctrl+n',
+                        quick_launcher: settings?.shortcut_quick_launcher ?? 'ctrl+p',
+                        arrange: settings?.shortcut_arrange ?? 'ctrl+shift+l',
+                        toggle_visibility: settings?.shortcut_toggle_visibility ?? 'ctrl+shift+h',
+                        disabled_hotkeys: settings?.disabled_hotkeys ?? [],
+                    };
+                }
+                case 'hotkey_apply': {
+                    const disabled = new Set(mockOptions.settings?.disabled_hotkeys ?? []);
+                    if (args.config.enabled === false) disabled.add(args.action);
+                    if (args.config.enabled === true) disabled.delete(args.action);
+                    mockOptions.settings = { ...mockOptions.settings, disabled_hotkeys: [...disabled] };
+                    localStorage.setItem('mock-hotkeys', JSON.stringify(mockOptions.settings));
+                    return null;
+                }
                 // 設定保存
                 case 'fusen_save_config':
                     return null;
@@ -301,6 +322,7 @@ updated: 2026-01-31
         (window as any).__MOCK_LISTENER_COUNT__ = (event: string) => listeners.get(event)?.length ?? 0;
 
         // Testからイベントを発火するためのヘルパー
+        (window as any).__MOCK_HAS_LISTENER__ = (event: string) => (listeners.get(event)?.length ?? 0) > 0;
         (window as any).__MOCK_EMIT__ = (event: string, payload: any) => {
             console.log(`[Mock Tauri] Manually emitting event: ${event}`, payload);
             const handlers = listeners.get(event) || [];

@@ -19,7 +19,7 @@
 |認証・セキュリティ・運用設定|[006_ARCHITECTURE.md](../docs-v2/006_ARCHITECTURE.md)|8|
 |設計書・公開マニュアル|[004_TEST.md](../docs-v2/004_TEST.md)|5|
 |配布・リリース・自動化|[008_DISTRIBUTION.md](../docs-v2/008_DISTRIBUTION.md)|14|
-|設定・ウィンドウ・共通基盤|[002_PC.md](../docs-v2/002_PC.md)|49|
+|設定・ウィンドウ・共通基盤|[002_PC.md](../docs-v2/002_PC.md)|51|
 
 ## お便り・開発者とのやりとり
 
@@ -363,4 +363,7 @@
 |F224|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/triple_right_click.rs](../src-tauri/src/triple_right_click.rs)|
 |F225|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/web_create.rs](../src-tauri/src/web_create.rs)|
 
-登録ファイル244件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。
+|F245|T02-01|Vitest|[app/utils/newNotePosition.test.ts](../app/utils/newNotePosition.test.ts)|
+|F246|T02-04|ブラウザ|[e2e/hotkey-disable.spec.ts](../e2e/hotkey-disable.spec.ts)|
+
+登録ファイル246件。テストケース数や検査の実行単位数とは別です。Git管理外の個人用監視ツールの試験は別運用です。

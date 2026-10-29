@@ -54,6 +54,7 @@ import {
   STARTUP_RETRY_READY_TIMEOUT_MS,
   waitForStartupReady,
 } from './utils/startupRestore';
+import { currentScreenNoteBounds } from './utils/newNotePosition';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { receiveIphoneNote, type ReceivedIphoneNote } from './utils/receiveIphoneNote';
@@ -617,6 +618,8 @@ function OrchestratorContent() {
       }
 
       // ============================================================
+      const screenCenter = sourceMeta ? undefined : await currentScreenNoteBounds();
+
       // Pool 選択: usedPoolWindowsRef で未使用 + ready な pool 窓を探す
       // ============================================================
       let poolWindow: { label: string } | undefined;
@@ -647,8 +650,8 @@ function OrchestratorContent() {
         console.log(`[TRACE:CREATE | ${ts}] Pool promote (lazy): ${poolWindow.label} folder=${targetFolder}`);
 
         // 表示位置を計算
-        let targetPhysX: number | undefined;
-        let targetPhysY: number | undefined;
+        let targetPhysX: number | undefined = screenCenter?.x;
+        let targetPhysY: number | undefined = screenCenter?.y;
         if (sourceMeta) {
           const isCursorAnchor = sourceMeta.physHeight === undefined;
           const srcH = isCursorAnchor ? 0 : sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
@@ -691,8 +694,8 @@ function OrchestratorContent() {
         if (sizeScale === undefined) {
           try { sizeScale = await getCurrentWindow().scaleFactor(); } catch (_) { sizeScale = 1.0; }
         }
-        const targetPhysWidth = Math.round(400 * sizeScale);
-        const targetPhysHeight = Math.round(300 * sizeScale);
+        const targetPhysWidth = screenCenter?.width ?? Math.round(400 * sizeScale);
+        const targetPhysHeight = screenCenter?.height ?? Math.round(300 * sizeScale);
 
         // [NEW] fusen_show_at_position: α=255 + SetWindowPos + SetForegroundWindow を 1 invoke で完結
         // Atomic Coordination Constraint 厳守: 複数 await invoke を直列に並べない
@@ -708,7 +711,9 @@ function OrchestratorContent() {
             runId,
           });
         } catch (e) {
-          invoke('fusen_debug_log', { message: `[CREATE] fusen_show_at_position failed: ${e}` }).catch(() => {});
+          usedPoolWindowsRef.current.delete(poolWindow.label);
+          localStorage.removeItem(`promoted_${poolWindow.label}`);
+          throw e;
         }
 
         // StickyNote.tsx に promote を通知（folderPath を渡し、lazy 作成に使わせる）
@@ -782,7 +787,10 @@ function OrchestratorContent() {
               }
             } catch (_) {}
             return { x, y: clampedY, width: 400, height: 300 };
-          })() : undefined, true);
+          })() : screenCenter ? {
+            x: screenCenter.x / screenCenter.scaleFactor, y: screenCenter.y / screenCenter.scaleFactor,
+            width: screenCenter.width / screenCenter.scaleFactor, height: screenCenter.height / screenCenter.scaleFactor,
+          } : undefined, true);
 
           trackEvent('note_created', { event_category: 'activation', creation_path: 'fallback' });
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
@@ -793,9 +801,10 @@ function OrchestratorContent() {
       }
     } catch (e) {
       console.error('handleCreateNote failed', e);
+      window.alert(language === 'en' ? 'Could not show the new note. Please try again.' : '新規メモを表示できませんでした。もう一度お試しください。');
       trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
     }
-  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
+  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef, language]);
 
   const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number, duplicateSnapshot?: { body: string; frontmatter: string }) => {
     const accepted = createRequestQueueRef.current.push({

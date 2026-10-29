@@ -52,6 +52,8 @@ pub fn save_settings<R: Runtime>(
         crate::trash_cleanup::set_policy(&crate::trash_policy_path()?, None)?;
     }
 
+    settings.disabled_hotkeys = existing_settings.disabled_hotkeys.clone();
+
     // 1. ファイルに保存
     storage::save_settings(&settings)?;
     if let Err(e) = crate::hotkey_manager::sync_quick_launcher_triple_right_click(
