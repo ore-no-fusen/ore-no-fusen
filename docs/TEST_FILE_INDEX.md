@@ -13,7 +13,7 @@
 |画像の添付・編集|[002_PC.md](../docs-v2/002_PC.md)|9|
 |アラーム|[002_PC.md](../docs-v2/002_PC.md)|3|
 |クイックランチャー・収納・タグ・検索|[002_PC.md](../docs-v2/002_PC.md)|11|
-|データ保存・復元・保全|[002_PC.md](../docs-v2/002_PC.md)|14|
+|データ保存・復元・保全|[002_PC.md](../docs-v2/002_PC.md)|17|
 |付箋本文・編集・形式|[002_PC.md](../docs-v2/002_PC.md)|28|
 |性能・負荷|[004_TEST.md](../docs-v2/004_TEST.md)|4|
 |認証・セキュリティ・運用設定|[006_ARCHITECTURE.md](../docs-v2/006_ARCHITECTURE.md)|8|
@@ -212,6 +212,9 @@
 |F222|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|
 |F243|T02-01|Vitest|[app/components/TrashRetentionSettings.test.tsx](../app/components/TrashRetentionSettings.test.tsx)|
 |F244|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/trash_cleanup.rs](../src-tauri/src/trash_cleanup.rs)|
+|F247|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/trash_history.rs](../src-tauri/src/trash_history.rs)|
+|F248|T03-02|Rust（テスト/宣言を含む）|[src-tauri/src/maintenance.rs](../src-tauri/src/maintenance.rs)|
+|F249|T02-04|ブラウザ|[e2e/trash-maintenance.spec.ts](../e2e/trash-maintenance.spec.ts)|
 
 ## 付箋本文・編集・形式
 

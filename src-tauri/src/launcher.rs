@@ -1470,21 +1470,7 @@ fn move_crystal_to_local_trash(path: &Path, content: &str) -> Result<PathBuf, St
         .file_name()
         .ok_or_else(|| "invalid note path".to_string())?;
     let new_path = collision_free_root_path(&trash_dir, file_name);
-    let new_path_str = new_path.to_string_lossy().to_string();
-
-    storage::copy_associated_assets(path, &trash_dir)?;
-    storage::write_note(&new_path_str, content)?;
-    if let Err(e) = storage::delete_associated_assets(path) {
-        logger::log_warn(&format!("[Launcher] crystal asset cleanup skipped: {}", e));
-    }
-    fs::remove_file(path).map_err(|e| {
-        let _ = fs::remove_file(&new_path);
-        e.to_string()
-    })?;
-
-    if let Err(e) = storage::append_trash_operation(path, &new_path, "quick_launcher") {
-        logger::log_warn(&format!("[Launcher] trash operation log failed: {}", e));
-    }
+    storage::move_to_trash_recorded(path, &new_path, "quick_launcher", Some(content))?;
 
     Ok(new_path)
 }
@@ -1889,6 +1875,13 @@ pub(crate) fn fusen_remove_from_shelf(
 
     let moved_to = remove_from_shelf_at_base(Path::new(&base_path), &path_buf)?;
     let crystal_was_moved = moved_to.is_some();
+    if crystal_was_moved {
+        if let Ok(log) = storage::trash_history_path(&path_buf) {
+            if crate::trash_history::ensure_complete(&log).is_err() {
+                let _ = app.emit_to("main", "fusen:trash_history_warning", ());
+            }
+        }
+    }
 
     let mut order = load_launcher_order()?;
     remove_path_from_orders(&mut order, &path);

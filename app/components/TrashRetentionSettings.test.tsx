@@ -57,6 +57,12 @@ it('確認失敗では有効化しない',async()=>{
  ipc.invoke.mockImplementation(async(cmd:string)=>{if(cmd==='fusen_trash_cleanup_status')return false;throw Error('read failed')});
  render(<TrashRetentionSettings language="en"/>);
  fireEvent.click(screen.getByRole('button',{name:'Review Trash'}));
- await screen.findByText('Could not verify Trash safely. No files were deleted.');
+ await screen.findByText('Cleanup is stopped because Trash could not be checked safely. No files were deleted. Preserve the history before checking it.');
  expect((screen.getByRole('button',{name:'Enable 90-day automatic cleanup'}) as HTMLButtonElement).disabled).toBe(true);
+});
+it('設定がオンでも履歴が壊れていれば安全停止中と表示する',async()=>{
+ ipc.invoke.mockImplementation(async(cmd:string)=>{if(cmd==='fusen_trash_cleanup_status')return true;if(cmd==='fusen_trash_cleanup_health')throw Error('broken');return undefined});
+ render(<TrashRetentionSettings language="ja"/>);
+ await screen.findByText(/オン・安全停止中/);
+ expect(ipc.invoke.mock.calls.some(c=>c[0]==='fusen_trash_cleanup_run')).toBe(false);
 });

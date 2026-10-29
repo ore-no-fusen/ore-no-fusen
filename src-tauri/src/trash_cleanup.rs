@@ -63,7 +63,22 @@ pub struct Fingerprint {
     length: u64,
     modified: String,
     created: Option<String>,
+    #[serde(default)]
+    changed: Option<String>,
 }
+#[cfg(windows)]
+fn change_time(file: &fs::File) -> Result<Option<String>, String> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::{Foundation::HANDLE, Storage::FileSystem::{FileBasicInfo, FILE_BASIC_INFO, GetFileInformationByHandleEx}};
+    let mut info = FILE_BASIC_INFO::default();
+    // The handle remains open during the query; FILE_BASIC_INFO is the required buffer.
+    unsafe { GetFileInformationByHandleEx(HANDLE(file.as_raw_handle() as isize), FileBasicInfo, &mut info as *mut _ as *mut _, std::mem::size_of::<FILE_BASIC_INFO>() as u32) }
+        .map_err(|e| e.to_string())?;
+    if info.ChangeTime <= 0 { return Err("File change identity unavailable; retained".into()); }
+    Ok(Some(info.ChangeTime.to_string()))
+}
+#[cfg(not(windows))]
+fn change_time(_: &fs::File) -> Result<Option<String>, String> { Ok(None) }
 fn digest(data: &[u8]) -> String {
     format!("{:x}", Sha256::digest(data))
 }
@@ -86,7 +101,10 @@ pub fn fingerprint(path: &Path) -> Result<Fingerprint, String> {
     if reparse(&meta) || !meta.is_file() || meta.len() > 32 * 1024 * 1024 {
         return Err("Unsafe or oversized file".into());
     }
-    fingerprint_bytes(&meta, &read_bounded(path, 32 * 1024 * 1024)?)
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut result = fingerprint_bytes(&meta, &read_bounded(path, 32 * 1024 * 1024)?)?;
+    result.changed = change_time(&file)?;
+    Ok(result)
 }
 fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
@@ -114,9 +132,10 @@ fn fingerprint_bytes(meta: &fs::Metadata, bytes: &[u8]) -> Result<Fingerprint, S
         length: meta.len(),
         modified: nanos(meta.modified().map_err(|e| e.to_string())?)?,
         created: meta.created().ok().and_then(|t| nanos(t).ok()),
+        changed: None,
     })
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Record {
     timestamp: String,
     destination: String,
@@ -141,6 +160,7 @@ pub struct Preview {
     pub asset_count: usize,
 }
 struct Plan {
+    _history_lock: crate::trash_history::HistoryLock,
     preview: Preview,
     notes: BTreeMap<PathBuf, Fingerprint>,
     assets: BTreeMap<PathBuf, Fingerprint>,
@@ -186,7 +206,21 @@ fn read_log(path: &Path) -> Result<Vec<u8>, String> {
     }
     read_bounded(path, MAX_LOG)
 }
+pub fn verify_history(log: &Path) -> Result<(), String> {
+    let _lock = crate::trash_history::lock(log)?;
+    crate::trash_history::ensure_complete(log)?;
+    let bytes = read_log(log)?;
+    for line in std::str::from_utf8(&bytes).map_err(|e| e.to_string())?.lines().filter(|s| !s.trim().is_empty()) {
+        let _: Record = serde_json::from_str(line).map_err(|_| "Invalid Trash operation log; cleanup stopped")?;
+    }
+    Ok(())
+}
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct Observation { fingerprint: Fingerprint, history_revision: String, since: DateTime<Utc> }
+
 fn plan(root: &Path, log: &Path, now: DateTime<Utc>) -> Result<Plan, String> {
+    let history_lock = crate::trash_history::lock(log)?;
+    crate::trash_history::ensure_complete(log)?;
     let root = dunce::canonicalize(root).map_err(|e| e.to_string())?;
     if root.parent().is_none() {
         return Err("A drive root cannot be cleaned".into());
@@ -249,32 +283,36 @@ fn plan(root: &Path, log: &Path, now: DateTime<Utc>) -> Result<Plan, String> {
             bodies.insert(entry.path().to_path_buf(), body);
         }
     }
+    let observation_path = log.with_extension("observations.json");
+    let mut observations: BTreeMap<PathBuf, Observation> = if observation_path.exists() {
+        serde_json::from_slice(&read_bounded(&observation_path, MAX_LOG)?).map_err(|_| "Invalid observation history; cleanup stopped")?
+    } else { BTreeMap::new() };
+    let before = serde_json::to_vec(&observations).map_err(|e| e.to_string())?;
+    // Only a complete, successful scan may retire an observation for this root.
+    // If the same file later re-enters Trash, it starts a fresh 90-day period.
+    observations.retain(|path, _| !path.starts_with(&root) || (inside_trash(&root, path) && bodies.contains_key(path)));
     let mut items = Vec::new();
     let mut notes = BTreeMap::new();
     for path in bodies.keys().filter(|p| inside_trash(&root, p)) {
         let current = fingerprint(path)?;
         let record = records.get(path);
         let mut eligible = false;
-        let reason = if let Some(r) = record {
-            if r.fingerprint.as_ref() != Some(&current) {
-                "changed_or_unknown"
-            } else if let Ok(time) = DateTime::parse_from_rfc3339(&r.timestamp) {
-                if now.signed_duration_since(time).num_seconds() >= RETENTION_DAYS * 86400 {
-                    if notes.len() < 100 {
-                        eligible = true;
-                        "expired"
-                    } else {
-                        "batch_wait"
-                    }
-                } else {
-                    "within_90_days"
-                }
-            } else {
-                "unknown_date"
+        let historical = record.and_then(|r| {
+            if r.fingerprint.as_ref() == Some(&current) {
+                DateTime::parse_from_rfc3339(&r.timestamp).ok().map(|d| d.with_timezone(&Utc))
+            } else { None }
+        });
+        let effective = if let Some(time) = historical { time } else {
+            let revision = match record { Some(r) => digest(&serde_json::to_vec(r).map_err(|e| e.to_string())?), None => String::new() };
+            let entry = observations.entry(path.clone()).or_insert_with(|| Observation { fingerprint: current.clone(), history_revision: revision.clone(), since: now });
+            if entry.fingerprint != current || entry.history_revision != revision {
+                *entry = Observation { fingerprint: current.clone(), history_revision: revision, since: now };
             }
-        } else {
-            "unknown_date"
+            entry.since
         };
+        let reason = if now.signed_duration_since(effective).num_seconds() >= RETENTION_DAYS * 86400 {
+            if notes.len() < 100 { eligible = true; "expired" } else { "batch_wait" }
+        } else if historical.is_none() { "recount_90_days" } else { "within_90_days" };
         if eligible {
             notes.insert(path.clone(), current);
         }
@@ -289,14 +327,26 @@ fn plan(root: &Path, log: &Path, now: DateTime<Utc>) -> Result<Plan, String> {
             reason: reason.into(),
         });
     }
+    let after = serde_json::to_vec(&observations).map_err(|e| e.to_string())?;
+    if after != before {
+        let temp = observation_path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+        let written = (|| -> Result<(), String> {
+            let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&temp).map_err(|e| e.to_string())?;
+            f.write_all(&after).and_then(|_| f.sync_all()).map_err(|e| e.to_string())?;
+            drop(f); fs::rename(&temp, &observation_path).map_err(|e| e.to_string())
+        })();
+        if written.is_err() { let _ = fs::remove_file(&temp); }
+        written?;
+    }
     // Image ownership and move-time identity cannot yet be proven; retain every image.
     let assets: BTreeMap<PathBuf, Fingerprint> = BTreeMap::new();
-    let identity = serde_json::to_vec(&(&root, digest(&bytes), &snapshot, &notes, &assets))
+    let identity = serde_json::to_vec(&(&root, digest(&bytes), digest(&after), &snapshot, &notes, &assets))
         .map_err(|e| e.to_string())?;
     let eligible_count = notes.len();
     let preserved_count = items.len() - eligible_count;
     let asset_count = assets.len();
     Ok(Plan {
+        _history_lock: history_lock,
         preview: Preview {
             token: digest(&identity),
             items,
@@ -410,7 +460,9 @@ impl LockedDeletion {
         }
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-        if &fingerprint_bytes(&meta, &bytes)? != expected {
+        let mut observed = fingerprint_bytes(&meta, &bytes)?;
+        observed.changed = change_time(&file)?;
+        if &observed != expected {
             return Err("File changed; retained".into());
         }
         Ok(Self {
@@ -642,4 +694,48 @@ mod tests {
         std::os::unix::fs::symlink(&other, r.join("linked")).unwrap();
         assert!(preview(&r, &l, n).is_err());
     }
+    #[test]
+    fn unknown_date_is_counted_from_first_safe_observation_and_resets_on_change() {
+        let (_d, root, log, now) = fixture(91);
+        fs::write(&log, "").unwrap();
+        assert_eq!(preview(&root, &log, now).unwrap().eligible_count, 0);
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(89)).unwrap().eligible_count, 0);
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(90)).unwrap().eligible_count, 1);
+        fs::write(root.join("Trash/old.md"), "changed").unwrap();
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(90)).unwrap().eligible_count, 0);
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(180)).unwrap().eligible_count, 1);
+    }
+    #[test]
+    fn incomplete_move_stops_preview_without_deleting() {
+        let (_d, root, log, now) = fixture(91);
+        fs::write(crate::trash_history::pending_path(&log), "pending").unwrap();
+        assert!(preview(&root, &log, now).is_err());
+        assert!(root.join("Trash/old.md").exists());
+    }
+    #[test]
+    fn note_reintroduced_after_absence_starts_a_fresh_retention_period() {
+        let (_d, root, log, now) = fixture(91);
+        fs::write(&log, "").unwrap();
+        let trash = root.join("Trash/old.md");
+        let outside = root.join("temporarily-restored.md");
+        preview(&root, &log, now).unwrap();
+        fs::rename(&trash, &outside).unwrap();
+        preview(&root, &log, now + chrono::Duration::days(89)).unwrap();
+        fs::rename(&outside, &trash).unwrap();
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(90)).unwrap().eligible_count, 0);
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(180)).unwrap().eligible_count, 1);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn reintroduced_note_resets_even_without_an_intermediate_scan() {
+        let (_d, root, log, now) = fixture(91);
+        fs::write(&log, "").unwrap();
+        let trash = root.join("Trash/old.md");
+        let outside = root.join("temporarily-restored.md");
+        preview(&root, &log, now).unwrap();
+        fs::rename(&trash, &outside).unwrap();
+        fs::rename(&outside, &trash).unwrap();
+        assert_eq!(preview(&root, &log, now + chrono::Duration::days(90)).unwrap().eligible_count, 0);
+    }
+
 }
