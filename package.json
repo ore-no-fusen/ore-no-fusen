@@ -21,7 +21,7 @@
     "perf:check": "node scripts/perf-check.mjs"
   },
   "dependencies": {
-    "@codemirror/commands": "^6.10.1",
+    "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.5.3",
