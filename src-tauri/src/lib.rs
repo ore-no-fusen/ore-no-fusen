@@ -6463,6 +6463,7 @@ pub fn run() {
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！
+            settings::set_editor_hotkey_enabled,
             capture::fusen_capture_screen, // [NEW] 画面キャプチャ
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索

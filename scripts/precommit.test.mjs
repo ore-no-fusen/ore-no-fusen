@@ -9,7 +9,7 @@ test('content-only documents omit app tests; executable/dependency/mixed paths d
  for(const files of [[],['docs/tool.mjs'],['docs-v2/package-lock.json'],['docs/a.md','app/page.tsx'],['app/page.tsx','docs/a.md']])assert.equal(classifyChangedFiles(files),'run');
 });
 test('PC keeps full E2E for app/Tauri changes but never repeats whole Vitest/type suites',()=>{
- for(const file of ['app/components/Foo.tsx','app/hooks/a.ts','app/utils/a.ts','app/page.tsx','app/layout.tsx','src-tauri/src/lib.rs']){
+ for(const file of ['components/ui/settings-page.tsx','app/components/Foo.tsx','app/hooks/a.ts','app/utils/a.ts','app/page.tsx','app/layout.tsx','src-tauri/src/lib.rs']){
   const calls=[],messages=[];runPrecommit([file],(cmd,args)=>calls.push([cmd,...args]),m=>messages.push(m));
   assert.deepEqual(calls,[['git','diff','--cached','--check'],['npm','run','test:e2e','--','--grep-invert','@ci-guide']]);
   assert.ok(messages.at(-1).includes('still required in CI'));

@@ -364,6 +364,7 @@ export interface RichTextEditorProps {
     onEnsureFilePath?: () => Promise<string | null>;
     formatShortcuts?: {
         bold?: string; heading?: string; bulletList?: string; checkbox?: string;
+        disabled?: string[];
     };
     collapsedOutlineLines?: number[];
     onCollapsedOutlineLinesChange?: (lines: number[]) => void;
@@ -749,6 +750,8 @@ const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): bo
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
     const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath, formatShortcuts, collapsedOutlineLines = [], onCollapsedOutlineLinesChange } = props;
+    const disabledFormatShortcutsRef = useRef<string[]>([]);
+    disabledFormatShortcutsRef.current = formatShortcuts?.disabled ?? [];
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -1224,6 +1227,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.bold ?? 'ctrl+b'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_bold')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 if (from === to) {
@@ -1247,6 +1251,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.heading ?? 'ctrl+h'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_heading')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const { lineStart, lineEnd } = getSelectedLineRange(state, from, to);
@@ -1273,6 +1278,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.bulletList ?? 'ctrl+l'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_bullet_list')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;
@@ -1300,6 +1306,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.checkbox ?? 'ctrl+shift+c'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_checkbox')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;

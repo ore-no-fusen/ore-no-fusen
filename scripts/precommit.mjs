@@ -8,7 +8,7 @@ export function runPrecommit(files, run, log = console.log) {
     log('[pre-commit] Documentation content only: application checks are not applicable.');
     return;
   }
-  if (files.some(file => /^(src-tauri\/|app\/components\/|app\/hooks\/|app\/utils\/|app\/page\.|app\/layout)/.test(file))) {
+  if (files.some(file => /^(src-tauri\/|components\/|app\/components\/|app\/hooks\/|app\/utils\/|app\/page\.|app\/layout)/.test(file))) {
     log('[pre-commit] Running PC application E2E; guide-only checks run in CI.');
     run('npm', ['run', 'test:e2e', '--', '--grep-invert', '@ci-guide']);
   } else {

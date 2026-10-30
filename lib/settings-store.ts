@@ -36,6 +36,7 @@ export type AppSettings = {
     settings_theme: SettingsTheme
     iphone_send_enabled: boolean
     disabled_hotkeys?: string[]
+    disabled_editor_hotkeys?: string[]
     shortcut_new_note?: string
     new_note_trigger?: "shortcut" | "double_ctrl" | "double_shift"
     shortcut_toggle_visibility?: string
@@ -140,6 +141,7 @@ export function useSettings() {
                         settings_theme: normalizeSettingsTheme(parsed.settings_theme ?? parsed.settingsTheme),
                         iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
                         disabled_hotkeys: parsed.disabled_hotkeys ?? [],
+                        disabled_editor_hotkeys: parsed.disabled_editor_hotkeys ?? [],
                         shortcut_new_note: parsed.shortcut_new_note ?? DEFAULT_SETTINGS.shortcut_new_note,
                         new_note_trigger: parsed.new_note_trigger ?? DEFAULT_SETTINGS.new_note_trigger,
                         shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
@@ -179,6 +181,7 @@ export function useSettings() {
                     settings_theme: normalizeSettingsTheme(loaded.settings_theme),
                     iphone_send_enabled: loaded.iphone_send_enabled,
                     disabled_hotkeys: loaded.disabled_hotkeys ?? [],
+                    disabled_editor_hotkeys: loaded.disabled_editor_hotkeys ?? [],
                     shortcut_new_note: loaded.shortcut_new_note,
                     new_note_trigger: loaded.new_note_trigger,
                     shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
