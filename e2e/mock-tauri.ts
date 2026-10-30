@@ -9,7 +9,7 @@ import type { AppSettings } from '../lib/settings-store';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
+export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
@@ -20,6 +20,10 @@ export async function mockTauriAPI(page: Page, options: { settings?: Partial<App
         (window as any).__MOCK_IPHONE_CALLS__ = iphoneCalls;
         // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
+            if (mockOptions.trashBroken) {
+                if (cmd === 'fusen_trash_cleanup_status') return true;
+                if (cmd === 'fusen_trash_cleanup_health' || cmd === 'fusen_trash_cleanup_preview') throw new Error('invalid history');
+            }
             console.log('[Mock Tauri] IPC:', cmd, args);
             if (mockOptions.iphoneReturn) {
                 iphoneCalls.push({ cmd, args });

@@ -164,6 +164,7 @@ type UseStickyNoteContextMenuProps = {
 };
 
 type TrashMoveResult = {
+    warning?: string;
     moved: boolean;
     path: string;
 };
@@ -229,6 +230,9 @@ export function useStickyNoteContextMenu({
                 await saveNoteContent(editBody, rawFrontmatter, false);
                 const result = await invoke<TrashMoveResult>('fusen_move_to_trash', { path: selectedFile.path });
                 if (releaseDeleteLockWhenMoveIsRejected(result, isDeletingRef)) return;
+                if (result.warning) window.alert(language === 'en'
+                    ? 'The note was moved to Trash, but its history could not be saved. Automatic cleanup is stopped. Your note is kept in Trash.'
+                    : '付箋はごみ箱へ移動しましたが、履歴の保存に失敗しました。自動整理は停止しています。付箋はごみ箱に残っています。');
             }
             await playDeleteSound();
             const win = (await import('@tauri-apps/api/window')).getCurrentWindow();

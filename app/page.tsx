@@ -290,6 +290,7 @@ function OrchestratorContent() {
   const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
+  const [maintenanceOpportunity, setMaintenanceOpportunity] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [isArchiveRestoreOpen, setIsArchiveRestoreOpen] = useState(false);
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
@@ -2101,7 +2102,27 @@ function OrchestratorContent() {
   }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen, settings.analytics_consent]);
 
   useEffect(() => {
-    if (!isDashboard || monthlyBackupCheckedRef.current) return;
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:trash_history_warning', () => {
+      window.alert(language === 'en'
+        ? 'The note was moved to Trash, but its history could not be saved. Automatic cleanup is stopped. Your note is kept in Trash.'
+        : '付箋はごみ箱へ移動しましたが、履歴の保存に失敗しました。自動整理は停止しています。付箋はごみ箱に残っています。');
+    });
+    promise.then(fn => { unlisten = fn; });
+    return () => { if (unlisten) safeUnlisten(unlisten); else safeUnlistenWhenResolved(promise); };
+  }, [isMainWindow, language]);
+
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:maintenance_due', () => setMaintenanceOpportunity(true));
+    promise.then(fn => { unlisten = fn; });
+    return () => { if (unlisten) safeUnlisten(unlisten); else safeUnlistenWhenResolved(promise); };
+  }, [isMainWindow]);
+
+  useEffect(() => {
+    if (!isDashboard || !maintenanceOpportunity || monthlyBackupCheckedRef.current) return;
     monthlyBackupCheckedRef.current = true;
     const checkMonthlyBackup = async () => {
       try {
@@ -2118,11 +2139,13 @@ function OrchestratorContent() {
         await win.setFocus();
       } catch (e) {
         console.error('[MonthlyBackup] confirmation check failed:', e);
+      } finally {
+        setMaintenanceOpportunity(false);
+        monthlyBackupCheckedRef.current = false;
       }
     };
-    const timer = setTimeout(checkMonthlyBackup, 1000);
-    return () => clearTimeout(timer);
-  }, [isDashboard]);
+    void checkMonthlyBackup();
+  }, [isDashboard, maintenanceOpportunity]);
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {
