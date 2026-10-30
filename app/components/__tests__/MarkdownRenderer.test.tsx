@@ -251,6 +251,14 @@ describe('MarkdownRenderer outline', () => {
         expect(screen.getByText('サイバー')).toBeTruthy();
     });
 
+    it('hides an indented image and following child when the parent is closed', () => {
+        const { container } = renderMarkdown('親\n  ![x](a.png)\n  子\n次', { collapsedOutlineLines: [0] });
+        expect(screen.getByText('親')).toBeTruthy();
+        expect(container.querySelector('[data-line-index="1"]')).toBeNull();
+        expect(screen.queryByText('子')).toBeNull();
+        expect(screen.getByText('次')).toBeTruthy();
+    });
+
     it('restores only the saved collapsed line in the travel note after duplication', () => {
         const body = '# **京都**旅行の計画\n## 行きたい場所\n  清水寺\n    朝の空いている時間に行く\n    写真を撮る\n  伏見稲荷\n    千本鳥居を見る\n    歩きやすい靴を用意\n## 持ち物\n  カメラ\n    予備バッテリー\n    充電ケーブル\n  雨具\n  モバイルバッテリー\n## 予約\n  新幹線\n    8時東京発\n  ホテル\n    チェックイン15時';
         renderMarkdown(body, { collapsedOutlineLines: [2] });
