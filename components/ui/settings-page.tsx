@@ -900,6 +900,19 @@ function LocalShortcutRow({ number, title, description, settingKey, defaultShort
     ui: SettingsPageText;
 }) {
     const [capturing, setCapturing] = useState(false)
+    const action = `editor_${settingKey.replace('shortcut_', '')}`
+    const [enabled, setEnabled] = useState(!settings.disabled_editor_hotkeys?.includes(action))
+    const [saving, setSaving] = useState(false)
+    useEffect(() => { setEnabled(!settings.disabled_editor_hotkeys?.includes(action)) }, [settings.disabled_editor_hotkeys, action])
+    const setEditorEnabled = async (next: boolean) => {
+        if (saving) return
+        setSaving(true)
+        try {
+            await invoke('set_editor_hotkey_enabled', { action, enabled: next })
+            setEnabled(next)
+        } catch (error) { window.alert(ui.common.saveFailed + String(error)) }
+        finally { setSaving(false) }
+    }
     const shortcut = settings[settingKey] ?? defaultShortcut.toLowerCase()
     useEffect(() => {
         if (!capturing) return
@@ -923,7 +936,7 @@ function LocalShortcutRow({ number, title, description, settingKey, defaultShort
         window.addEventListener('keydown', handler, true)
         return () => window.removeEventListener('keydown', handler, true)
     }, [capturing, saveSettings, settingKey, settings, ui.hotkeys.conflict])
-    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} expanded={capturing} onToggle={() => setCapturing(!capturing)} ui={ui}>
+    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} enabled={enabled} saving={saving} onEnabledChange={setEditorEnabled} expanded={capturing} onToggle={() => setCapturing(!capturing)} ui={ui}>
         <div className="flex items-center justify-between gap-4">
             <Button variant="outline" size="sm" onClick={() => setCapturing(true)}>{capturing ? ui.hotkeys.pressKey : ui.hotkeys.changeKey}</Button>
         </div>
@@ -2252,10 +2265,10 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSe
         [t('settings.help.shortcutTable.capture.keys'), t('settings.help.shortcutTable.capture.action')],
         [t('settings.help.shortcutTable.paste.keys'), t('settings.help.shortcutTable.paste.action')],
         [t('settings.help.shortcutTable.save.keys'), t('settings.help.shortcutTable.save.action')],
-        [formatShortcutLabel(shortcutSettings.shortcut_bold || 'ctrl+b'), isEnglish ? 'Make selected text bold. (while editing)' : '選んだ文字を太字にします。（編集中）'],
-        [formatShortcutLabel(shortcutSettings.shortcut_heading || 'ctrl+h'), isEnglish ? 'Insert a heading. (while editing)' : '見出しを入れます。（編集中）'],
-        [formatShortcutLabel(shortcutSettings.shortcut_bullet_list || 'ctrl+l'), isEnglish ? 'Insert a bullet list. (while editing)' : '箇条書きを入れます。（編集中）'],
-        [formatShortcutLabel(shortcutSettings.shortcut_checkbox || 'ctrl+shift+c'), isEnglish ? 'Insert a checkbox. (while editing)' : 'チェックボックスを入れます。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_bold') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_bold || 'ctrl+b'), isEnglish ? 'Make selected text bold. (while editing)' : '選んだ文字を太字にします。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_heading') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_heading || 'ctrl+h'), isEnglish ? 'Insert a heading. (while editing)' : '見出しを入れます。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_bullet_list') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_bullet_list || 'ctrl+l'), isEnglish ? 'Insert a bullet list. (while editing)' : '箇条書きを入れます。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_checkbox') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_checkbox || 'ctrl+shift+c'), isEnglish ? 'Insert a checkbox. (while editing)' : 'チェックボックスを入れます。（編集中）'],
         ['Tab / Shift+Tab', isEnglish ? 'Indent or unindent lines while editing.' : '編集中の行を字下げ／字下げ解除します。'],
     ];
     const troubleRows = [

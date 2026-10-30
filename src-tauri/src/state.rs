@@ -165,6 +165,9 @@ pub struct Settings {
     /// Disabled global actions; absent/empty preserves existing shortcuts.
     #[serde(default)]
     pub disabled_hotkeys: Vec<String>,
+    /// Disabled editing shortcuts, independent of global registrations.
+    #[serde(default)]
+    pub disabled_editor_hotkeys: Vec<String>,
     /// 新規付箋のトリガー方式。None の場合は "shortcut" として扱う。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_note_trigger: Option<String>,
@@ -263,6 +266,7 @@ impl Default for Settings {
             iphone_send_enabled: false,
             shortcut_new_note: None,
             disabled_hotkeys: Vec::new(),
+            disabled_editor_hotkeys: Vec::new(),
             new_note_trigger: None,
             shortcut_toggle_visibility: None,
             shortcut_arrange: None,

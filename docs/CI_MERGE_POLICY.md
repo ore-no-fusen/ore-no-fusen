@@ -12,7 +12,7 @@
 
 ## PC側の検査準備と一覧
 
-新しいワークツリーでは、コミット前に `npm run prepare` を実行し、`.husky/_/pre-commit` の存在と `HUSKY=0` 等の無効化がないことを確認する。依存フォルダーの共有だけではフックの準備完了とみなさない。
+新しいワークツリーでは、コミット前に `npm run prepare` を実行し、`.husky/_/pre-commit` の存在と `HUSKY=0` 等の無効化がないことを確認する。依存フォルダーの共有だけではフックの準備完了とみなさない。`components/` の共通画面部品を変更した場合も、PCのアプリE2E対象とする。
 
 全検査の番号・PC/PR/統合後の実行条件は [検査実行一覧](TEST_EXECUTION_MATRIX.md)、個別ファイルは [全ファイル一覧](TEST_FILE_INDEX.md) に記載する。通常開発の全件Vitest・型検査はGitHubに集約する。PCでは修正中の対象テストを必要に応じて行い、コミットhookは差分検査と対象時のアプリE2Eを行う。ガイド日英2件はCIが担当し、PC hookでは `--grep-invert @ci-guide` で除外する。PC成功をCI成功として扱わない。
 

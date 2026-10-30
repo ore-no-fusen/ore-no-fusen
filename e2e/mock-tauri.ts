@@ -9,7 +9,7 @@ import type { AppSettings } from '../lib/settings-store';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
+export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; editorHotkeyFail?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
@@ -121,6 +121,16 @@ updated: 2026-01-31
                     if (args.config.enabled === true) disabled.delete(args.action);
                     mockOptions.settings = { ...mockOptions.settings, disabled_hotkeys: [...disabled] };
                     localStorage.setItem('mock-hotkeys', JSON.stringify(mockOptions.settings));
+                    return null;
+                }
+                case 'set_editor_hotkey_enabled': {
+                    if (mockOptions.editorHotkeyFail) throw new Error('save failed');
+                    const disabled = new Set(mockOptions.settings?.disabled_editor_hotkeys ?? []);
+                    if (args.enabled) disabled.delete(args.action);
+                    else disabled.add(args.action);
+                    mockOptions.settings = { ...mockOptions.settings, disabled_editor_hotkeys: [...disabled] };
+                    localStorage.setItem('mock-hotkeys', JSON.stringify(mockOptions.settings));
+                    (window as any).__MOCK_EMIT__?.('settings_updated', handleIpc('get_settings', {}));
                     return null;
                 }
                 // 設定保存
