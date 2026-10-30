@@ -230,7 +230,7 @@ GitHub Release、Gitタグ、Winget公開、GitHub ActionsからのMicrosoft Sto
 ### 記録・再開・手動復旧
 
 - ログと保全成果物は基本フォルダーの `my/release-machine/runs/<実行ID>/` に保存する。`commands.log` は実行場所・コマンド・結果、`timings.jsonl` は各試行の開始・終了・秒数、`state.json` は版番号・コミット・工程状態・SHA256・実機合格記録である。工程別時間の原記録とし、本書の実測時間表へ転記するときはこの記録を使う。現在の実行状態は `my/release-machine/active.json`。公開版の集計・試行詳細表への転記はリリース完了時に行う。
-- 本番ビルドは正式リリース候補の専用作業ブランチで1回実行し、exe/resourcesを実行ID配下の `build-<ID>/` へ保全する。`test-msix.ps1 -SkipBuild -NoInstall -ReleaseDirectory <保全先> -DevPackageVersion <X.Y.Z.1>` で開発署名MSIXを作る。確認用Dev MSIXのパッケージ番号は、同じアプリ版を再確認するとき既存Dev版を更新できるよう `X.Y.Z.1` とする。Store提出用マニフェストと実行ファイルは引き続き `X.Y.Z.0` / `X.Y.Z` のまま。`scripts/release-machine/windows.ps1 -Action Install` でDevパッケージ番号と保全exeを照合して起動する。アプリの先行アンインストールは行わない。
+- 本番ビルドは正式リリース候補の専用作業ブランチで1回実行し、exe/resourcesを実行ID配下の `build-<ID>/` へ保全する。`test-msix.ps1 -SkipBuild -NoInstall -ReleaseDirectory <保全先> -DevPackageVersion <X.Y.Z.N>` で開発署名MSIXを作る。確認用Dev MSIXは、未導入または導入済み版が古い場合は `X.Y.Z.1`、同じアプリ版が導入済みならその第4桁より1大きい番号とする。新しいアプリ版が既に導入されている場合や第4桁が上限の場合は停止する。選択した番号は作成前に保存し、再試行でも変更しない。Store提出用マニフェストと実行ファイルは引き続き `X.Y.Z.0` / `X.Y.Z` のまま。`scripts/release-machine/windows.ps1 -Action Install` でDevパッケージ番号と保全exeを照合して起動する。アプリの先行アンインストールは行わない。
 - リリース画面の「現在」は `origin/main:package.json` の版番号を使う。候補版番号5ファイルは先に独立ブランチで更新し、develop宛てPRの全CI成功・統合と統合後CI成功を必須とする。ツールは基本フォルダーの版番号を変更・コミットしない。
 - STEP 2は `build-msix.ps1 -ReleaseDirectory <保全先>` と `validate-msix.ps1 -PackagePath <作成MSIX> -ExpectedVersion <X.Y.Z.0> -ExpectedReleaseDirectory <保全先>` を呼ぶ。既存の指定なしの手動コマンドも従来どおり利用できる。SHA256が違う提出物は上書きしない。
 - 停止した場合は同じボタンで再試行する。PR待ちではURLを開き、最新headの全適用対象CI成功とマージ可能状態を確認してCreate a merge commitでマージする。未完了・失敗・キャンセルではマージしない。成功したMSIX作成・検証・保存は繰り返さない。CLIのチェック一覧、統合後push CI、候補と統合結果のGit tree一致を再開時に検査する。ソース・保全exe・提出物が違う場合は停止する。

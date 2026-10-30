@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
-import { ReleaseMachine, validateVersion, hashFile, directoryHashes, atomicJSON } from './engine.mjs';
+import { ReleaseMachine, validateVersion, nextDevVersion, hashFile, directoryHashes, atomicJSON } from './engine.mjs';
 import { createRunner } from './runner.mjs';
 import { createServer, acquireLock } from './server.mjs';
 import { assertChecks } from './github.mjs';
@@ -77,6 +77,7 @@ async function fixture(t, { prepared = true } = {}) {
     const write=(file,data)=>{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,data);};
     const action=args.includes('-Action')?value('-Action'):null;
     options.onOutput?.('fixture PowerShell OK\n');
+    if(action==='DevVersion') return config.devInstalledVersion ?? 'NONE';
     if(action==='Build') {
       config.buildCount++;
       write(path.join(value('-RepoRoot'),'src-tauri/target/release/ore-no-fusen.exe'),`exe-${value('-ExpectedVersion')}`);
@@ -235,4 +236,28 @@ test('primary checkout alias resolves to the same directory without accepting a 
 });
 test('a genuine temporary worktree remains forbidden',async t=>{
  const f=await fixture(t);f.git('checkout','main');const other=path.join(f.folder,'separate-checkout');f.git('worktree','add',other,'develop');const m=new ReleaseMachine({...f.options,root:other});await prepare(m);assert.equal(m.state.status,'failed');assert.match(m.state.error,/一時ワークツリー/);assert.equal(f.config.buildCount,0);
+});
+
+test('chooses a newer Dev package revision and rejects unsafe installed versions',()=>{
+  assert.equal(nextDevVersion('6.1.0','NONE'),'6.1.0.1');
+  assert.equal(nextDevVersion('6.1.0','6.0.0.9'),'6.1.0.1');
+  assert.equal(nextDevVersion('6.1.0','6.1.0.1'),'6.1.0.2');
+  assert.throws(()=>nextDevVersion('6.1.0','6.2.0.1'),/新しい/);
+  assert.throws(()=>nextDevVersion('6.1.0','6.1.0.65535'),/上限/);
+  assert.throws(()=>nextDevVersion('6.1.0','unavailable'),/確認できません/);
+});
+
+test('keeps the selected Dev revision after a packaging failure and retry',async t=>{
+  const f=await fixture(t); f.config.devInstalledVersion='5.6.2.1';
+  f.config.fail=(_,args)=>args.some(v=>v.endsWith('test-msix.ps1'));
+  await prepare(f.machine); assert.equal(f.machine.state.status,'failed');
+  assert.equal(f.machine.state.devVersion,'5.6.2.2');
+  f.config.devInstalledVersion='5.6.2.2'; f.config.fail=null;
+  await prepare(f.machine); assert.equal(f.machine.state.status,'confirm',f.machine.state.error);
+  assert.equal(f.machine.state.devVersion,'5.6.2.2');
+  const install=f.config.history.find(h=>h.args.includes('Install'));
+  assert.ok(install.args.includes('5.6.2.2'));
+  await packageRelease(f.machine); assert.equal(f.machine.state.status,'complete',f.machine.state.error);
+  const verify=f.config.history.find(h=>h.args.includes('VerifyInstalled'));
+  assert.ok(verify.args.includes('5.6.2.2'));
 });

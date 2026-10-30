@@ -20,6 +20,22 @@ export function validateVersion(version, current) {
   const differing = next.findIndex((n, i) => n !== old[i]);
   if (differing < 0 || next[differing] < old[differing]) throw new Error('現在より大きい版番号を指定してください。');
 }
+export function nextDevVersion(version, installed) {
+  const parts = installed === 'NONE' ? null : /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(installed);
+  if (installed !== 'NONE' && !parts) throw new Error('導入済みDev版の番号を確認できません。');
+  const desired = version.split('.').map(Number);
+  let revision = 1;
+  if (parts) {
+    const current = parts.slice(1).map(Number);
+    if (current.some(n => n > 65535)) throw new Error('導入済みDev版の番号が不正です。');
+    const order = current.slice(0, 3).findIndex((n, i) => n !== desired[i]);
+    if (order >= 0 && current[order] > desired[order]) throw new Error('導入済みDev版が候補より新しいため停止しました。');
+    if (order < 0) revision = current[3] + 1;
+  }
+  if (revision > 65535) throw new Error('Dev版の番号が上限に達しました。');
+  return `${version}.${revision}`;
+}
+
 export function directoryHashes(dir) {
   const hashes = {};
   function walk(folder) {
@@ -216,9 +232,12 @@ export class ReleaseMachine {
     });
     await this.assertSnapshot();
     await this.step('dev', 'STEP 1-3 開発署名MSIXを作成', async () => {
-      // Keep the development package upgradeable even when retrying the same app release.
-      // Store package and executable remain X.Y.Z.0 / X.Y.Z; only Dev MSIX uses X.Y.Z.1.
-      await this.ps(path.join(this.state.mainRoot, 'packaging/msix/test-msix.ps1'), ['-SkipBuild', '-NoInstall', '-ReleaseDirectory', this.state.releaseDir, '-DevPackageVersion', `${version}.1`]);
+      // Persist the selected version before packaging so a retry uses the same identity.
+      if (!this.state.devVersion) {
+        this.state.devVersion = nextDevVersion(version, (await this.windows('DevVersion')).trim());
+        this.save();
+      }
+      await this.ps(path.join(this.state.mainRoot, 'packaging/msix/test-msix.ps1'), ['-SkipBuild', '-NoInstall', '-ReleaseDirectory', this.state.releaseDir, '-DevPackageVersion', this.state.devVersion]);
       const dev = path.join(this.state.mainRoot, 'packaging/msix/dev/out/ore-no-fusen-dev.msix');
       this.state.devPackage = path.join(this.runDir, 'ore-no-fusen-dev.msix'); fs.copyFileSync(dev, this.state.devPackage);
       this.state.devHash = hashFile(this.state.devPackage); this.save();
@@ -226,7 +245,7 @@ export class ReleaseMachine {
     await this.step('install', 'STEP 1-4 開発署名MSIXを導入・起動', async () => {
       await this.assertSnapshot();
       if (hashFile(this.state.devPackage) !== this.state.devHash) throw new Error('開発署名MSIXが変化しています。');
-      await this.windows('Install', ['-PackagePath', this.state.devPackage, '-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', `${version}.1`, '-RequireAppClosed']);
+      await this.windows('Install', ['-PackagePath', this.state.devPackage, '-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', this.state.devVersion ?? `${version}.1`, '-RequireAppClosed']);
     });
     this.state.status = 'confirm'; this.state.current = 'STEP 1-5 実機確認待ち'; this.save();
   }
@@ -242,7 +261,7 @@ export class ReleaseMachine {
   async package() {
     if (this.state.status === 'complete') throw new Error('提出準備は既に完了しています。');
     await this.guards(); await this.assertSnapshot();
-    await this.windows('VerifyInstalled', ['-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', `${this.state.version}.1`]);
+    await this.windows('VerifyInstalled', ['-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', this.state.devVersion ?? `${this.state.version}.1`]);
     this.state.confirmation = { at: new Date().toISOString(), candidate: this.state.candidate, hashes: this.state.hashes };
     this.state.status = 'running'; this.state.operation = 'package'; this.state.error = null; this.save(); this.log('STEP 1-5 利用者が実機合格を確認');
     await this.step('store', 'STEP 2-1 合格exeからStore用MSIXを作成', async () => {

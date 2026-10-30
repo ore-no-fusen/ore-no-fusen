@@ -1,6 +1,6 @@
 ﻿param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Probe', 'Build', 'Install', 'VerifyInstalled', 'OpenFolder')]
+  [ValidateSet('Probe', 'Build', 'Install', 'VerifyInstalled', 'OpenFolder', 'DevVersion')]
   [string] $Action,
   [string] $RepoRoot,
   [string] $ReleaseDirectory,
@@ -63,6 +63,11 @@ function Assert-Installed {
 }
 
 switch ($Action) {
+  'DevVersion' {
+    $packages = @(Get-AppxPackage -Name 'ONFStudios.FUSEN.Dev')
+    if ($packages.Count -gt 1) { throw 'Multiple development packages found; inspect before continuing.' }
+    if ($packages.Count -eq 0) { Write-Output 'NONE' } else { Write-Output $packages[0].Version.ToString() }
+  }
   'Probe' {
     Assert-Idle
     $certificate = Get-ChildItem Cert:\CurrentUser\My | Where-Object {
