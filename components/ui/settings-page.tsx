@@ -1207,7 +1207,11 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
                         <code className="text-sm font-semibold text-gray-900">{enabled ? formatShortcutLabel(shortcut) : ui.hotkeys.disabled}</code>
                         <p className="mt-1 text-xs text-gray-500">{ui.common.defaultLabel} {formatShortcutLabel(defaultShortcut)}</p>
                     </div>
-                    {onEnabledChange && <Switch aria-label={title + ' ' + ui.hotkeys.enable} checked={enabled} disabled={saving} onCheckedChange={onEnabledChange} />}
+                    {onEnabledChange && <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs font-semibold text-gray-700">{enabled ? ui.hotkeys.enabledState : ui.hotkeys.disabledState}</span>
+                        <Switch aria-label={title + ' ' + ui.hotkeys.enable} checked={enabled} disabled={saving} onCheckedChange={onEnabledChange} />
+                        <span className="text-xs text-gray-600">{enabled ? ui.hotkeys.disableHint : ui.hotkeys.enableHint}</span>
+                    </div>}
                     <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
                         {ui.common.details}
                         <ChevronRight className={`ml-1 h-4 w-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />

@@ -14,6 +14,7 @@ for (const language of ['ja', 'en'] as const) {
         const content = page.locator('[data-settings-content]');
         const switches = content.getByRole('switch').filter({ hasNot: page.locator('[disabled]') });
         await expect(switches).toHaveCount(4);
+        await expect(content.getByText(language === 'ja' ? '押すとホットキーを無効にする' : 'Press to disable hotkey')).toHaveCount(4);
         for (let index = 0; index < 4; index++) {
             await switches.nth(index).click();
             await expect(switches.nth(index)).not.toBeChecked();
@@ -22,6 +23,7 @@ for (const language of ['ja', 'en'] as const) {
         await openHotkeys();
         await expect(switches).toHaveCount(4);
         for (let index = 0; index < 4; index++) await expect(switches.nth(index)).not.toBeChecked();
+        await expect(content.getByText(language === 'ja' ? '押すとホットキーを有効にする' : 'Press to enable hotkey')).toHaveCount(4);
         // Re-enable only new-note: other actions stay OFF and the saved key remains Ctrl+N.
         await switches.first().click();
         await expect(switches.first()).toBeChecked();

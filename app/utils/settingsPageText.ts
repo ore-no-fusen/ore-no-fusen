@@ -4,8 +4,8 @@ const JA = {
     sidebar: { hotkeys: 'ホットキー', templates: 'ひな形', conversation: '開発者とのやりとり' },
     common: { details: '詳細', current: '現在', defaultLabel: 'デフォルト', save: '保存', saving: '保存中...', cancel: 'キャンセル', delete: '削除', loading: '読み込み中...', saved: '保存しました。', saveFailed: '保存に失敗しました: ' },
     hotkeys: {
-        enable: 'キー操作を有効にする', disabled: '無効',
-        title: 'ホットキー', description: 'よく使う順に確認できます。変更するときだけ「詳細」を開いてください。',
+        enable: 'キー操作を有効にする', disabled: '無効', enabledState: '有効', disabledState: '無効', disableHint: '押すとホットキーを無効にする', enableHint: '押すとホットキーを有効にする',
+        title: 'ホットキー', description: '上の4項目はスイッチでホットキーを無効にできます。キーを変更するときは「詳細」を開いてください。',
         loadFailed: 'ホットキー設定の読み込みに失敗しました: ', loading: 'ホットキー設定を読み込み中...', pressCombination: '修飾キーと通常キーを組み合わせて押してください。Esc でキャンセルできます。', checkFailed: '判定に失敗しました: ', press: '押してください...', pressCancel: '押してください...（Escでキャンセル）', changeSuffix: ' の変更', change: '変更', changeKey: 'キーを変更', pressKey: 'キーを押してください',
         newTitle: '新規付箋作成トリガー', newDescription: '新しい付箋をすぐに作ります。', customKey: 'カスタムキー', doubleCtrl: 'Ctrl 2回押し', doubleShift: 'Shift 2回押し', doublePressNote: '※ 2回押しは他のアプリとキーを奪い合いません（同じ操作を使うアプリがあると両方反応します）',
         launcherTitle: 'クイックランチャートリガー', launcherDescription: 'クイックランチャーを表示・非表示にします。', tripleClick: '右クリック3連打でも開く', tripleClickDescription: '他アプリの上でも使えます。クリックは奪いません。',
@@ -24,8 +24,8 @@ const EN = {
     sidebar: { hotkeys: 'Hotkeys', templates: 'Templates', conversation: 'Developer Messages' },
     common: { details: 'Details', current: 'Current', defaultLabel: 'Default', save: 'Save', saving: 'Saving...', cancel: 'Cancel', delete: 'Delete', loading: 'Loading...', saved: 'Saved.', saveFailed: 'Failed to save: ' },
     hotkeys: {
-        enable: 'Enable keyboard trigger', disabled: 'Off',
-        title: 'Hotkeys', description: 'Review shortcuts in order of use. Open Details only when you want to change one.',
+        enable: 'Enable keyboard trigger', disabled: 'Off', enabledState: 'On', disabledState: 'Off', disableHint: 'Press to disable hotkey', enableHint: 'Press to enable hotkey',
+        title: 'Hotkeys', description: 'Use the switches to disable the first four hotkeys. Open Details to change a key.',
         loadFailed: 'Failed to load hotkey settings: ', loading: 'Loading hotkey settings...', pressCombination: 'Press a modifier together with a regular key. Press Esc to cancel.', checkFailed: 'Failed to check the shortcut: ', press: 'Press keys...', pressCancel: 'Press keys... (Esc to cancel)', changeSuffix: ' — Change', change: 'Change', changeKey: 'Change key', pressKey: 'Press keys',
         newTitle: 'New Note Trigger', newDescription: 'Create a new sticky note immediately.', customKey: 'Custom key', doubleCtrl: 'Press Ctrl twice', doubleShift: 'Press Shift twice', doublePressNote: 'Double-press does not reserve keys from other apps. If another app uses the same gesture, both may respond.',
         launcherTitle: 'Quick Launcher Trigger', launcherDescription: 'Show or hide the Quick Launcher.', tripleClick: 'Also open with three right-clicks', tripleClickDescription: 'Works over other apps without consuming the clicks.',
