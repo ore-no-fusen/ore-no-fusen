@@ -3801,9 +3801,9 @@ async fn fusen_show_at_position(
             // Tauri の内部 visibility 状態を更新しない。
             // win.show() で Tauri 状態を同期しないと、後続の Tauri API 呼び出し時に
             // tao が "hidden" 判定してウィンドウを非表示にするバグが発生する。
-            let _ = win.show();
+            win.show().map_err(|e| e.to_string())?;
         } else {
-            logger::log_warn(&format!("window not found label={}", label));
+            return Err(format!("window not found label={}", label));
         }
     }
 

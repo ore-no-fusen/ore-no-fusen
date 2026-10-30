@@ -2680,4 +2680,24 @@ tags: ["important"]
             file_path.to_string_lossy()
         );
     }
+    #[test]
+    fn settings_transactions_keep_hotkeys_when_general_settings_change_concurrently() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let workers: Vec<_> = (0..12).map(|i| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                update_settings_at(&path, |settings| {
+                    if i % 2 == 0 { settings.disabled_hotkeys = vec!["new_note".into()]; }
+                    else { settings.font_size = 18.0; }
+                    Ok(())
+                }).unwrap();
+            })
+        }).collect();
+        for worker in workers { worker.join().unwrap(); }
+        let settings = read_settings_file(&path).unwrap();
+        assert_eq!(settings.disabled_hotkeys, vec!["new_note"]);
+        assert_eq!(settings.font_size, 18.0);
+    }
+
 }

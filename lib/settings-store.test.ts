@@ -88,6 +88,7 @@ describe('useSettings Hook (Browser Mode)', () => {
             sound_enabled: true,
             shortcut_new_note: 'ctrl+shift+m',
             shortcut_quick_launcher: 'ctrl+alt+p',
+            disabled_hotkeys: ['new_note', 'quick_launcher'],
         };
         localStorageMock.setItem('ore-no-fusen-settings', JSON.stringify(savedSettings));
 
@@ -99,6 +100,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         const raw = JSON.parse(localStorageMock.getItem('ore-no-fusen-settings') as string);
         expect(raw.shortcut_new_note).toBe('ctrl+shift+m');
         expect(result.current.settings.shortcut_quick_launcher).toBe('ctrl+alt+p');
+        expect(result.current.settings.disabled_hotkeys).toEqual(['new_note', 'quick_launcher']);
 
         // 既存フィールドが壊れていないことを確認（後方互換）
         expect(result.current.settings.language).toBe('ja');

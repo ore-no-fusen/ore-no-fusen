@@ -162,6 +162,9 @@ pub struct Settings {
     /// グローバルショートカットのカスタマイズ（例: "ctrl+shift+m"）。None の場合は "ctrl+n" をデフォルトとして使用。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_new_note: Option<String>,
+    /// Disabled global actions; absent/empty preserves existing shortcuts.
+    #[serde(default)]
+    pub disabled_hotkeys: Vec<String>,
     /// 新規付箋のトリガー方式。None の場合は "shortcut" として扱う。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_note_trigger: Option<String>,
@@ -259,6 +262,7 @@ impl Default for Settings {
             settings_theme: default_settings_theme(),
             iphone_send_enabled: false,
             shortcut_new_note: None,
+            disabled_hotkeys: Vec::new(),
             new_note_trigger: None,
             shortcut_toggle_visibility: None,
             shortcut_arrange: None,

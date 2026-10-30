@@ -201,9 +201,9 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                 return <HelpSection
                     t={t}
                     language={settings.language}
-                    launcherShortcutLabel={formatShortcutLabel(settings.shortcut_quick_launcher || "ctrl+p")}
+                    launcherShortcutLabel={settings.disabled_hotkeys?.includes("quick_launcher") ? ui.hotkeys.disabled : formatShortcutLabel(settings.shortcut_quick_launcher || "ctrl+p")}
                     shortcutSettings={settings}
-                    newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
+                    newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language, !settings.disabled_hotkeys?.includes('new_note'))}
                 />
             case "feedback":
                 return <FeedbackSection t={t} language={settings.language} />
@@ -538,6 +538,7 @@ type DataSectionProps = SectionProps & {
 type HotkeyAction = 'new_note' | 'toggle_visibility' | 'arrange' | 'quick_launcher';
 type NewNoteTrigger = 'shortcut' | 'double_ctrl' | 'double_shift';
 type HotkeyBindings = {
+    disabled_hotkeys?: string[];
     new_note_trigger: NewNoteTrigger;
     new_note: string;
     toggle_visibility: string;
@@ -642,7 +643,7 @@ function HotkeySection({ settings, saveSettings, ui }: {
     }
 
     const applyShortcut = async () => {
-        if (!bindings || !captureAction || !candidateShortcut || !checkResult?.available) return
+        if (isSaving || !bindings || !captureAction || !candidateShortcut || !checkResult?.available) return
         setIsSaving(true)
         try {
             await invoke('hotkey_apply', {
@@ -665,7 +666,7 @@ function HotkeySection({ settings, saveSettings, ui }: {
     }
 
     const applyNewNoteTrigger = async (trigger: NewNoteTrigger) => {
-        if (!bindings) return
+        if (!bindings || isSaving) return
         setIsSaving(true)
         try {
             await invoke('hotkey_apply', {
@@ -683,6 +684,19 @@ function HotkeySection({ settings, saveSettings, ui }: {
             setIsSaving(false)
         }
     }
+
+    const setHotkeyEnabled = async (action: HotkeyAction, enabled: boolean) => {
+        if (isSaving) return;
+        setCaptureAction(null);
+        setIsSaving(true);
+        try {
+            await invoke('hotkey_apply', { action, config: { enabled } });
+            const nextBindings = await loadBindings();
+            if (nextBindings) await syncSettingsStore(settings, saveSettings, nextBindings);
+            setMessage(ui.common.saved);
+        } catch (e) { setMessage(ui.common.saveFailed + String(e)); }
+        finally { setIsSaving(false); }
+    };
 
     const updateQuickLauncherTripleRightClick = async (enabled: boolean) => {
         setIsSaving(true)
@@ -718,6 +732,9 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.newDescription}
                     shortcut={bindings.new_note_trigger === 'shortcut' ? bindings.new_note : bindings.new_note_trigger === 'double_ctrl' ? ui.hotkeys.doubleCtrl : ui.hotkeys.doubleShift}
                     defaultShortcut="Ctrl+N"
+                    enabled={!bindings.disabled_hotkeys?.includes('new_note')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('new_note', enabled)}
                     expanded={expandedAction === 'new_note'}
                     onToggle={() => setExpandedAction(expandedAction === 'new_note' ? null : 'new_note')}
                     ui={ui}
@@ -730,6 +747,7 @@ function HotkeySection({ settings, saveSettings, ui }: {
                                 type="radio"
                                 name="new-note-trigger"
                                 checked={bindings.new_note_trigger === 'shortcut'}
+                                disabled={isSaving}
                                 onChange={() => applyNewNoteTrigger('shortcut')}
                             />
                             <div>
@@ -752,7 +770,8 @@ function HotkeySection({ settings, saveSettings, ui }: {
                             name="new-note-trigger"
                             className="mt-1"
                             checked={bindings.new_note_trigger === 'double_ctrl'}
-                            onChange={() => applyNewNoteTrigger('double_ctrl')}
+                            disabled={isSaving}
+                                onChange={() => applyNewNoteTrigger('double_ctrl')}
                         />
                         <div>
                             <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.doubleCtrl}</p>
@@ -766,7 +785,8 @@ function HotkeySection({ settings, saveSettings, ui }: {
                             name="new-note-trigger"
                             className="mt-1"
                             checked={bindings.new_note_trigger === 'double_shift'}
-                            onChange={() => applyNewNoteTrigger('double_shift')}
+                            disabled={isSaving}
+                                onChange={() => applyNewNoteTrigger('double_shift')}
                         />
                         <div>
                             <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.doubleShift}</p>
@@ -782,11 +802,14 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.launcherDescription}
                     shortcut={bindings.quick_launcher}
                     defaultShortcut="Ctrl+P"
+                    enabled={!bindings.disabled_hotkeys?.includes('quick_launcher')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('quick_launcher', enabled)}
                     expanded={expandedAction === 'quick_launcher'}
                     onToggle={() => setExpandedAction(expandedAction === 'quick_launcher' ? null : 'quick_launcher')}
                     ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('quick_launcher')}>{ui.hotkeys.changeKey}</Button>
+                    <Button variant="outline" size="sm" disabled={isSaving} onClick={() => beginCapture('quick_launcher')}>{ui.hotkeys.changeKey}</Button>
                     <div className="mt-4 flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
                         <div>
                             <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.tripleClick}</p>
@@ -801,11 +824,14 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.arrangeDescription}
                     shortcut={bindings.arrange}
                     defaultShortcut="Ctrl+Shift+L"
+                    enabled={!bindings.disabled_hotkeys?.includes('arrange')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('arrange', enabled)}
                     expanded={expandedAction === 'arrange'}
                     onToggle={() => setExpandedAction(expandedAction === 'arrange' ? null : 'arrange')}
                     ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('arrange')}>{ui.hotkeys.changeKey}</Button>
+                    <Button variant="outline" size="sm" disabled={isSaving} onClick={() => beginCapture('arrange')}>{ui.hotkeys.changeKey}</Button>
                 </HotkeyShortcutRow>
                 <HotkeyShortcutRow
                     number="4"
@@ -813,11 +839,14 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.visibilityDescription}
                     shortcut={bindings.toggle_visibility}
                     defaultShortcut="Ctrl+Shift+H"
+                    enabled={!bindings.disabled_hotkeys?.includes('toggle_visibility')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('toggle_visibility', enabled)}
                     expanded={expandedAction === 'toggle_visibility'}
                     onToggle={() => setExpandedAction(expandedAction === 'toggle_visibility' ? null : 'toggle_visibility')}
                     ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('toggle_visibility')}>{ui.hotkeys.changeKey}</Button>
+                    <Button variant="outline" size="sm" disabled={isSaving} onClick={() => beginCapture('toggle_visibility')}>{ui.hotkeys.changeKey}</Button>
                 </HotkeyShortcutRow>
 
                 <LocalShortcutRow number="5" title={ui.hotkeys.bold} description={ui.hotkeys.boldDescription} settingKey="shortcut_bold" defaultShortcut="Ctrl+B" settings={settings} saveSettings={saveSettings} ui={ui} />
@@ -1139,6 +1168,7 @@ function CrystalFormatSection({ language, ui }: { language: Language; ui: Settin
 async function syncSettingsStore(settings: AppSettings, saveSettings: (settings: AppSettings) => Promise<void>, bindings: HotkeyBindings) {
     await saveSettings({
         ...settings,
+        disabled_hotkeys: bindings.disabled_hotkeys ?? [],
         shortcut_new_note: bindings.new_note,
         new_note_trigger: bindings.new_note_trigger,
         shortcut_toggle_visibility: bindings.toggle_visibility,
@@ -1147,7 +1177,10 @@ async function syncSettingsStore(settings: AppSettings, saveSettings: (settings:
     })
 }
 
-function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children, ui }: {
+function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children, ui, enabled = true, saving = false, onEnabledChange }: {
+    enabled?: boolean;
+    saving?: boolean;
+    onEnabledChange?: (enabled: boolean) => void;
     number: string;
     title: string;
     description: string;
@@ -1171,9 +1204,10 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
                 <div className="flex shrink-0 items-center gap-5">
                     <div className="text-right">
                         <p className="text-xs text-gray-500">{ui.common.current}</p>
-                        <code className="text-sm font-semibold text-gray-900">{formatShortcutLabel(shortcut)}</code>
+                        <code className="text-sm font-semibold text-gray-900">{enabled ? formatShortcutLabel(shortcut) : ui.hotkeys.disabled}</code>
                         <p className="mt-1 text-xs text-gray-500">{ui.common.defaultLabel} {formatShortcutLabel(defaultShortcut)}</p>
                     </div>
+                    {onEnabledChange && <Switch aria-label={title + ' ' + ui.hotkeys.enable} checked={enabled} disabled={saving} onCheckedChange={onEnabledChange} />}
                     <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
                         {ui.common.details}
                         <ChevronRight className={`ml-1 h-4 w-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -2100,6 +2134,7 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
 
 function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSettings, language }: { t: (key: any) => string; newNoteTriggerLabel: string; launcherShortcutLabel: string; shortcutSettings: AppSettings; language: Language }) {
     const isEnglish = language === 'en'
+    const ui = getSettingsPageText(language);
     const guideUrl = publicGuideLinks(isEnglish ? 'en' : 'ja').manual;
     const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
@@ -2206,8 +2241,8 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSe
         [newNoteTriggerLabel, t('settings.help.shortcutTable.newNote.action')],
         [launcherShortcutLabel, isEnglish ? 'Open or close Quick Launcher.' : 'クイックランチャーを開く／閉じる。'],
         ['Ctrl+F', isEnglish ? 'Search notes while a note is active.' : '付箋を選んで全文検索を開きます。'],
-        [formatShortcutLabel(shortcutSettings.shortcut_toggle_visibility || 'ctrl+shift+h'), isEnglish ? 'Hide all desktop notes; press again to show them.' : '付箋をまとめて隠します。もう一度押すと戻ります。'],
-        [formatShortcutLabel(shortcutSettings.shortcut_arrange || 'ctrl+shift+l'), isEnglish ? 'Arrange open notes by tag.' : '開いている付箋をタグごとに並べます。'],
+        [shortcutSettings.disabled_hotkeys?.includes('toggle_visibility') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_toggle_visibility || 'ctrl+shift+h'), isEnglish ? 'Hide all desktop notes; press again to show them.' : '付箋をまとめて隠します。もう一度押すと戻ります。'],
+        [shortcutSettings.disabled_hotkeys?.includes('arrange') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_arrange || 'ctrl+shift+l'), isEnglish ? 'Arrange open notes by tag.' : '開いている付箋をタグごとに並べます。'],
         ['F2', isEnglish ? 'Edit the active note.' : '操作中の付箋を編集します。'],
         [t('settings.help.shortcutTable.delete.keys'), t('settings.help.shortcutTable.delete.action')],
         [t('settings.help.shortcutTable.capture.keys'), t('settings.help.shortcutTable.capture.action')],

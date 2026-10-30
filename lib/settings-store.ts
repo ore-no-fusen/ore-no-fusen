@@ -35,6 +35,7 @@ export type AppSettings = {
     sound_alarm: SoundPreset
     settings_theme: SettingsTheme
     iphone_send_enabled: boolean
+    disabled_hotkeys?: string[]
     shortcut_new_note?: string
     new_note_trigger?: "shortcut" | "double_ctrl" | "double_shift"
     shortcut_toggle_visibility?: string
@@ -138,6 +139,7 @@ export function useSettings() {
                         sound_create: normalizeSoundPreset(parsed.sound_create), sound_duplicate: normalizeSoundPreset(parsed.sound_duplicate), sound_archive: normalizeSoundPreset(parsed.sound_archive ?? parsed.sound_save), sound_delete: normalizeSoundPreset(parsed.sound_delete), sound_checkbox: normalizeSoundPreset(parsed.sound_checkbox), sound_pin: normalizeSoundPreset(parsed.sound_pin), sound_unpin: normalizeSoundPreset(parsed.sound_unpin), sound_alarm: normalizeSoundPreset(parsed.sound_alarm),
                         settings_theme: normalizeSettingsTheme(parsed.settings_theme ?? parsed.settingsTheme),
                         iphone_send_enabled: parsed.iphone_send_enabled ?? parsed.iphoneSendEnabled ?? DEFAULT_SETTINGS.iphone_send_enabled,
+                        disabled_hotkeys: parsed.disabled_hotkeys ?? [],
                         shortcut_new_note: parsed.shortcut_new_note ?? DEFAULT_SETTINGS.shortcut_new_note,
                         new_note_trigger: parsed.new_note_trigger ?? DEFAULT_SETTINGS.new_note_trigger,
                         shortcut_toggle_visibility: parsed.shortcut_toggle_visibility ?? DEFAULT_SETTINGS.shortcut_toggle_visibility,
@@ -176,6 +178,7 @@ export function useSettings() {
                     sound_create: normalizeSoundPreset(loaded.sound_create), sound_duplicate: normalizeSoundPreset(loaded.sound_duplicate), sound_archive: normalizeSoundPreset(loaded.sound_archive ?? loaded.sound_save), sound_delete: normalizeSoundPreset(loaded.sound_delete), sound_checkbox: normalizeSoundPreset(loaded.sound_checkbox), sound_pin: normalizeSoundPreset(loaded.sound_pin), sound_unpin: normalizeSoundPreset(loaded.sound_unpin), sound_alarm: normalizeSoundPreset(loaded.sound_alarm),
                     settings_theme: normalizeSettingsTheme(loaded.settings_theme),
                     iphone_send_enabled: loaded.iphone_send_enabled,
+                    disabled_hotkeys: loaded.disabled_hotkeys ?? [],
                     shortcut_new_note: loaded.shortcut_new_note,
                     new_note_trigger: loaded.new_note_trigger,
                     shortcut_toggle_visibility: loaded.shortcut_toggle_visibility,
