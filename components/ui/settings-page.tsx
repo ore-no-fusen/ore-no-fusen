@@ -1193,7 +1193,7 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
 }) {
     return (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center justify-between gap-5 p-5">
+            <div className="flex flex-col items-stretch gap-3 p-5 lg:flex-row lg:items-center lg:justify-between lg:gap-5">
                 <div className="flex min-w-0 items-start gap-4">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{number}</span>
                     <div>
@@ -1201,7 +1201,7 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
                         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-5">
+                <div className="flex flex-wrap items-center justify-end gap-3 lg:shrink-0 lg:gap-5">
                     <div className="text-right">
                         <p className="text-xs text-gray-500">{ui.common.current}</p>
                         <code className="text-sm font-semibold text-gray-900">{enabled ? formatShortcutLabel(shortcut) : ui.hotkeys.disabled}</code>
@@ -1210,7 +1210,7 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
                     {onEnabledChange && <div className="flex flex-col items-center gap-1">
                         <span className="text-xs font-semibold text-gray-700">{enabled ? ui.hotkeys.enabledState : ui.hotkeys.disabledState}</span>
                         <Switch aria-label={title + ' ' + ui.hotkeys.enable} checked={enabled} disabled={saving} onCheckedChange={onEnabledChange} />
-                        <span className="text-xs text-gray-600">{enabled ? ui.hotkeys.disableHint : ui.hotkeys.enableHint}</span>
+                        <span className="max-w-[140px] text-center text-xs text-gray-600">{enabled ? ui.hotkeys.disableHint : ui.hotkeys.enableHint}</span>
                     </div>}
                     <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
                         {ui.common.details}

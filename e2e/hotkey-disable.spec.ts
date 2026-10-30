@@ -15,6 +15,16 @@ for (const language of ['ja', 'en'] as const) {
         const switches = content.getByRole('switch').filter({ hasNot: page.locator('[disabled]') });
         await expect(switches).toHaveCount(4);
         await expect(content.getByText(language === 'ja' ? '押すとホットキーを無効にする' : 'Press to disable hotkey')).toHaveCount(4);
+        await page.setViewportSize({ width: 640, height: 900 });
+        for (const control of await switches.all()) {
+            const box = await control.boundingBox();
+            const card = control.locator('xpath=ancestor::div[contains(@class,"overflow-hidden")][1]');
+            const cardBox = await card.boundingBox();
+            const details = await card.getByRole('button', { name: language === 'ja' ? '詳細' : 'Details' }).boundingBox();
+            expect(box && cardBox && box.x >= cardBox.x && box.x + box.width <= cardBox.x + cardBox.width).toBeTruthy();
+            expect(details && cardBox && details.x >= cardBox.x && details.x + details.width <= cardBox.x + cardBox.width).toBeTruthy();
+        }
+        await page.setViewportSize({ width: 1280, height: 720 });
         for (let index = 0; index < 4; index++) {
             await switches.nth(index).click();
             await expect(switches.nth(index)).not.toBeChecked();
