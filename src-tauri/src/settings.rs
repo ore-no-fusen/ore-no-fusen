@@ -21,6 +21,44 @@ pub fn get_settings<R: Runtime>(_app: AppHandle<R>) -> Result<AppSettings, Strin
     storage::load_settings()
 }
 
+#[tauri::command]
+pub fn set_editor_hotkey_enabled<R: Runtime>(app: AppHandle<R>, action: String, enabled: bool) -> Result<(), String> {
+    let settings = storage::update_settings(|settings| update_editor_hotkey(settings, &action, enabled))?;
+    let _ = app.emit("settings_updated", &settings);
+    Ok(())
+}
+
+fn update_editor_hotkey(settings: &mut AppSettings, action: &str, enabled: bool) -> Result<(), String> {
+    if !matches!(action, "editor_bold" | "editor_heading" | "editor_bullet_list" | "editor_checkbox") {
+        return Err("Unknown editor hotkey".into());
+    }
+    settings.disabled_editor_hotkeys.retain(|item| item != action);
+    if !enabled { settings.disabled_editor_hotkeys.push(action.to_string()); }
+    Ok(())
+}
+
+#[cfg(test)]
+mod editor_hotkey_tests {
+    use super::*;
+    #[test]
+    fn individual_editor_toggle_preserves_global_and_other_editor_settings() {
+        let mut settings = AppSettings::default();
+        settings.disabled_hotkeys = vec!["new_note".into()];
+        settings.disabled_editor_hotkeys = vec!["editor_heading".into()];
+        update_editor_hotkey(&mut settings, "editor_bold", false).unwrap();
+        update_editor_hotkey(&mut settings, "editor_bold", false).unwrap();
+        assert_eq!(settings.disabled_editor_hotkeys, vec!["editor_heading", "editor_bold"]);
+        let restored: AppSettings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored.disabled_editor_hotkeys, vec!["editor_heading", "editor_bold"]);
+        assert_eq!(restored.disabled_hotkeys, vec!["new_note"]);
+        update_editor_hotkey(&mut settings, "editor_bold", true).unwrap();
+        assert_eq!(settings.disabled_editor_hotkeys, vec!["editor_heading"]);
+        assert!(update_editor_hotkey(&mut settings, "new_note", true).is_err());
+        assert_eq!(settings.disabled_editor_hotkeys, vec!["editor_heading"]);
+        assert_eq!(settings.disabled_hotkeys, vec!["new_note"]);
+    }
+}
+
 // 設定を保存するコマンド
 #[tauri::command]
 pub fn save_settings<R: Runtime>(
@@ -53,6 +91,7 @@ pub fn save_settings<R: Runtime>(
         }
 
         settings.disabled_hotkeys = existing_settings.disabled_hotkeys.clone();
+        settings.disabled_editor_hotkeys = existing_settings.disabled_editor_hotkeys.clone();
         settings.shortcut_new_note = existing_settings.shortcut_new_note.clone();
         settings.new_note_trigger = existing_settings.new_note_trigger.clone();
         settings.shortcut_toggle_visibility = existing_settings.shortcut_toggle_visibility.clone();

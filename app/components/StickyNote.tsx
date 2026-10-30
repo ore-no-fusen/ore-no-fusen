@@ -2428,6 +2428,7 @@ const StickyNote = memo(function StickyNote() {
                                         heading: settings.shortcut_heading,
                                         bulletList: settings.shortcut_bullet_list,
                                         checkbox: settings.shortcut_checkbox,
+                                        disabled: settings.disabled_editor_hotkeys,
                                     }}
                                     onBlur={isEditing ? handleEditBlur : undefined}
                                     onSelectionChange={isEditing ? handleSelectionChange : undefined}
