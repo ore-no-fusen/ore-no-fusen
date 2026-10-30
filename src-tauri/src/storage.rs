@@ -343,7 +343,10 @@ pub fn append_trash_operation(
 
 pub fn load_settings() -> Result<Settings, String> {
     let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let path = get_settings_path()?;
+    load_settings_unlocked(&get_settings_path()?)
+}
+
+fn load_settings_unlocked(path: &Path) -> Result<Settings, String> {
     if !path.exists() {
         return Ok(Settings::default());
     }
@@ -374,7 +377,10 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
     }
 
     let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let path = get_settings_path()?;
+    save_settings_unlocked(&get_settings_path()?, settings)
+}
+
+fn save_settings_unlocked(path: &Path, settings: &Settings) -> Result<(), String> {
     let temp_path = path.with_extension("json.tmp");
     let rollback_path = path.with_extension("json.rollback");
     let backup_path = settings_backup_path(&path);
@@ -424,6 +430,19 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
 
     let _ = fs::remove_file(&rollback_path);
     Ok(())
+}
+
+pub fn update_settings<F: FnOnce(&mut Settings) -> Result<(), String>>(update: F) -> Result<Settings, String> {
+    update_settings_at(&get_settings_path()?, update)
+}
+
+fn update_settings_at<F: FnOnce(&mut Settings) -> Result<(), String>>(path: &Path, update: F) -> Result<Settings, String> {
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let mut settings = load_settings_unlocked(path)?;
+    update(&mut settings)?;
+    if let Some(base_path) = &settings.base_path { validate_storage_path(base_path)?; }
+    save_settings_unlocked(path, &settings)?;
+    Ok(settings)
 }
 
 fn settings_backup_path(settings_path: &Path) -> PathBuf {
@@ -2657,4 +2676,24 @@ tags: ["important"]
             file_path.to_string_lossy()
         );
     }
+    #[test]
+    fn settings_transactions_keep_hotkeys_when_general_settings_change_concurrently() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let workers: Vec<_> = (0..12).map(|i| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                update_settings_at(&path, |settings| {
+                    if i % 2 == 0 { settings.disabled_hotkeys = vec!["new_note".into()]; }
+                    else { settings.font_size = 18.0; }
+                    Ok(())
+                }).unwrap();
+            })
+        }).collect();
+        for worker in workers { worker.join().unwrap(); }
+        let settings = read_settings_file(&path).unwrap();
+        assert_eq!(settings.disabled_hotkeys, vec!["new_note"]);
+        assert_eq!(settings.font_size, 18.0);
+    }
+
 }

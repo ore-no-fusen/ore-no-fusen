@@ -53,6 +53,7 @@ export function buildDuplicateRequestPayload(
 }
 
 type HotkeyBindings = {
+    disabled_hotkeys?: string[];
     new_note_trigger: string;
     new_note: string;
     arrange: string;
@@ -60,12 +61,13 @@ type HotkeyBindings = {
 };
 
 export function getFavoriteMenuLabel(action: string, shortcut: string, language: Language): string {
+    if (!shortcut) return `📌 ${action}`;
     const key = formatShortcutLabel(shortcut).replace(/ \+ /g, '+');
     return `📌 ${action}  (${language === 'en' ? 'Quick Launcher' : 'クイックランチャー'}: ${key})`;
 }
 
 export function getAppOperationMenuLabels(bindings: HotkeyBindings, language: Language) {
-    const arrangeShortcut = formatShortcutLabel(bindings.arrange).replace(/ \+ /g, '+');
+    const arrangeShortcut = bindings.disabled_hotkeys?.includes('arrange') ? '' : formatShortcutLabel(bindings.arrange).replace(/ \+ /g, '+');
     if (language === 'en') {
         return {
             submenu: '⚙️ App Actions',
@@ -384,6 +386,7 @@ export function useStickyNoteContextMenu({
             const [freshTags, hotkeyBindings] = await Promise.all([
                 invoke<string[]>('fusen_get_all_tags'),
                 invoke<HotkeyBindings>('hotkey_get_bindings').catch(() => ({
+                    disabled_hotkeys: [] as string[],
                     new_note_trigger: 'shortcut',
                     new_note: 'ctrl+n',
                     arrange: 'ctrl+shift+l',
@@ -410,7 +413,7 @@ export function useStickyNoteContextMenu({
             // 新規メモ作成
             const newNoteItemPromise = MenuItem.new({
                 id: 'ctx_new_note',
-                text: `${STICKY_ACTION_SYMBOLS.newNote} ${t('menu.newNote')}  ${formatNewNoteTriggerLabel(hotkeyBindings.new_note_trigger, hotkeyBindings.new_note, language)}`,
+                text: `${STICKY_ACTION_SYMBOLS.newNote} ${t('menu.newNote')}  ${formatNewNoteTriggerLabel(hotkeyBindings.new_note_trigger, hotkeyBindings.new_note, language, !hotkeyBindings.disabled_hotkeys?.includes('new_note'))}`,
                 action: async () => {
                     try {
                         const { emit } = await import('@tauri-apps/api/event');
@@ -684,7 +687,7 @@ export function useStickyNoteContextMenu({
                     id: 'ctx_shortcut_shelf',
                     text: getFavoriteMenuLabel(
                         shortcutShelfMenuState.isRegistered ? t('menu.favoriteRemove') : t('menu.favoriteAdd'),
-                        hotkeyBindings.quick_launcher,
+                        hotkeyBindings.disabled_hotkeys?.includes('quick_launcher') ? '' : hotkeyBindings.quick_launcher,
                         language,
                     ),
                     action: handleToggleShortcutShelf
