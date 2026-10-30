@@ -1,7 +1,8 @@
 //! A small, fail-closed journal for Trash moves. No automatic repair or rollback.
-use std::{fs, io::Write, path::{Path, PathBuf}, time::{Duration, Instant}};
+use std::{fs, io::Write, path::{Path, PathBuf}, sync::{Mutex, MutexGuard}, time::{Duration, Instant}};
 
-pub struct HistoryLock { _file: fs::File }
+static LOCAL_HISTORY_LOCK: Mutex<()> = Mutex::new(());
+pub struct HistoryLock { _file: fs::File, _local: MutexGuard<'static, ()> }
 pub fn pending_path(log: &Path) -> PathBuf { log.with_extension("pending.json") }
 
 fn regular(file: &fs::File) -> Result<(), String> {
@@ -15,6 +16,7 @@ fn regular(file: &fs::File) -> Result<(), String> {
 }
 
 pub fn lock(log: &Path) -> Result<HistoryLock, String> {
+    let local = LOCAL_HISTORY_LOCK.lock().map_err(|_| "Trash history lock is unavailable")?;
     let parent = log.parent().ok_or("Missing history directory")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let lock_path = log.with_extension("jsonl.lock");
@@ -29,8 +31,8 @@ pub fn lock(log: &Path) -> Result<HistoryLock, String> {
         #[cfg(not(windows))]
         { return Err("Safe Trash journaling is supported only on Windows".into()); }
         match options.open(&lock_path) {
-            Ok(file) => { regular(&file)?; return Ok(HistoryLock { _file: file }); }
-            Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) && started.elapsed() < Duration::from_secs(2) => {
+            Ok(file) => { regular(&file)?; return Ok(HistoryLock { _file: file, _local: local }); }
+            Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) && started.elapsed() < Duration::from_secs(15) => {
                 std::thread::sleep(Duration::from_millis(25));
             }
             Err(error) => return Err(format!("Trash history is busy or unavailable: {error}")),
