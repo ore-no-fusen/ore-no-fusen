@@ -745,7 +745,7 @@ export default function MarkdownRenderer({
                             <div key={i} data-line-index={i} className={lineClass} style={outlineStyle}>
                                 {outlineIndent}
                                 {outlineToggle}
-                                <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline overflow-visible text-clip'}>
+                                <span data-src-start={baseOffset} className={singleLinePreview ? 'block overflow-hidden text-ellipsis' : 'inline whitespace-pre-wrap overflow-visible text-clip'}>
                                     {renderLineContent(displayLine, baseOffset)}
                                 </span>
                                 {outlineFoldMarker}
