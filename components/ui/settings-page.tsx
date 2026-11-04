@@ -2204,7 +2204,7 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSe
             icon: <Type className="h-5 w-5" />,
             tone: 'sky' as const,
             label: isEnglish ? "Fold a note or part of its text" : "付箋や本文を折りたたむ",
-            body: isEnglish ? "Click △ at the top-right to fold the whole note, and ▽ to expand it.\nTo fold part of the text in reading mode, hover over a heading or parent line and click ⌄ on its left. Click › to expand.\nIndent child lines with Tab and unindent with Shift+Tab. Editing shows all lines." : "付箋全体：右上の「△」で小さくし、「▽」で元に戻します。\n本文の一部分：閲覧中に見出しや親の行へマウスを置き、左の「⌄」で配下を隠し、「›」で開きます。\n親子の行を作るには、編集時に子の行を Tab で字下げします。Shift+Tab で戻せます。編集中はすべての行が見えます。",
+            body: isEnglish ? "Click △ at the top-right to fold the whole note, and ▽ to expand it.\nTo fold part of the text in reading mode, hover over a heading or parent line and click ⌄ on its left. Click › to expand.\nIndent child lines with Tab and unindent with Shift+Tab. Folding is shared between reading and editing. Open a folded section before editing its hidden text." : "付箋全体：右上の「△」で小さくし、「▽」で元に戻します。\n本文の一部分：閲覧中に見出しや親の行へマウスを置き、左の「⌄」で配下を隠し、「›」で開きます。\n親子の行を作るには、編集時に子の行を Tab で字下げします。Shift+Tab で戻せます。表示中と編集中で開閉状態を共有します。隠れた内容を編集するには先に開きます。",
         },
         {
             icon: <ImageIcon className="h-5 w-5" />,

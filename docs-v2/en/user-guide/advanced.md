@@ -10,7 +10,7 @@ Ore No Fusen supports tables, Mermaid diagrams, images, alarms, font sizing, and
 
 ## Fold part of a note
 
-In reading mode, hover over a heading or parent line and click **⌄** on its left to hide its children. Click **›** to show them again. A heading folds the content of its section. To make a plain-text hierarchy, indent child lines with **Tab** while editing; **Shift+Tab** removes indentation. Editing shows all lines. This is separate from the **△ / ▽** buttons that fold the whole note.
+In reading mode, hover over a heading or parent line and click **⌄** on its left to hide its children. Click **›** to show them again. A heading folds the content of its section. To make a plain-text hierarchy, indent child lines with **Tab** while editing; **Shift+Tab** removes indentation. Folding is shared between reading and editing, and can be toggled in either mode. Open a folded section before editing its hidden text. This is separate from the **△ / ▽** buttons that fold the whole note.
 
 ## Annotate an image
 
