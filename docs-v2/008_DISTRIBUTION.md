@@ -10,7 +10,7 @@ Microsoft Store向けMSIXを唯一の正式配布形式とし、既存MSI・NSIS
 </p>
 
 <p class="version-info">
-配布設計 v2.4 / 2026-10-10
+配布設計 v2.7 / 2026-10-28
 </p>
 
 ---
@@ -41,7 +41,7 @@ Microsoft Store向けMSIXを唯一の正式配布形式とし、既存MSI・NSIS
 
 ## 3 配布・公開経路
 
-5.1.0以降、アプリの入手と更新はMicrosoft Storeへ統一します。GitHub Releaseは変更履歴とソースコード公開に使い、未署名MSIXや一般向けインストーラーを置きません。
+5.1.0以降、アプリの入手と更新はMicrosoft Storeへ統一します。新しいGitHub Releaseや一般向けインストーラーは公開しません。6.1.0準備では、マニュアル・漫画・FAQ・規約・更新情報を公開用リポジトリ `ore-no-fusen/ore-no-fusen-guide` へ分離し、アプリとLPの利用者向けリンクを切り替えます。内部設計書とアプリコードは公開ガイドへ含めません。
 
 wingetはcommunity repositoryではなく、Microsoft Storeカタログの`msstore`ソースを使います。
 
@@ -55,10 +55,16 @@ winget install --id 9N4MW0V2MVVG --source msstore
 |:---|:---|:---|
 | 1 | Microsoft Store | MSIXの一般配布、署名、自動更新 |
 | 2 | winget `msstore` | Store版をコマンドから導入・更新する補助経路 |
-| 3 | GitHub Release | 変更履歴、移行案内、ソースアーカイブ |
+| 3 | 公開ガイド専用サイト | マニュアル、漫画、FAQ、問い合わせ案内、規約、更新情報 |
 | 4 | GitHub Actions artifact | Partner Centerへ渡す未署名MSIXの一時保管。一般配布しない |
 
 ---
+
+### 段階的な非公開化
+
+現在の開発リポジトリは移行期間中は公開のまま維持する。6.1.0のStore公開後およそ3か月を目安に、6.2/7等の節目で非公開化を判断する。自動実行ではなく、旧リンクの残影響とCI/Vercel/Git認証を確認する。公開資料の更新手順は `docs/PUBLIC_GUIDE_MAINTENANCE.md` を参照する。
+
+旧MSI/NSIS版（最終移行版5.0.0）の更新経路は、非公開化後も維持する要件から外す。今回の準備では既存Release資産を先行削除しない。公開ガイドの完成前に旧Pagesを停止しない。
 
 ## 4 署名とStore提出
 
@@ -229,6 +235,8 @@ sequenceDiagram
 
 ---
 
+通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全検査へ戻す際はActionsのRe-run all jobs（全ジョブ再実行）を選び、成功済みの再利用jobも再実行する。通常CIは変更範囲を判定します。文書コンテンツだけの場合は文書の差分と必要な文書build/リンク検査を実施し、フロント・Rust・分析・MSIX検査は起動しません。文書内の設定/スクリプト/依存やアプリ変更が混在する場合は、全単体・型・Rustを検査し、対象変更ではWeb/API production buildとMSIXの梱包・署名・導入・起動も検証します。必要な検査の失敗や不明はgateで拒否し、docs-v2のbuildも同じTestに集約します。単独MSIX実行では前提テストを省略しません。工程ごとの期限とrun固有の状態・1日保持の診断成果物を使い、共有statusブランチへ書込みません。ローカル静的ビルドは隔離コピーを用い、元APIソースを移動せず、生成物切替えをtransactionで回復します。詳細は開発リポジトリの `docs/AUTOMATION_OPERATIONS.md`を参照します。
+
 ## 9 制約と検証
 
 - WindowsApps配下・exe配下などの危険パスを保存先にしない。
@@ -254,6 +262,9 @@ sequenceDiagram
 | 4 | v2.2 | 26-08-16 | MSIX初回起動時に旧デスクトップ版の共有自動起動設定をOFFへ移行し、旧Runキーの再登録を防止する仕様を追加 |
 | 5 | v2.3 | 26-10-06 | 起動時の更新案内を付箋復元完了後も維持し、利用者の操作まで自動で最小化・非表示にしない仕様を明記 |
 | 6 | v2.4 | 26-10-10 | AI利用不可時の簡易リリースマシン、固定実機確認、保全exe再利用、実行記録・手動引継ぎと手順同時更新を追加 |
+| 7 | v2.5 | 26-10-26 | 隔離静的ビルド・生成物復旧・CI検査集約・工程期限と診断成果物を追記 |
+| 8 | v2.6 | 26-10-27 | 文書コンテンツだけのCIを分離し、設計書buildとgate判定をTestへ集約 |
+| 9 | v2.7 | 26-10-28 | PC/CIの検査分担とPR成功証跡による統合後検証を追加 |
 
 </div>
 

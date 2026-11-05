@@ -42,3 +42,8 @@ crons = ["* * * * *"]
 [[env.development.durable_objects.bindings]]
 name = "INGEST_COORDINATOR"
 class_name = "DiscordIngestCoordinator"
+
+# Development runs REST import only. Do not inherit the production Gateway registration.
+[[env.development.migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiscordIngestCoordinator"]

@@ -54,6 +54,7 @@ import {
   STARTUP_RETRY_READY_TIMEOUT_MS,
   waitForStartupReady,
 } from './utils/startupRestore';
+import { currentScreenNoteBounds } from './utils/newNotePosition';
 import { FreshRequestQueue } from './utils/freshRequestQueue';
 import { NOTE_COLORS } from './utils/noteAppearance';
 import { receiveIphoneNote, type ReceivedIphoneNote } from './utils/receiveIphoneNote';
@@ -289,6 +290,7 @@ function OrchestratorContent() {
   const desktopShortcutPromptCheckedRef = useRef(false);
   const [monthlyBackupResult, setMonthlyBackupResult] = useState<MonthlyBackupResult | null>(null);
   const monthlyBackupCheckedRef = useRef(false);
+  const [maintenanceOpportunity, setMaintenanceOpportunity] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false); // [NEW] 全文検索オーバーレイ
   const [isArchiveRestoreOpen, setIsArchiveRestoreOpen] = useState(false);
   const [searchCaller, setSearchCaller] = useState<string | null>(null); // [NEW] Focus Return用
@@ -396,12 +398,8 @@ function OrchestratorContent() {
 
   const enqueueWindowCreation = useCallback(async (task: () => Promise<void>): Promise<void> => {
     const queue = (window as any).__WINDOW_QUEUE__;
-    return new Promise((resolve) => {
-      queue.queue.push(async () => {
-        try { await task(); } finally { resolve(); }
-      });
-      if (!queue.processing) processQueue();
-    });
+    const { enqueueObservedTask } = await import('./utils/windowCreation');
+    return enqueueObservedTask(queue, task, processQueue);
   }, [processQueue]);
 
 
@@ -434,7 +432,7 @@ function OrchestratorContent() {
     return WebviewWindow.getByLabel(getWindowLabel(path));
   }, [getWindowLabel]);
 
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean, physical_bounds?: { x: number; y: number; width: number; height: number } }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
     const startupRestore = meta?.startup_restore === true;
 
@@ -502,7 +500,7 @@ function OrchestratorContent() {
             transparent: false,
             decorations: false,
             alwaysOnTop: meta?.always_on_top || false,
-            visible: !startupRestore,
+            visible: !startupRestore && !meta?.physical_bounds,
             backgroundColor: bgHex
               ? [parseInt(bgHex.slice(1, 3), 16), parseInt(bgHex.slice(3, 5), 16), parseInt(bgHex.slice(5, 7), 16), 255] as [number, number, number, number]
               : [247, 233, 176, 255], // 色不明時は従来どおり黄色 #f7e9b0
@@ -515,10 +513,20 @@ function OrchestratorContent() {
             dragDropEnabled: false,
           });
 
-          await new Promise<void>((resolve) => {
+          await new Promise<void>((resolve, reject) => {
             const settleCreation = () => resolve();
 
             void win.once('tauri://created', async () => {
+              if (meta?.physical_bounds) {
+                try {
+                  const { placeNewNotePhysically } = await import('./utils/newNotePosition');
+                  await placeNewNotePhysically(win, meta.physical_bounds);
+                } catch (error) {
+                  await win.destroy().catch(() => {});
+                  reject(error);
+                  return;
+                }
+              }
               try {
               // opacity: 0（完全透明＝見えない）や不正値は 1.0 にフォールバックする。
               // 旧データで 0 が入っていても付箋が消えないようにする二重防御。
@@ -549,6 +557,7 @@ function OrchestratorContent() {
             });
 
             void win.once('tauri://error', (event) => {
+              if (meta?.physical_bounds) { reject(event.payload); return; }
               console.error('[莉倡ｮ玖｡ｨ遉ｺ] 繧ｦ繧｣繝ｳ繝峨え菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆:', event);
               settleCreation();
             });
@@ -558,7 +567,11 @@ function OrchestratorContent() {
           }
 
         } finally { unmarkWindowInProgress(label); }
-      } catch (e) { console.error('[付箋表示] ウィンドウ作成に失敗しました:', e); unmarkWindowInProgress(label); }
+      } catch (e) {
+        console.error('[付箋表示] ウィンドウ作成に失敗しました:', e);
+        unmarkWindowInProgress(label);
+        if (meta?.physical_bounds) throw e;
+      }
     });
   }, [getWindowLabel, resolveOpenWindow, enqueueWindowCreation, isWindowInProgress, markWindowInProgress, unmarkWindowInProgress]);
 
@@ -617,6 +630,8 @@ function OrchestratorContent() {
       }
 
       // ============================================================
+      const screenCenter = sourceMeta ? undefined : await currentScreenNoteBounds();
+
       // Pool 選択: usedPoolWindowsRef で未使用 + ready な pool 窓を探す
       // ============================================================
       let poolWindow: { label: string } | undefined;
@@ -647,8 +662,8 @@ function OrchestratorContent() {
         console.log(`[TRACE:CREATE | ${ts}] Pool promote (lazy): ${poolWindow.label} folder=${targetFolder}`);
 
         // 表示位置を計算
-        let targetPhysX: number | undefined;
-        let targetPhysY: number | undefined;
+        let targetPhysX: number | undefined = screenCenter?.x;
+        let targetPhysY: number | undefined = screenCenter?.y;
         if (sourceMeta) {
           const isCursorAnchor = sourceMeta.physHeight === undefined;
           const srcH = isCursorAnchor ? 0 : sourceMeta.physHeight ?? Math.round(300 * sourceMeta.scale);
@@ -691,8 +706,8 @@ function OrchestratorContent() {
         if (sizeScale === undefined) {
           try { sizeScale = await getCurrentWindow().scaleFactor(); } catch (_) { sizeScale = 1.0; }
         }
-        const targetPhysWidth = Math.round(400 * sizeScale);
-        const targetPhysHeight = Math.round(300 * sizeScale);
+        const targetPhysWidth = screenCenter?.width ?? Math.round(400 * sizeScale);
+        const targetPhysHeight = screenCenter?.height ?? Math.round(300 * sizeScale);
 
         // [NEW] fusen_show_at_position: α=255 + SetWindowPos + SetForegroundWindow を 1 invoke で完結
         // Atomic Coordination Constraint 厳守: 複数 await invoke を直列に並べない
@@ -708,7 +723,9 @@ function OrchestratorContent() {
             runId,
           });
         } catch (e) {
-          invoke('fusen_debug_log', { message: `[CREATE] fusen_show_at_position failed: ${e}` }).catch(() => {});
+          usedPoolWindowsRef.current.delete(poolWindow.label);
+          localStorage.removeItem(`promoted_${poolWindow.label}`);
+          throw e;
         }
 
         // StickyNote.tsx に promote を通知（folderPath を渡し、lazy 作成に使わせる）
@@ -782,20 +799,24 @@ function OrchestratorContent() {
               }
             } catch (_) {}
             return { x, y: clampedY, width: 400, height: 300 };
-          })() : undefined, true);
+          })() : screenCenter ? {
+            physical_bounds: screenCenter,
+          } : undefined, true);
 
           trackEvent('note_created', { event_category: 'activation', creation_path: 'fallback' });
           invoke('fusen_create_pool_window').catch(e => console.error('Replenish pool failed', e));
         } catch (e) {
           console.error('create_note fallback failed', e);
+          window.alert(language === 'en' ? 'Could not show the new note. Saved data has been kept.' : '新規メモを表示できませんでした。保存済みデータは保持しています。');
           trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
         }
       }
     } catch (e) {
       console.error('handleCreateNote failed', e);
+      window.alert(language === 'en' ? 'Could not show the new note. Please try again.' : '新規メモを表示できませんでした。もう一度お試しください。');
       trackEvent('note_create_failed', { event_category: 'reliability', error_category: 'create_failed' });
     }
-  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef]);
+  }, [folderPath, isMainWindow, openNoteWindow, folderPathRef, language]);
 
   const handleCreateNote = useCallback(async (overrideFolder?: string, overrideContext?: string, sourceMeta?: { physX: number, physY: number, scale: number, physWidth?: number, physHeight?: number }, duplicatePath?: string, perfT0?: number, duplicateSnapshot?: { body: string; frontmatter: string }) => {
     const accepted = createRequestQueueRef.current.push({
@@ -2081,7 +2102,27 @@ function OrchestratorContent() {
   }, [isMainWindow, isCheckingSetup, setupRequired, isSettingsOpen, settings.analytics_consent]);
 
   useEffect(() => {
-    if (!isDashboard || monthlyBackupCheckedRef.current) return;
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:trash_history_warning', () => {
+      window.alert(language === 'en'
+        ? 'The note was moved to Trash, but its history could not be saved. Automatic cleanup is stopped. Your note is kept in Trash.'
+        : '付箋はごみ箱へ移動しましたが、履歴の保存に失敗しました。自動整理は停止しています。付箋はごみ箱に残っています。');
+    });
+    promise.then(fn => { unlisten = fn; });
+    return () => { if (unlisten) safeUnlisten(unlisten); else safeUnlistenWhenResolved(promise); };
+  }, [isMainWindow, language]);
+
+  useEffect(() => {
+    if (!isMainWindow) return;
+    let unlisten: (() => void) | undefined;
+    const promise = listen('fusen:maintenance_due', () => setMaintenanceOpportunity(true));
+    promise.then(fn => { unlisten = fn; });
+    return () => { if (unlisten) safeUnlisten(unlisten); else safeUnlistenWhenResolved(promise); };
+  }, [isMainWindow]);
+
+  useEffect(() => {
+    if (!isDashboard || !maintenanceOpportunity || monthlyBackupCheckedRef.current) return;
     monthlyBackupCheckedRef.current = true;
     const checkMonthlyBackup = async () => {
       try {
@@ -2098,11 +2139,13 @@ function OrchestratorContent() {
         await win.setFocus();
       } catch (e) {
         console.error('[MonthlyBackup] confirmation check failed:', e);
+      } finally {
+        setMaintenanceOpportunity(false);
+        monthlyBackupCheckedRef.current = false;
       }
     };
-    const timer = setTimeout(checkMonthlyBackup, 1000);
-    return () => clearTimeout(timer);
-  }, [isDashboard]);
+    void checkMonthlyBackup();
+  }, [isDashboard, maintenanceOpportunity]);
 
   // [DEBUG] isDashboard状態の詳細ログ
   useEffect(() => {

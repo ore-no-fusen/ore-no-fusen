@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chromium } from '@playwright/test';
-import { featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, fetchFirestoreUsageHistory, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats, weeklyGaFeatureRows } from './member-stats.mjs';
+import { webUsageRows, featureUsageStats, fetchFirestoreAnnouncements, fetchFirestoreMembers, fetchFirestoreUsageHistory, generateHtml, isoWeek, parseOptions, publishAnnouncement, stopAnnouncement, serveDashboard, survivalStats, weeklyGaFeatureRows } from './member-stats.mjs';
 
 test('保留は明示報告だけで判定し、未到着・未案内・未回答・拒否と混同しない',()=>{
   const states=featureUsageStats([
@@ -686,4 +686,59 @@ test('同意状況はアプリバージョン別の匿名集計で表示する',
   assert.match(html, /consentByVersionRows/);
   assert.match(html, /5\.7\.3/);
   assert.match(html, /60%/);
+});
+
+
+test('Web利用はGA4週別の重複除外人数をそのまま使い、欠測をゼロにしない', () => {
+  assert.equal(webUsageRows(null), null);
+  assert.deepEqual(webUsageRows({rows:[]}), []);
+  const row=(week,feature,count,users)=>({dimensionValues:[{value:week},{value:feature}],metricValues:[{value:String(count)},{value:String(users)}]});
+  assert.deepEqual(webUsageRows({rows:[row('202644','web_view',12,3),row('202644','web_edit',4,2),row('202644','unknown',1,1),row('<script>','web_view',1,1)]}), [
+    {week:'2026-W44',label:'Webで付箋を閲覧',count:12,users:3},
+    {week:'2026-W44',label:'Webで編集・チェックを保存',count:4,users:2},
+  ]);
+});
+
+test('Web同期の計測非対応会員を未使用に数えない', () => {
+  const stats=featureUsageStats([{usageConsent:true,usageWeek:'2026-W44',usageFeatures:['web_sync']},{usageConsent:true,usageWeek:'2026-W44',usageFeatures:[]}],'2026-W44');
+  assert.deepEqual(stats.rows.find(row=>row.name==='web_sync'),{name:'web_sync',label:'Webと同期（PC）',users:1,reporting:1,percent:50});
+});
+
+
+test('既存Web画面アクセスと新しい操作記録を別々に表示する', () => {
+  const stats=featureUsageStats([]);
+  stats.webAccess=webUsageRows({rows:[{dimensionValues:[{value:'202643'},{value:'web_page_open'}],metricValues:[{value:'5'},{value:'2'}]}]});
+  stats.webUsage=null;
+  const html=generateHtml([],0,10000,0,0,[],[],'2026/10/27',{today:0,week:0,unknown:0},false,'production',stats);
+  assert.match(html,/Web画面へアクセス（ログイン前を含む）/);
+  assert.match(html,/2026-W43/);
+  assert.match(html,/>2人</);
+  assert.match(html,/画面アクセス: 取得済み ／ 操作別記録: 取得できませんでした/);
+});
+
+
+test('少数の利用も小数割合で表示し、GA4人数と通信人数を実操作と呼ばない', () => {
+  const week = isoWeek();
+  const members = Array.from({length:250}, (_,i)=>({generalNumber:10000+i,usageConsent:true,usageWeek:week,usageFeatures:i===0?['note_created']:[]}));
+  const stats=featureUsageStats(members,week);
+  assert.equal(stats.rows.find(row=>row.name==='note_created').percent,0.4);
+  const html=generateHtml([],250,10249,0,0,[],[],'2026/10/28',{today:77,week:145,unknown:0},false,'production',stats);
+  assert.match(html,/0\.4%/);
+  assert.match(html,/GA4で観測した利用者（最新の記録日）/);
+  assert.match(html,/PCの実操作会員数とは異なります/);
+  assert.match(html,/最近の通信状況/);
+  assert.doesNotMatch(html,/本日アクティブ|実利用者 \(DAU\)|起動\/セッション数/);
+});
+
+
+test('GA4最新記録の日付を明示し、取得できない人数・セッションを0と表示しない',()=>{
+  const stats=featureUsageStats([]);
+  const rows=[{date:'2026-10-27',dayOfWeek:'火',memberCount:0,memberCumulative:0,activeUsers:null,sessions:null}];
+  let html=generateHtml(rows,0,10000,0,0,[],[],'2026/10/28',{today:0,week:0,unknown:0},false,'production',stats);
+  assert.match(html,/記録日・人数を確認できません/);
+  assert.doesNotMatch(html,/null人|null回/);
+  stats.gaObservation={date:'2026-10-26',users:5};
+  html=generateHtml(rows,0,10000,0,0,[],[],'2026/10/28',{today:0,week:0,unknown:0},false,'production',stats);
+  assert.match(html,/記録日: 2026-10-26/);
+  assert.doesNotMatch(html,/本日アクティブ|GA4で観測した利用者（本日）/);
 });

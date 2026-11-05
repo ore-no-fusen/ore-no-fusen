@@ -14,7 +14,7 @@ describe('Discord ingest cron route', () => {
     expect(response.status).toBe(401);
   });
 
-  it('runs ingest for authorized cron requests', async () => {
+  it('retires the stateless cron without starting a second import', async () => {
     vi.stubEnv('CRON_SECRET', 'cron-secret');
     vi.stubEnv('FEEDBACK_CONVERSATION_ENABLED', 'false');
 
@@ -22,7 +22,7 @@ describe('Discord ingest cron route', () => {
       headers: { Authorization: 'Bearer cron-secret' },
     }));
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ingested: 0, rejected: [] });
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({ error: 'Retired: use the durable Discord coordinator' });
   });
 });

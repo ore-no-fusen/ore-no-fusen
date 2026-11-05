@@ -38,6 +38,16 @@ describe('AnalyticsLoader low-impact scheduling', () => {
   });
   afterEach(()=>{cleanup();delete (window as any).__TAURI_INTERNALS__;vi.useRealTimers();});
 
+  it('applies saved test-browser exclusion before loading GA4 or sending page views',()=>{
+    localStorage.setItem('fusen-web-usage-excluded','true');
+    try {
+      render(<AnalyticsLoader isTauriBuild={false}/>);
+      expect(document.querySelector('[data-fusen-analytics="ga4"]')).toBeNull();
+      expect((window as any).gtag).toBeUndefined();
+      expect((window as any)['ga-disable-G-MGPKF0MQH4']).toBe(true);
+    } finally {localStorage.removeItem('fusen-web-usage-excluded');}
+  });
+
   it('does not load GA4 or call the member network path during the first minute', async()=>{
     render(<AnalyticsLoader isTauriBuild/>);
     await vi.advanceTimersByTimeAsync(0);

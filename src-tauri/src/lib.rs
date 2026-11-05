@@ -34,6 +34,9 @@ mod settings;
 mod sound; // [NEW] サウンド機能
 mod state;
 mod storage;
+mod trash_cleanup;
+mod trash_history;
+mod maintenance;
 mod tray;
 mod triple_right_click;
 #[allow(dead_code)] // 接続処理は同期UIとDrive層の安全ゲート後に追加する
@@ -53,6 +56,8 @@ static TRASH_OPERATIONS_IN_FLIGHT: std::sync::LazyLock<Mutex<std::collections::H
 
 #[derive(serde::Serialize)]
 struct TrashMoveResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
     moved: bool,
     path: String,
 }
@@ -314,20 +319,116 @@ fn fusen_backup(
     dest_path: String,
     include_trash: bool,
 ) -> Result<usize, String> {
+    let _heavy = maintenance::HEAVY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let count = storage::backup_notes_with_options(&source_path, &dest_path, include_trash)?;
-    let mut settings = storage::load_settings()?;
-    settings.backup_history.insert(
-        0,
-        state::BackupRecord {
-            path: dest_path,
-            created_at: chrono::Local::now().to_rfc3339(),
-            file_count: count,
-        },
-    );
-    settings.backup_history.truncate(2);
-    storage::save_settings(&settings)?;
+    let settings = storage::update_settings(|settings| {
+        settings.backup_history.insert(0, state::BackupRecord {
+            path: dest_path, created_at: chrono::Local::now().to_rfc3339(), file_count: count,
+        });
+        settings.backup_history.truncate(2);
+        Ok(())
+    })?;
     let _ = app.emit("settings_updated", &settings);
     Ok(count)
+}
+
+fn trash_context() -> Result<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf), String> {
+    let settings = storage::load_settings()?;
+    let root = dunce::canonicalize(settings.base_path.ok_or("No data location")?)
+        .map_err(|e| e.to_string())?;
+    let config = storage::get_settings_path()?
+        .parent()
+        .ok_or("No config directory")?
+        .to_path_buf();
+    Ok((
+        root,
+        config.join("trash_operations.jsonl"),
+        config.join("trash_cleanup_operations.jsonl"),
+    ))
+}
+fn authorize_trash_cleanup(root: &Path, automatic: bool) -> Result<(), String> {
+    let settings = storage::load_settings()?;
+    let current = dunce::canonicalize(settings.base_path.ok_or("No data location")?)
+        .map_err(|e| e.to_string())?;
+    if current != root || (automatic && !trash_cleanup::policy_enabled(&trash_policy_path()?, root)?) {
+        return Err("Cleanup disabled or data location changed".into());
+    }
+    Ok(())
+}
+#[tauri::command]
+async fn fusen_trash_cleanup_preview() -> Result<trash_cleanup::Preview, String> {
+    tauri::async_runtime::spawn_blocking(move || fusen_trash_cleanup_preview_blocking()).await.map_err(|e| e.to_string())?
+}
+fn fusen_trash_cleanup_preview_blocking() -> Result<trash_cleanup::Preview, String> {
+    let _guard = storage::NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let (root, log, _) = trash_context()?;
+    trash_cleanup::preview(&root, &log, chrono::Utc::now())
+}
+#[tauri::command]
+async fn fusen_trash_cleanup_run(token: String) -> Result<trash_cleanup::CleanupResult, String> {
+    tauri::async_runtime::spawn_blocking(move || fusen_trash_cleanup_run_blocking(token)).await.map_err(|e| e.to_string())?
+}
+fn fusen_trash_cleanup_run_blocking(token: String) -> Result<trash_cleanup::CleanupResult, String> {
+    let _heavy = maintenance::HEAVY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = storage::NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let (root, log, audit) = trash_context()?;
+    trash_cleanup::execute(&root, &log, &audit, &token, chrono::Utc::now(), || {
+        authorize_trash_cleanup(&root, false)
+    })
+}
+fn trash_policy_path() -> Result<std::path::PathBuf, String> {
+    Ok(storage::get_settings_path()?.with_file_name("trash_cleanup.json"))
+}
+#[tauri::command]
+fn fusen_trash_cleanup_status() -> Result<bool, String> {
+    let (root, _, _) = trash_context()?;
+    trash_cleanup::policy_enabled(&trash_policy_path()?, &root)
+}
+#[tauri::command]
+fn fusen_trash_cleanup_health() -> Result<(), String> {
+    let (_, log, _) = trash_context()?;
+    trash_cleanup::verify_history(&log)
+}
+#[tauri::command]
+async fn fusen_set_trash_cleanup(enabled: bool, token: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || fusen_set_trash_cleanup_blocking(enabled, token)).await.map_err(|e| e.to_string())?
+}
+fn fusen_set_trash_cleanup_blocking(enabled: bool, token: Option<String>) -> Result<(), String> {
+    if !enabled { return trash_cleanup::set_policy(&trash_policy_path()?, None); }
+    let _guard = storage::NOTE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (root, log, _) = trash_context()?;
+    let preview = trash_cleanup::preview(&root, &log, chrono::Utc::now())?;
+    if token.as_deref() != Some(&preview.token) {
+        return Err("Trash changed; preview again before enabling cleanup".into());
+    }
+    trash_cleanup::set_policy(&trash_policy_path()?, Some(&root))
+}
+fn automatic_trash_cleanup() -> Result<(), String> {
+    let _heavy = maintenance::HEAVY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    if !fusen_trash_cleanup_status()? {
+        return Ok(());
+    }
+    let _guard = storage::NOTE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let (root, log, audit) = trash_context()?;
+    let preview = trash_cleanup::preview(&root, &log, chrono::Utc::now())?;
+    let result = trash_cleanup::execute(
+        &root,
+        &log,
+        &audit,
+        &preview.token,
+        chrono::Utc::now(),
+        || authorize_trash_cleanup(&root, true),
+    )?;
+    if !result.errors.is_empty() {
+        return Err(result.errors.join("; "));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -346,7 +447,7 @@ fn fusen_monthly_backup_due() -> Result<bool, String> {
 
 #[tauri::command]
 fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
-    let mut settings = storage::load_settings()?;
+    let settings = storage::update_settings(|settings| {
     settings.monthly_backup_skip_count = settings.monthly_backup_skip_count.saturating_add(1);
     if settings.monthly_backup_skip_count >= 2 {
         settings.monthly_backup_enabled = false;
@@ -355,14 +456,16 @@ fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
         settings.monthly_backup_next_prompt =
             Some((chrono::Local::now() + chrono::Duration::days(7)).to_rfc3339());
     }
-    storage::save_settings(&settings)?;
+    Ok(())
+    })?;
     let _ = app.emit("settings_updated", &settings);
     Ok(())
 }
 
 #[tauri::command]
 fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, String> {
-    let mut settings = storage::load_settings()?;
+    let _heavy = maintenance::HEAVY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let settings = storage::load_settings()?;
     let source_path = settings
         .base_path
         .clone()
@@ -421,13 +524,17 @@ fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, Strin
         created_at: chrono::Local::now().to_rfc3339(),
         file_count: count,
     };
-    settings.monthly_backup_record = Some(record.clone());
-    settings.monthly_backup_skip_count = 0;
-    settings.monthly_backup_next_prompt = Some(
-        (chrono::Local::now() + chrono::Duration::days(settings.monthly_backup_interval_days))
-            .to_rfc3339(),
-    );
-    storage::save_settings(&settings)?;
+    let settings = storage::update_settings(|current| {
+        if current.base_path.as_deref() != Some(source_path.as_str()) {
+            return Err("バックアップ中に保存先が変わりました。作成済みバックアップは保持しています。".into());
+        }
+        current.monthly_backup_record = Some(record.clone());
+        current.monthly_backup_skip_count = 0;
+        current.monthly_backup_next_prompt = Some(
+            (chrono::Local::now() + chrono::Duration::days(current.monthly_backup_interval_days)).to_rfc3339()
+        );
+        Ok(())
+    })?;
     let _ = app.emit("settings_updated", &settings);
     Ok(record)
 }
@@ -1595,7 +1702,7 @@ fn fusen_move_to_trash(
 ) -> Result<TrashMoveResult, String> {
     if !try_begin_trash_operation(&path) {
         logger::log_warn("[trash] duplicate in-flight request ignored");
-        return Ok(TrashMoveResult { moved: false, path });
+        return Ok(TrashMoveResult { moved: false, path, warning: None });
     }
 
     let result = move_note_to_trash_once(&app, &state, &path);
@@ -1614,6 +1721,7 @@ fn move_note_to_trash_once(
     if !current_path.exists() {
         return Ok(TrashMoveResult {
             moved: false,
+            warning: None,
             path: path.to_string(),
         });
     }
@@ -1626,17 +1734,8 @@ fn move_note_to_trash_once(
     let new_path = non_colliding_path(&trash_dir.join(filename.as_ref()));
     let new_path_str = new_path.to_string_lossy().to_string();
 
-    // Move associated assets (images) to Trash as well. Delete originals only after note move succeeds.
-    storage::copy_associated_assets(current_path, &trash_dir)?;
-    storage::rename_note(&path, &new_path_str)?;
-    if let Err(e) = storage::delete_associated_assets(current_path) {
-        logger::log_warn(&format!("[trash] associated asset cleanup skipped: {}", e));
-    }
-
+    let warning = storage::move_to_trash_recorded(current_path, &new_path, "note_window", None)?;
     logic::apply_remove_note(&mut *state.lock().unwrap_or_else(|p| p.into_inner()), &path);
-    if let Err(e) = storage::append_trash_operation(current_path, &new_path, "note_window") {
-        logger::log_warn(&format!("[trash] operation log failed: {}", e));
-    }
     if let Err(e) = launcher::handle_note_trashed(&app, &path, &new_path_str) {
         logger::log_warn(&format!("[trash] launcher cleanup skipped: {}", e));
     }
@@ -1644,6 +1743,7 @@ fn move_note_to_trash_once(
     // ウィンドウのクローズは JS 側（useStickyNoteContextMenu）が担当
     Ok(TrashMoveResult {
         moved: true,
+        warning,
         path: new_path_str,
     })
 }
@@ -3701,9 +3801,9 @@ async fn fusen_show_at_position(
             // Tauri の内部 visibility 状態を更新しない。
             // win.show() で Tauri 状態を同期しないと、後続の Tauri API 呼び出し時に
             // tao が "hidden" 判定してウィンドウを非表示にするバグが発生する。
-            let _ = win.show();
+            win.show().map_err(|e| e.to_string())?;
         } else {
-            logger::log_warn(&format!("window not found label={}", label));
+            return Err(format!("window not found label={}", label));
         }
     }
 
@@ -6363,6 +6463,7 @@ pub fn run() {
             setup_first_launch,
             settings::get_settings,  // ← 「settings箱の中の」と指定！
             settings::save_settings,  // ← 「settings箱の中の」と指定！
+            settings::set_editor_hotkey_enabled,
             capture::fusen_capture_screen, // [NEW] 画面キャプチャ
             sound::fusen_play_sound, // [NEW] サウンド再生
             fusen_search_notes, // [NEW] 全文検索
@@ -6408,6 +6509,11 @@ pub fn run() {
             fusen_pick_folder,
             fusen_import_from_folder,
             fusen_backup,
+            fusen_trash_cleanup_status,
+            fusen_trash_cleanup_health,
+            fusen_trash_cleanup_preview,
+            fusen_trash_cleanup_run,
+            fusen_set_trash_cleanup,
             fusen_monthly_backup_due,
             fusen_snooze_monthly_backup,
             fusen_run_monthly_backup,
@@ -6645,6 +6751,37 @@ pub fn run() {
                 });
             }
 
+            let maintenance_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                loop {
+                    let app = maintenance_app.clone();
+                    let result = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+                        let (root, _, _) = trash_context()?;
+                        let config = storage::get_settings_path()?;
+                        let now = chrono::Utc::now();
+                        match maintenance::claim(&config.with_file_name("maintenance-backup.json"), &root, "backup-check", now) {
+                            Ok(true) => { let _ = app.emit("fusen:maintenance_due", ()); },
+                            Ok(false) => {},
+                            Err(error) => logger::log_warn(&format!("[maintenance] backup check stopped: {error}")),
+                        }
+                        let cleanup = (|| -> Result<(), String> {
+                            if fusen_trash_cleanup_status()? && maintenance::claim(&config.with_file_name("maintenance-trash.json"), &root, "trash", now)? {
+                                automatic_trash_cleanup()?;
+                            }
+                            Ok(())
+                        })();
+                        if let Err(error) = cleanup { logger::log_warn(&format!("[maintenance] Trash cleanup stopped: {error}")); }
+                        Ok(())
+                    }).await;
+                    match result {
+                        Ok(Err(error)) => logger::log_warn(&format!("[maintenance] stopped: {error}")),
+                        Err(error) => logger::log_warn(&format!("[maintenance] worker failed: {error}")),
+                        _ => {}
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(86400)).await;
+                }
+            });
             logger::log_info("アプリの初期化が完了しました");
             Ok(())
         })

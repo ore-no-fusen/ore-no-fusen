@@ -9,15 +9,21 @@ import type { AppSettings } from '../lib/settings-store';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
+export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; editorHotkeyFail?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
         };
+        const persisted = localStorage.getItem('mock-hotkeys');
+        if (persisted) mockOptions.settings = { ...mockOptions.settings, ...JSON.parse(persisted) };
         const iphoneCalls: Array<{ cmd: string; args: any }> = [];
         (window as any).__MOCK_IPHONE_CALLS__ = iphoneCalls;
         // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
+            if (mockOptions.trashBroken) {
+                if (cmd === 'fusen_trash_cleanup_status') return true;
+                if (cmd === 'fusen_trash_cleanup_health' || cmd === 'fusen_trash_cleanup_preview') throw new Error('invalid history');
+            }
             console.log('[Mock Tauri] IPC:', cmd, args);
             if (mockOptions.iphoneReturn) {
                 iphoneCalls.push({ cmd, args });
@@ -98,6 +104,35 @@ updated: 2026-01-31
                         ...mockOptions.settings,
                     };
 
+                case 'hotkey_get_bindings': {
+                    const settings = mockOptions.settings;
+                    return {
+                        new_note_trigger: settings?.new_note_trigger ?? 'shortcut',
+                        new_note: settings?.shortcut_new_note ?? 'ctrl+n',
+                        quick_launcher: settings?.shortcut_quick_launcher ?? 'ctrl+p',
+                        arrange: settings?.shortcut_arrange ?? 'ctrl+shift+l',
+                        toggle_visibility: settings?.shortcut_toggle_visibility ?? 'ctrl+shift+h',
+                        disabled_hotkeys: settings?.disabled_hotkeys ?? [],
+                    };
+                }
+                case 'hotkey_apply': {
+                    const disabled = new Set(mockOptions.settings?.disabled_hotkeys ?? []);
+                    if (args.config.enabled === false) disabled.add(args.action);
+                    if (args.config.enabled === true) disabled.delete(args.action);
+                    mockOptions.settings = { ...mockOptions.settings, disabled_hotkeys: [...disabled] };
+                    localStorage.setItem('mock-hotkeys', JSON.stringify(mockOptions.settings));
+                    return null;
+                }
+                case 'set_editor_hotkey_enabled': {
+                    if (mockOptions.editorHotkeyFail) throw new Error('save failed');
+                    const disabled = new Set(mockOptions.settings?.disabled_editor_hotkeys ?? []);
+                    if (args.enabled) disabled.delete(args.action);
+                    else disabled.add(args.action);
+                    mockOptions.settings = { ...mockOptions.settings, disabled_editor_hotkeys: [...disabled] };
+                    localStorage.setItem('mock-hotkeys', JSON.stringify(mockOptions.settings));
+                    (window as any).__MOCK_EMIT__?.('settings_updated', handleIpc('get_settings', {}));
+                    return null;
+                }
                 // 設定保存
                 case 'fusen_save_config':
                     return null;

@@ -6,7 +6,9 @@ export function formatNewNoteTriggerLabel(
     trigger: string | null | undefined,
     shortcut: string | null | undefined,
     language: 'ja' | 'en',
+    enabled = true,
 ): string {
+    if (!enabled) return language === 'en' ? 'Off' : '無効';
     if (trigger === 'double_ctrl') return language === 'en' ? 'Double Ctrl' : 'Ctrlを2回';
     if (trigger === 'double_shift') return language === 'en' ? 'Double Shift' : 'Shiftを2回';
     return formatShortcutLabel(shortcut || 'ctrl+n').replace(/ \+ /g, '+');

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { trackEvent } from '../utils/analytics';
 
 export type LauncherTab = 'shortcut' | 'qa' | 'term' | 'recipe';
 
@@ -34,7 +35,11 @@ export async function quickOpenNotes(tab: LauncherTab, query: string): Promise<Q
 
 export type WebShareSyncSummary = { uploaded: number; applied: number; unchanged: number; revoked: number; held: string[] };
 export async function syncQuickLauncherToWeb(): Promise<WebShareSyncSummary> {
-    return await invoke<WebShareSyncSummary>('fusen_sync_quick_launcher_to_web');
+    const result = await invoke<WebShareSyncSummary>('fusen_sync_quick_launcher_to_web');
+    if (result.held.length === 0 || result.uploaded > 0 || result.applied > 0) {
+        trackEvent('feature_used', { feature_name: 'web_sync' });
+    }
+    return result;
 }
 
 export async function openQuickNote(path: string): Promise<void> {

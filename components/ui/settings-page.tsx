@@ -9,6 +9,10 @@
 
 "use client"
 
+import TrashRetentionSettings from "@/app/components/TrashRetentionSettings"
+
+import { publicGuideLinks } from '@/lib/public-links';
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import MemberSettings from "@/app/components/MemberSettings"
 import SupportMemberNumber from "@/app/components/SupportMemberNumber"
@@ -190,16 +194,16 @@ export default function SettingsPage({ onClose, defaultTab, iphoneDriveDisconnec
                     setIsBackingUp={setIsBackingUp}
                 />
             case "about":
-                return <AboutSection t={t} />
+                return <AboutSection t={t} language={settings.language} />
             case "iphone":
                 return <IphoneSection settings={settings} onUpdate={updateSetting} t={t} iphoneDriveDisconnected={iphoneDriveDisconnected ?? false} />
             case "help":
                 return <HelpSection
                     t={t}
                     language={settings.language}
-                    launcherShortcutLabel={formatShortcutLabel(settings.shortcut_quick_launcher || "ctrl+p")}
+                    launcherShortcutLabel={settings.disabled_hotkeys?.includes("quick_launcher") ? ui.hotkeys.disabled : formatShortcutLabel(settings.shortcut_quick_launcher || "ctrl+p")}
                     shortcutSettings={settings}
-                    newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language)}
+                    newNoteTriggerLabel={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, settings.language, !settings.disabled_hotkeys?.includes('new_note'))}
                 />
             case "feedback":
                 return <FeedbackSection t={t} language={settings.language} />
@@ -534,6 +538,7 @@ type DataSectionProps = SectionProps & {
 type HotkeyAction = 'new_note' | 'toggle_visibility' | 'arrange' | 'quick_launcher';
 type NewNoteTrigger = 'shortcut' | 'double_ctrl' | 'double_shift';
 type HotkeyBindings = {
+    disabled_hotkeys?: string[];
     new_note_trigger: NewNoteTrigger;
     new_note: string;
     toggle_visibility: string;
@@ -638,7 +643,7 @@ function HotkeySection({ settings, saveSettings, ui }: {
     }
 
     const applyShortcut = async () => {
-        if (!bindings || !captureAction || !candidateShortcut || !checkResult?.available) return
+        if (isSaving || !bindings || !captureAction || !candidateShortcut || !checkResult?.available) return
         setIsSaving(true)
         try {
             await invoke('hotkey_apply', {
@@ -661,7 +666,7 @@ function HotkeySection({ settings, saveSettings, ui }: {
     }
 
     const applyNewNoteTrigger = async (trigger: NewNoteTrigger) => {
-        if (!bindings) return
+        if (!bindings || isSaving) return
         setIsSaving(true)
         try {
             await invoke('hotkey_apply', {
@@ -679,6 +684,19 @@ function HotkeySection({ settings, saveSettings, ui }: {
             setIsSaving(false)
         }
     }
+
+    const setHotkeyEnabled = async (action: HotkeyAction, enabled: boolean) => {
+        if (isSaving) return;
+        setCaptureAction(null);
+        setIsSaving(true);
+        try {
+            await invoke('hotkey_apply', { action, config: { enabled } });
+            const nextBindings = await loadBindings();
+            if (nextBindings) await syncSettingsStore(settings, saveSettings, nextBindings);
+            setMessage(ui.common.saved);
+        } catch (e) { setMessage(ui.common.saveFailed + String(e)); }
+        finally { setIsSaving(false); }
+    };
 
     const updateQuickLauncherTripleRightClick = async (enabled: boolean) => {
         setIsSaving(true)
@@ -714,6 +732,9 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.newDescription}
                     shortcut={bindings.new_note_trigger === 'shortcut' ? bindings.new_note : bindings.new_note_trigger === 'double_ctrl' ? ui.hotkeys.doubleCtrl : ui.hotkeys.doubleShift}
                     defaultShortcut="Ctrl+N"
+                    enabled={!bindings.disabled_hotkeys?.includes('new_note')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('new_note', enabled)}
                     expanded={expandedAction === 'new_note'}
                     onToggle={() => setExpandedAction(expandedAction === 'new_note' ? null : 'new_note')}
                     ui={ui}
@@ -726,6 +747,7 @@ function HotkeySection({ settings, saveSettings, ui }: {
                                 type="radio"
                                 name="new-note-trigger"
                                 checked={bindings.new_note_trigger === 'shortcut'}
+                                disabled={isSaving}
                                 onChange={() => applyNewNoteTrigger('shortcut')}
                             />
                             <div>
@@ -748,7 +770,8 @@ function HotkeySection({ settings, saveSettings, ui }: {
                             name="new-note-trigger"
                             className="mt-1"
                             checked={bindings.new_note_trigger === 'double_ctrl'}
-                            onChange={() => applyNewNoteTrigger('double_ctrl')}
+                            disabled={isSaving}
+                                onChange={() => applyNewNoteTrigger('double_ctrl')}
                         />
                         <div>
                             <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.doubleCtrl}</p>
@@ -762,7 +785,8 @@ function HotkeySection({ settings, saveSettings, ui }: {
                             name="new-note-trigger"
                             className="mt-1"
                             checked={bindings.new_note_trigger === 'double_shift'}
-                            onChange={() => applyNewNoteTrigger('double_shift')}
+                            disabled={isSaving}
+                                onChange={() => applyNewNoteTrigger('double_shift')}
                         />
                         <div>
                             <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.doubleShift}</p>
@@ -778,11 +802,14 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.launcherDescription}
                     shortcut={bindings.quick_launcher}
                     defaultShortcut="Ctrl+P"
+                    enabled={!bindings.disabled_hotkeys?.includes('quick_launcher')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('quick_launcher', enabled)}
                     expanded={expandedAction === 'quick_launcher'}
                     onToggle={() => setExpandedAction(expandedAction === 'quick_launcher' ? null : 'quick_launcher')}
                     ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('quick_launcher')}>{ui.hotkeys.changeKey}</Button>
+                    <Button variant="outline" size="sm" disabled={isSaving} onClick={() => beginCapture('quick_launcher')}>{ui.hotkeys.changeKey}</Button>
                     <div className="mt-4 flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
                         <div>
                             <p className="text-sm font-semibold text-gray-800">{ui.hotkeys.tripleClick}</p>
@@ -797,11 +824,14 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.arrangeDescription}
                     shortcut={bindings.arrange}
                     defaultShortcut="Ctrl+Shift+L"
+                    enabled={!bindings.disabled_hotkeys?.includes('arrange')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('arrange', enabled)}
                     expanded={expandedAction === 'arrange'}
                     onToggle={() => setExpandedAction(expandedAction === 'arrange' ? null : 'arrange')}
                     ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('arrange')}>{ui.hotkeys.changeKey}</Button>
+                    <Button variant="outline" size="sm" disabled={isSaving} onClick={() => beginCapture('arrange')}>{ui.hotkeys.changeKey}</Button>
                 </HotkeyShortcutRow>
                 <HotkeyShortcutRow
                     number="4"
@@ -809,11 +839,14 @@ function HotkeySection({ settings, saveSettings, ui }: {
                     description={ui.hotkeys.visibilityDescription}
                     shortcut={bindings.toggle_visibility}
                     defaultShortcut="Ctrl+Shift+H"
+                    enabled={!bindings.disabled_hotkeys?.includes('toggle_visibility')}
+                    saving={isSaving}
+                    onEnabledChange={(enabled) => setHotkeyEnabled('toggle_visibility', enabled)}
                     expanded={expandedAction === 'toggle_visibility'}
                     onToggle={() => setExpandedAction(expandedAction === 'toggle_visibility' ? null : 'toggle_visibility')}
                     ui={ui}
                 >
-                    <Button variant="outline" size="sm" onClick={() => beginCapture('toggle_visibility')}>{ui.hotkeys.changeKey}</Button>
+                    <Button variant="outline" size="sm" disabled={isSaving} onClick={() => beginCapture('toggle_visibility')}>{ui.hotkeys.changeKey}</Button>
                 </HotkeyShortcutRow>
 
                 <LocalShortcutRow number="5" title={ui.hotkeys.bold} description={ui.hotkeys.boldDescription} settingKey="shortcut_bold" defaultShortcut="Ctrl+B" settings={settings} saveSettings={saveSettings} ui={ui} />
@@ -867,6 +900,19 @@ function LocalShortcutRow({ number, title, description, settingKey, defaultShort
     ui: SettingsPageText;
 }) {
     const [capturing, setCapturing] = useState(false)
+    const action = `editor_${settingKey.replace('shortcut_', '')}`
+    const [enabled, setEnabled] = useState(!settings.disabled_editor_hotkeys?.includes(action))
+    const [saving, setSaving] = useState(false)
+    useEffect(() => { setEnabled(!settings.disabled_editor_hotkeys?.includes(action)) }, [settings.disabled_editor_hotkeys, action])
+    const setEditorEnabled = async (next: boolean) => {
+        if (saving) return
+        setSaving(true)
+        try {
+            await invoke('set_editor_hotkey_enabled', { action, enabled: next })
+            setEnabled(next)
+        } catch (error) { window.alert(ui.common.saveFailed + String(error)) }
+        finally { setSaving(false) }
+    }
     const shortcut = settings[settingKey] ?? defaultShortcut.toLowerCase()
     useEffect(() => {
         if (!capturing) return
@@ -890,7 +936,7 @@ function LocalShortcutRow({ number, title, description, settingKey, defaultShort
         window.addEventListener('keydown', handler, true)
         return () => window.removeEventListener('keydown', handler, true)
     }, [capturing, saveSettings, settingKey, settings, ui.hotkeys.conflict])
-    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} expanded={capturing} onToggle={() => setCapturing(!capturing)} ui={ui}>
+    return <HotkeyShortcutRow number={number} title={title} description={description} shortcut={shortcut} defaultShortcut={defaultShortcut} enabled={enabled} saving={saving} onEnabledChange={setEditorEnabled} expanded={capturing} onToggle={() => setCapturing(!capturing)} ui={ui}>
         <div className="flex items-center justify-between gap-4">
             <Button variant="outline" size="sm" onClick={() => setCapturing(true)}>{capturing ? ui.hotkeys.pressKey : ui.hotkeys.changeKey}</Button>
         </div>
@@ -1135,6 +1181,7 @@ function CrystalFormatSection({ language, ui }: { language: Language; ui: Settin
 async function syncSettingsStore(settings: AppSettings, saveSettings: (settings: AppSettings) => Promise<void>, bindings: HotkeyBindings) {
     await saveSettings({
         ...settings,
+        disabled_hotkeys: bindings.disabled_hotkeys ?? [],
         shortcut_new_note: bindings.new_note,
         new_note_trigger: bindings.new_note_trigger,
         shortcut_toggle_visibility: bindings.toggle_visibility,
@@ -1143,7 +1190,10 @@ async function syncSettingsStore(settings: AppSettings, saveSettings: (settings:
     })
 }
 
-function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children, ui }: {
+function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortcut, expanded, onToggle, children, ui, enabled = true, saving = false, onEnabledChange }: {
+    enabled?: boolean;
+    saving?: boolean;
+    onEnabledChange?: (enabled: boolean) => void;
     number: string;
     title: string;
     description: string;
@@ -1156,7 +1206,7 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
 }) {
     return (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center justify-between gap-5 p-5">
+            <div className="flex flex-col items-stretch gap-3 p-5 lg:flex-row lg:items-center lg:justify-between lg:gap-5">
                 <div className="flex min-w-0 items-start gap-4">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{number}</span>
                     <div>
@@ -1164,12 +1214,17 @@ function HotkeyShortcutRow({ number, title, description, shortcut, defaultShortc
                         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-5">
+                <div className="flex flex-wrap items-center justify-end gap-3 lg:shrink-0 lg:gap-5">
                     <div className="text-right">
                         <p className="text-xs text-gray-500">{ui.common.current}</p>
-                        <code className="text-sm font-semibold text-gray-900">{formatShortcutLabel(shortcut)}</code>
+                        <code className="text-sm font-semibold text-gray-900">{enabled ? formatShortcutLabel(shortcut) : ui.hotkeys.disabled}</code>
                         <p className="mt-1 text-xs text-gray-500">{ui.common.defaultLabel} {formatShortcutLabel(defaultShortcut)}</p>
                     </div>
+                    {onEnabledChange && <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs font-semibold text-gray-700">{enabled ? ui.hotkeys.enabledState : ui.hotkeys.disabledState}</span>
+                        <Switch aria-label={title + ' ' + ui.hotkeys.enable} checked={enabled} disabled={saving} onCheckedChange={onEnabledChange} />
+                        <span className="max-w-[140px] text-center text-xs text-gray-600">{enabled ? ui.hotkeys.disableHint : ui.hotkeys.enableHint}</span>
+                    </div>}
                     <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={expanded}>
                         {ui.common.details}
                         <ChevronRight className={`ml-1 h-4 w-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -1527,6 +1582,7 @@ function DataSection({
 
     return (
         <div className="flex flex-col gap-8">
+            <TrashRetentionSettings basePath={settings.base_path} language={settings.language} />
             <div className="order-1 mb-2">
                 <h2 className="text-2xl font-bold tracking-tight text-slate-950 mb-2">{t('settings.data.title')}</h2>
                 <p className="text-gray-500 text-sm">{t('settings.data.description')}</p>
@@ -1860,7 +1916,7 @@ function DataSection({
     )
 }
 
-function AboutSection({ t }: { t: (key: any) => string }) {
+function AboutSection({ t, language }: { t: (key: any) => string; language: Language }) {
     const microsoftStoreUrl = 'https://apps.microsoft.com/detail/9N4MW0V2MVVG'
     const [version, setVersion] = React.useState<string>('...')
     const [distribution, setDistribution] = React.useState<'msix' | 'desktop'>('desktop')
@@ -2003,12 +2059,12 @@ function AboutSection({ t }: { t: (key: any) => string }) {
                 <p className="text-xs text-gray-500 mb-4">{t('settings.about.relatedLinksDesc')}</p>
                 <div className="grid sm:grid-cols-2 gap-2">
                     {[
-                        { key: 'settings.about.links.manga', url: 'https://github.com/ore-no-fusen/ore-no-fusen/wiki' },
-                        { key: 'settings.about.links.discussions', url: 'https://github.com/ore-no-fusen/ore-no-fusen/discussions' },
-                        { key: 'settings.about.links.releases', url: 'https://github.com/ore-no-fusen/ore-no-fusen/releases/latest' },
-                        { key: 'settings.about.links.docs', url: 'https://ore-no-fusen.github.io/ore-no-fusen/' },
-                        { key: 'settings.about.links.privacy', url: 'https://ore-no-fusen.github.io/ore-no-fusen/100_PRIVACY.html' },
-                        { key: 'settings.about.links.terms', url: 'https://ore-no-fusen.github.io/ore-no-fusen/101_TERMS.html' },
+                        { key: 'settings.about.links.manga', url: publicGuideLinks(language).comic },
+                        { key: 'settings.about.links.discussions', url: publicGuideLinks(language).contact },
+                        { key: 'settings.about.links.releases', url: publicGuideLinks(language).updates },
+                        { key: 'settings.about.links.docs', url: publicGuideLinks(language).manual },
+                        { key: 'settings.about.links.privacy', url: publicGuideLinks(language).privacy },
+                        { key: 'settings.about.links.terms', url: publicGuideLinks(language).terms },
                     ].map((link) => (
                         <button
                             key={link.key}
@@ -2095,7 +2151,8 @@ function StepIllustration({ kind }: { kind: 'write' | 'pin' | 'iphone' }) {
 
 function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSettings, language }: { t: (key: any) => string; newNoteTriggerLabel: string; launcherShortcutLabel: string; shortcutSettings: AppSettings; language: Language }) {
     const isEnglish = language === 'en'
-    const guideUrl = `https://ore-no-fusen.github.io/ore-no-fusen/${isEnglish ? 'en/' : ''}user-guide/`;
+    const ui = getSettingsPageText(language);
+    const guideUrl = publicGuideLinks(isEnglish ? 'en' : 'ja').manual;
     const withNewNoteTrigger = (value: string) => value.replace(/Ctrl\s*\+\s*N/g, newNoteTriggerLabel);
     const onboardingSteps = [
         {
@@ -2147,7 +2204,7 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSe
             icon: <Type className="h-5 w-5" />,
             tone: 'sky' as const,
             label: isEnglish ? "Fold a note or part of its text" : "付箋や本文を折りたたむ",
-            body: isEnglish ? "Click △ at the top-right to fold the whole note, and ▽ to expand it.\nTo fold part of the text in reading mode, hover over a heading or parent line and click ⌄ on its left. Click › to expand.\nIndent child lines with Tab and unindent with Shift+Tab. Editing shows all lines." : "付箋全体：右上の「△」で小さくし、「▽」で元に戻します。\n本文の一部分：閲覧中に見出しや親の行へマウスを置き、左の「⌄」で配下を隠し、「›」で開きます。\n親子の行を作るには、編集時に子の行を Tab で字下げします。Shift+Tab で戻せます。編集中はすべての行が見えます。",
+            body: isEnglish ? "Click △ at the top-right to fold the whole note, and ▽ to expand it.\nTo fold part of the text in reading mode, hover over a heading or parent line and click ⌄ on its left. Click › to expand.\nIndent child lines with Tab and unindent with Shift+Tab. Folding is shared between reading and editing. Open a folded section before editing its hidden text." : "付箋全体：右上の「△」で小さくし、「▽」で元に戻します。\n本文の一部分：閲覧中に見出しや親の行へマウスを置き、左の「⌄」で配下を隠し、「›」で開きます。\n親子の行を作るには、編集時に子の行を Tab で字下げします。Shift+Tab で戻せます。表示中と編集中で開閉状態を共有します。隠れた内容を編集するには先に開きます。",
         },
         {
             icon: <ImageIcon className="h-5 w-5" />,
@@ -2201,17 +2258,17 @@ function HelpSection({ t, newNoteTriggerLabel, launcherShortcutLabel, shortcutSe
         [newNoteTriggerLabel, t('settings.help.shortcutTable.newNote.action')],
         [launcherShortcutLabel, isEnglish ? 'Open or close Quick Launcher.' : 'クイックランチャーを開く／閉じる。'],
         ['Ctrl+F', isEnglish ? 'Search notes while a note is active.' : '付箋を選んで全文検索を開きます。'],
-        [formatShortcutLabel(shortcutSettings.shortcut_toggle_visibility || 'ctrl+shift+h'), isEnglish ? 'Hide all desktop notes; press again to show them.' : '付箋をまとめて隠します。もう一度押すと戻ります。'],
-        [formatShortcutLabel(shortcutSettings.shortcut_arrange || 'ctrl+shift+l'), isEnglish ? 'Arrange open notes by tag.' : '開いている付箋をタグごとに並べます。'],
+        [shortcutSettings.disabled_hotkeys?.includes('toggle_visibility') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_toggle_visibility || 'ctrl+shift+h'), isEnglish ? 'Hide all desktop notes; press again to show them.' : '付箋をまとめて隠します。もう一度押すと戻ります。'],
+        [shortcutSettings.disabled_hotkeys?.includes('arrange') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_arrange || 'ctrl+shift+l'), isEnglish ? 'Arrange open notes by tag.' : '開いている付箋をタグごとに並べます。'],
         ['F2', isEnglish ? 'Edit the active note.' : '操作中の付箋を編集します。'],
         [t('settings.help.shortcutTable.delete.keys'), t('settings.help.shortcutTable.delete.action')],
         [t('settings.help.shortcutTable.capture.keys'), t('settings.help.shortcutTable.capture.action')],
         [t('settings.help.shortcutTable.paste.keys'), t('settings.help.shortcutTable.paste.action')],
         [t('settings.help.shortcutTable.save.keys'), t('settings.help.shortcutTable.save.action')],
-        [formatShortcutLabel(shortcutSettings.shortcut_bold || 'ctrl+b'), isEnglish ? 'Make selected text bold. (while editing)' : '選んだ文字を太字にします。（編集中）'],
-        [formatShortcutLabel(shortcutSettings.shortcut_heading || 'ctrl+h'), isEnglish ? 'Insert a heading. (while editing)' : '見出しを入れます。（編集中）'],
-        [formatShortcutLabel(shortcutSettings.shortcut_bullet_list || 'ctrl+l'), isEnglish ? 'Insert a bullet list. (while editing)' : '箇条書きを入れます。（編集中）'],
-        [formatShortcutLabel(shortcutSettings.shortcut_checkbox || 'ctrl+shift+c'), isEnglish ? 'Insert a checkbox. (while editing)' : 'チェックボックスを入れます。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_bold') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_bold || 'ctrl+b'), isEnglish ? 'Make selected text bold. (while editing)' : '選んだ文字を太字にします。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_heading') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_heading || 'ctrl+h'), isEnglish ? 'Insert a heading. (while editing)' : '見出しを入れます。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_bullet_list') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_bullet_list || 'ctrl+l'), isEnglish ? 'Insert a bullet list. (while editing)' : '箇条書きを入れます。（編集中）'],
+        [shortcutSettings.disabled_editor_hotkeys?.includes('editor_checkbox') ? ui.hotkeys.disabled : formatShortcutLabel(shortcutSettings.shortcut_checkbox || 'ctrl+shift+c'), isEnglish ? 'Insert a checkbox. (while editing)' : 'チェックボックスを入れます。（編集中）'],
         ['Tab / Shift+Tab', isEnglish ? 'Indent or unindent lines while editing.' : '編集中の行を字下げ／字下げ解除します。'],
     ];
     const troubleRows = [

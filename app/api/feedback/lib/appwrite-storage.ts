@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 const APPWRITE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
 
 export class FeedbackImageStorageError extends Error {
@@ -39,7 +40,7 @@ function assertFileId(fileId: string): void {
 
 async function appwriteRequest(path: string, init?: RequestInit): Promise<Response> {
   const config = readConfig();
-  const response = await fetch(`${config.endpoint}${path}`, {
+  const response = await fetchWithDeadline(`${config.endpoint}${path}`, {
     ...init,
     cache: 'no-store',
     headers: {

@@ -8,16 +8,17 @@ import { fileURLToPath } from 'node:url';
 
 const require=createRequire(import.meta.url);const {chromium}=require('@playwright/test');
 test('two-button browser flow, fixed confirmation, command logs, narrow screen and blocked state',async t=>{
-  const state={id:'fixture',version:'5.6.2',operation:'prepare',status:'failed',error:'以前のGitロックエラー',steps:{}};let busy=false;
+  const state={id:'fixture',version:'5.6.2',operation:'prepare',status:'failed',error:'以前のGitロックエラー',steps:{}};let busy=false, packageAttempts=0;
   const info={root:'D:\\開発\\俺の付箋',version:'5.6.1',branch:'develop',changes:[],mainChanges:[],mainRoot:null,state,dataDir:'D:\\開発\\俺の付箋\\my\\release-machine',platform:'win32',log:''};
   const machine={inspect:async()=>({...info,busy}),start:(kind,input)=>{
     if(busy)throw new Error('busy');busy=true;
     if(kind==='prepare') {Object.assign(state,{id:'fixture',version:input.version,operation:kind,status:'running',current:'STEP 1-2 本番ビルド中',steps:{build:{status:'running',started:new Date().toISOString(),title:'本番ビルド'}}});info.log='> powershell.exe -File windows.ps1 -Action Build\n→ npx.cmd tauri build --no-bundle';setTimeout(()=>{Object.assign(state,{status:'confirm',error:null,current:'STEP 1-5 実機確認待ち'});state.steps.build.status='done';state.steps.build.seconds=2;state.steps.install={status:'done',seconds:1};busy=false;},1200);}
-    else {assert.equal(input.confirmed,true);Object.assign(state,{operation:kind,status:'complete',current:'Store提出準備完了',destination:'D:\\提出\\5.6.2\\ore-no-fusen.msix'});info.log+='\n> build-msix.ps1\n✓ 内部exe一致\n✓ main / develop反映';busy=false;}
+    else {assert.equal(input.confirmed,true);if (++packageAttempts === 1) { Object.assign(state,{operation:kind,status:'failed',error:'PR確認待ち: https://github.com/ore-no-fusen/ore-no-fusen/pull/123',mainPR:{number:123,url:'https://github.com/ore-no-fusen/ore-no-fusen/pull/123'}});busy=false;return; } Object.assign(state,{operation:kind,status:'complete',error:null,current:'Store提出準備完了',destination:'D:\\提出\\5.6.2\\ore-no-fusen.msix'});info.log+='\n> build-msix.ps1\n✓ 内部exe一致\n✓ main / develop反映';busy=false;}
   }};
   const token='browser-test';const port=await new Promise(resolve=>{const temp=createServer(machine,{token,port:0});temp.listen(0,'127.0.0.1',()=>{const p=temp.address().port;temp.close(()=>resolve(p));});});
   const server=createServer(machine,{token,port});await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
-  const browser=await chromium.launch({headless:true});t.after(async()=>{await browser.close();await new Promise(resolve=>server.close(resolve));});
+  let browser;t.after(async()=>{if(browser)await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
+  browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1024,height:1100}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${port}/#${token}`);await page.waitForFunction(()=>!document.querySelector('#prepare').disabled);
   assert.equal(await page.locator('button').count(),2);assert.equal(await page.locator('input[type=checkbox]').count(),1);
@@ -30,7 +31,7 @@ test('two-button browser flow, fixed confirmation, command logs, narrow screen a
   await page.screenshot({path:path.join(output,'desktop.png'),fullPage:true});
   await page.setViewportSize({width:360,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:path.join(output,'narrow.png'),fullPage:true});
-  await page.locator('#package').click();await page.waitForFunction(()=>!document.querySelector('#complete').hidden);assert.match(await page.locator('#destination').innerText(),/5.6.2/);
+  await page.locator('#package').click();await page.waitForFunction(()=>!document.querySelector('#pr-link').hidden);assert.equal(await page.locator('#pr-link').getAttribute('href'),'https://github.com/ore-no-fusen/ore-no-fusen/pull/123');assert.equal(await page.locator('#result').isHidden(),true);assert.equal(await page.locator('#package').isEnabled(),true);await page.locator('#package').click();await page.waitForFunction(()=>!document.querySelector('#complete').hidden);assert.match(await page.locator('#destination').innerText(),/5.6.2/);
   assert.equal(await page.locator('#prepare').isDisabled(),true);
   assert.equal(await page.locator('#package').isDisabled(),true);
   assert.match(await page.locator('#prepare').innerText(),/完了/);

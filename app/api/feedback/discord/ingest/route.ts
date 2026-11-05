@@ -1,6 +1,8 @@
+export const maxDuration = 20;
 import { NextResponse } from 'next/server';
-import { isDiscordIngestFailure, runDiscordGatewayIngest, runDiscordIngest } from './run';
+import { isDiscordIngestFailure, runDiscordGatewayIngest, runDiscordIngest, validDiscordScan } from './run';
 import { FeedbackRequestError, readFeedbackJson } from '../../lib/security';
+import { DiscordDependencyError } from './http';
 import { feedbackEnvironment } from '../../lib/environment';
 
 function corsHeaders() {
@@ -51,12 +53,18 @@ export async function POST(req: Request) {
     if (afterId !== undefined && (typeof afterId !== 'string' || !/^\d{15,25}$/.test(afterId))) {
       return NextResponse.json({ error: 'Invalid Discord cursor' }, { status: 400, headers: corsHeaders() });
     }
-    const result = await runDiscordIngest(afterId as string | undefined);
+    if (body.continuation !== undefined && !validDiscordScan(body.continuation)) {
+      return NextResponse.json({ error: 'Invalid Discord scan' }, { status: 400, headers: corsHeaders() });
+    }
+    const result = await runDiscordIngest(afterId as string | undefined, body.continuation);
     if (isDiscordIngestFailure(result)) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: corsHeaders() });
     }
     return NextResponse.json({ ...result, environment: feedbackEnvironment() }, { headers: corsHeaders() });
   } catch (error) {
+    if (error instanceof DiscordDependencyError) {
+      return NextResponse.json({ error: error.message, dependency: { source: 'discord', kind: error.kind, retryAfterMs: error.retryAfterMs } }, { status: 503, headers: corsHeaders() });
+    }
     if (error instanceof FeedbackRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });
     }

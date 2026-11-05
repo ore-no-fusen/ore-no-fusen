@@ -50,22 +50,25 @@ it('新しい投稿がなければFirestoreを読まず、カーソルを維持�
 it('Discordの取得失敗時はカーソルを進めない', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 429 })));
 
-  expect(await runDiscordIngest('123456789012345678')).toEqual({ error: 'Discord API error: 429', status: 502 });
+  await expect(runDiscordIngest('123456789012345678')).rejects.toMatchObject({ kind: 'rate_limit', retryAfterMs: 30000 });
   expect(store.appendMessage).not.toHaveBeenCalled();
 });
 
-it('100件を超える新着があっても古いページまで読み、返信を落とさない', async () => {
-  const message = (number: number) => ({ id: String(number).padStart(18, '0'), channel_id: 'channel-1', author: { id: 'developer-1', bot: false }, content: `返事${number}`, message_reference: { message_id: 'old-message' } });
-  const first = Array.from({ length: 100 }, (_, index) => message(200 - index));
-  const second = [message(100), message(99)];
-  const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('before=') ? second : first), { status: 200 }));
-  vi.stubGlobal('fetch', fetchMock);
-
-  const result = await runDiscordIngest(String(99).padStart(18, '0'));
-
-  expect(fetchMock).toHaveBeenCalledTimes(2);
-  expect(store.appendMessage).toHaveBeenCalledTimes(101);
-  expect(result).toMatchObject({ ingested: 101, lastSeenId: String(200).padStart(18, '0') });
+it('1000件超の返信を有限バッチで欠落なく回収する', async () => {
+  const id=(n:number)=>String(n).padStart(18,'0');
+  const messages=Array.from({length:1201},(_,i)=>({id:id(1300-i),channel_id:'channel-1',author:{id:'developer-1',bot:false},content:'reply',message_reference:{message_id:'old-message'}}));
+  const fetchMock=vi.fn(async(url:string)=>{const p=new URL(url).searchParams;return Response.json(messages.filter(m=>p.has('before')?BigInt(m.id)<BigInt(p.get('before')!):BigInt(m.id)>BigInt(p.get('after')!)).slice(0,Number(p.get('limit'))));});
+  vi.stubGlobal('fetch',fetchMock);
+  let continuation;let lastSeenId=id(99);let calls=0;
+  do {const result=await runDiscordIngest(lastSeenId,continuation);expect(result).not.toHaveProperty('error');if('error'in result)throw Error(result.error);expect(result.ingested).toBeLessThanOrEqual(20);continuation=result.continuation;lastSeenId=result.lastSeenId??lastSeenId;if(++calls>100)throw Error('scan did not finish');}while(continuation);
+  expect(store.appendMessage).toHaveBeenCalledTimes(1201);expect(new Set(store.appendMessage.mock.calls.map(([m])=>m.discordMessageId)).size).toBe(1201);expect(lastSeenId).toBe(id(1300));
+});
+it('部分保存失敗の後は失敗した返信から再開する', async()=>{
+ const msgs=[3,2,1].map(n=>({id:String(n).padStart(18,'0'),channel_id:'channel-1',author:{id:'developer-1'},content:'reply',message_reference:{message_id:'old-message'}}));
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>Response.json(msgs.filter(m=>!url.includes('before=')||BigInt(m.id)<BigInt(new URL(url).searchParams.get('before')!)))));
+ store.appendMessage.mockResolvedValueOnce(true).mockRejectedValueOnce(Error('network'));
+ const first=await runDiscordIngest();expect(first).toHaveProperty('continuation.beforeId',msgs[0].id);
+ if('error'in first)throw Error(first.error);const second=await runDiscordIngest(undefined,first.continuation);expect(second).toMatchObject({ingested:2,lastSeenId:msgs[0].id});
 });
 
 it('Gateway通知を受けた返信をRESTで取り直し、既存の検証経路と冪等保存へ通す', async () => {

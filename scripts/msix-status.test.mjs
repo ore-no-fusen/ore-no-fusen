@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {msixStatus} from './msix-status.mjs';
+const names=['certificate','npm_ci','next_build','tauri_build','msix_create','msix_verify','msix_smoke','frontend_tests','rust_tests'];const good=()=>Object.fromEntries(names.map(name=>[name,{outcome:'success'}]));
+test('a fully validated package succeeds',()=>assert.equal(msixStatus({jobStatus:'success',exists:true,steps:good()}).overall,'success'));
+test('preflight failures, all skipped, missing package and job failure never succeed',()=>{for(const input of [{steps:{}},{exists:false},{jobStatus:'failure'},{steps:{...good(),certificate:{outcome:'failure'}}}])assert.notEqual(msixStatus({jobStatus:'success',exists:true,steps:good(),...input}).overall,'success');});
+test('only callers with prior validation can omit unit and Rust tests',()=>{const steps=good();delete steps.frontend_tests;delete steps.rust_tests;assert.equal(msixStatus({jobStatus:'success',exists:true,steps,prevalidated:true}).overall,'success');assert.equal(msixStatus({jobStatus:'success',exists:true,steps}).overall,'failure');});

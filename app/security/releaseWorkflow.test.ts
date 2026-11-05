@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createRequire } from 'node:module';
+
+const yaml = createRequire(import.meta.url)('js-yaml') as { load(source: string): unknown };
 
 const workflow = fs.readFileSync(
   path.resolve(process.cwd(), '.github/workflows/do-release.yml'),
@@ -8,53 +11,41 @@ const workflow = fs.readFileSync(
 );
 
 describe('release verification gate', () => {
-  it('validates the version before main is changed and builds from the committed source', () => {
-    const verifyJob = workflow.indexOf('verify-release:');
-    const prepareJob = workflow.indexOf('prepare-store-release:');
-    const buildJob = workflow.indexOf('build-store-package:');
-    const verifySection = workflow.slice(verifyJob, prepareJob);
-    const prepareSection = workflow.slice(prepareJob, buildJob);
-    const buildSection = workflow.slice(buildJob);
-
-    expect(verifyJob).toBeGreaterThan(-1);
-    expect(prepareJob).toBeGreaterThan(verifyJob);
-    expect(buildJob).toBeGreaterThan(prepareJob);
-    expect(verifySection).toContain('Normalize and validate version');
-    expect(verifySection).toContain('Verify locked dependencies without changes');
-    expect(verifySection).not.toContain('run: npm test');
-    expect(verifySection).not.toContain('cargo test');
-    expect(prepareSection).toContain('needs: [verify-release]');
-    expect(prepareSection).toContain('Merge develop into main');
-    expect(prepareSection).toContain('Commit and push main');
-    expect(buildSection).toContain('needs: [verify-release, prepare-store-release]');
-    expect(buildSection).toContain('run: npm ci');
-    expect(buildSection).toContain('run: npm run tauri build -- --no-bundle --ci');
-    expect(buildSection).toContain('packaging\\msix\\build-msix.ps1');
-    expect(buildSection).toContain('packaging\\msix\\validate-msix.ps1');
-    expect(workflow).not.toContain('verify-rust:');
+  it('retires both legacy direct-push release workflows', () => {
+    for (const name of ['do-release.yml', 'do-non-app-release.yml']) {
+      const source = fs.readFileSync(path.resolve('.github/workflows', name), 'utf8');
+      expect(source).toContain('contents: read');
+      expect(source).toContain('exit 1');
+      expect(source).not.toContain('git push');
+      expect(source).not.toContain('contents: write');
+    }
   });
 
-  it('uses the Tauri build wrapper that always restores server-only API routes', () => {
-    const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'));
-    const buildScript = fs.readFileSync(
-      path.resolve(process.cwd(), 'scripts/build-tauri.mjs'),
-      'utf8',
-    );
-
+  it('stages the static frontend without moving original API source', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+    const buildScript = fs.readFileSync(path.resolve('scripts/build-tauri.mjs'), 'utf8');
     expect(packageJson.scripts['build:tauri']).toBe('node scripts/build-tauri.mjs');
-    expect(buildScript).toContain("entry.name === 'route.ts'");
-    expect(buildScript).toContain('renameSync(routeFile, parkedFile)');
-    expect(buildScript).toContain('finally');
-    expect(buildScript).toContain('renameSync(parkedFile, routeFile)');
+    expect(buildScript).toContain('buildFrontend');
+    const stage = fs.readFileSync(path.resolve('scripts/tauri-frontend-stage.mjs'), 'utf8');
+    expect(stage).toContain('fs.cpSync(source');
+    expect(stage).not.toContain('renameSync(routeFile');
   });
 
-  it('supports an isolated MSIX dry run without committing a release version', () => {
-    expect(workflow).toContain('dry_run:');
-    expect(workflow).toContain('if: ${{ !inputs.dry_run }}');
-    expect(workflow).toContain("ref: ${{ inputs.dry_run && 'develop' || needs.prepare-store-release.outputs.main_ref }}");
-    expect(workflow).toContain('Apply version only inside the dry-run workspace');
-    expect(workflow).toContain("name: ${{ inputs.dry_run && 'store-msix-dry-run' || 'store-msix' }}");
-    expect(workflow).toContain('Dry run completed. No branch, tag, release, or Store submission was changed.');
+  it('keeps standalone MSIX validation and reusable prevalidation distinct', () => {
+    const msix = fs.readFileSync(path.resolve('.github/workflows/msix-ci.yml'), 'utf8');
+    expect(msix).toContain('workflow_dispatch:');
+    expect(msix).toContain('default: false');
+    const parsed = yaml.load(msix) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> };
+    const checks = Object.values(parsed.jobs).flatMap(job => job.steps).filter(step =>
+      step.run?.includes('npm test') || step.run?.includes('cargo test'));
+    expect(checks).toHaveLength(2);
+    for (const step of checks) {
+      expect(step.if).toContain("steps.validation.outputs.reused != 'true'");
+      expect(step.if).toContain('!inputs.prevalidated');
+    }
+    expect(msix).toContain('run: npm run build');
+    expect(msix).toContain('npx tauri build --no-bundle --ci');
+    expect(msix).not.toContain('git push');
   });
 
   it('keeps the StartupTask extension in the development MSIX', () => {

@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 /**
  * フィードバック送信API (Route Handler)
  *
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
         const discordUrl = new URL(webhookUrl);
         discordUrl.searchParams.set('wait', 'true');
 
-        const response = await fetch(discordUrl.toString(), {
+        const response = await fetchWithDeadline(discordUrl.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

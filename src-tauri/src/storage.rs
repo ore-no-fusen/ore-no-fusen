@@ -20,7 +20,7 @@ pub const RECIPES_DIR_NAME: &str = "Recipes";
 pub const QA_DIR_NAME: &str = "QA";
 pub const TERMS_DIR_NAME: &str = "Terms";
 static SETTINGS_IO_LOCK: Mutex<()> = Mutex::new(());
-static NOTE_WRITE_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static NOTE_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -315,34 +315,54 @@ pub fn get_settings_path() -> Result<PathBuf, String> {
     Ok(config_dir.join("settings.json"))
 }
 
-pub fn append_trash_operation(
-    source: &Path,
-    destination: &Path,
-    origin: &str,
-) -> Result<(), String> {
-    use std::io::Write;
+pub fn trash_history_path(source: &Path) -> Result<PathBuf, String> {
+    #[cfg(test)] {
+        // Fixtures must never fall back to the real APPDATA, even in parallel tests.
+        let parent = dunce::canonicalize(source.parent().ok_or("Missing test note directory")?).map_err(|e| e.to_string())?;
+        let temporary = dunce::canonicalize(std::env::temp_dir()).map_err(|e| e.to_string())?;
+        if !parent.starts_with(temporary) { return Err("Trash tests require an isolated temporary data location".into()); }
+        return Ok(parent.join(".test-trash-history/trash_operations.jsonl"));
+    }
+    #[cfg(not(test))] {
+        let _ = source;
+        Ok(get_settings_path()?.with_file_name("trash_operations.jsonl"))
+    }
+}
 
-    let settings_path = get_settings_path()?;
-    let config_dir = settings_path.parent().ok_or("config directory not found")?;
-    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
-    let log_path = config_dir.join("trash_operations.jsonl");
-    let record = serde_json::json!({
-        "timestamp": chrono::Local::now().to_rfc3339(),
-        "source": source.to_string_lossy(),
-        "destination": destination.to_string_lossy(),
-        "origin": origin,
-    });
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-        .map_err(|e| e.to_string())?;
-    writeln!(file, "{}", record).map_err(|e| e.to_string())
+pub fn append_trash_operation(source: &Path, destination: &Path, origin: &str) -> Result<(), String> {
+    let log = trash_history_path(source)?;
+    crate::trash_history::append(&log, &serde_json::json!({
+        "timestamp": chrono::Utc::now().to_rfc3339(), "source": source, "destination": destination,
+        "origin": origin, "fingerprint": crate::trash_cleanup::fingerprint(destination).ok(),
+    }))
+}
+
+pub fn move_to_trash_recorded(source: &Path, destination: &Path, origin: &str, content: Option<&str>) -> Result<Option<String>, String> {
+    let _notes = NOTE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(expected) = content {
+        if fs::read_to_string(source).map_err(|e| e.to_string())? != expected {
+            return Err("付箋が変更されたため、ごみ箱への移動を中止しました。もう一度お試しください。".into());
+        }
+    }
+    let log = trash_history_path(source)?;
+    let receipt = crate::trash_history::record_move(&log, source, destination, origin, || {
+        if destination.exists() { return Err("Trash destination already exists; nothing was overwritten".into()); }
+        let trash = destination.parent().ok_or("Missing Trash directory")?;
+        copy_associated_assets(source, trash)?;
+        fs::rename(source, destination).map_err(|e| e.to_string())?;
+        // Keep original assets as well: image ownership is not proven by this journal.
+        Ok(())
+    })?;
+    if let Some(warning) = &receipt.warning { crate::logger::log_warn(warning); }
+    Ok(receipt.warning)
 }
 
 pub fn load_settings() -> Result<Settings, String> {
     let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let path = get_settings_path()?;
+    load_settings_unlocked(&get_settings_path()?)
+}
+
+fn load_settings_unlocked(path: &Path) -> Result<Settings, String> {
     if !path.exists() {
         return Ok(Settings::default());
     }
@@ -373,7 +393,10 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
     }
 
     let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let path = get_settings_path()?;
+    save_settings_unlocked(&get_settings_path()?, settings)
+}
+
+fn save_settings_unlocked(path: &Path, settings: &Settings) -> Result<(), String> {
     let temp_path = path.with_extension("json.tmp");
     let rollback_path = path.with_extension("json.rollback");
     let backup_path = settings_backup_path(&path);
@@ -423,6 +446,19 @@ pub fn save_settings(settings: &Settings) -> Result<(), String> {
 
     let _ = fs::remove_file(&rollback_path);
     Ok(())
+}
+
+pub fn update_settings<F: FnOnce(&mut Settings) -> Result<(), String>>(update: F) -> Result<Settings, String> {
+    update_settings_at(&get_settings_path()?, update)
+}
+
+fn update_settings_at<F: FnOnce(&mut Settings) -> Result<(), String>>(path: &Path, update: F) -> Result<Settings, String> {
+    let _guard = SETTINGS_IO_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let mut settings = load_settings_unlocked(path)?;
+    update(&mut settings)?;
+    if let Some(base_path) = &settings.base_path { validate_storage_path(base_path)?; }
+    save_settings_unlocked(path, &settings)?;
+    Ok(settings)
 }
 
 fn settings_backup_path(settings_path: &Path) -> PathBuf {
@@ -998,7 +1034,8 @@ pub fn rename_note_if_unchanged(
     let _guard = NOTE_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let current = fs::read_to_string(old_path).map_err(|e| format!("付箋の再確認に失敗しました: {e}"))?;
+    let current =
+        fs::read_to_string(old_path).map_err(|e| format!("付箋の再確認に失敗しました: {e}"))?;
     if current != expected {
         return Err("同期中にWindows付箋が変更されました。名前変更を保留しました".to_string());
     }
@@ -1063,6 +1100,7 @@ fn write_note_unlocked(path: &str, content: &str) -> Result<(), String> {
 }
 
 pub fn rename_note(old_path: &str, new_path: &str) -> Result<(), String> {
+    let _guard = NOTE_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     fs::rename(old_path, new_path).map_err(|e| e.to_string())
 }
 
@@ -1502,7 +1540,10 @@ mod tests {
         assert!(!new_path.exists());
 
         assert!(write_note_if_absent(&old_path.to_string_lossy(), "overwrite").is_err());
-        assert_eq!(fs::read_to_string(&old_path).unwrap(), "latest Windows version");
+        assert_eq!(
+            fs::read_to_string(&old_path).unwrap(),
+            "latest Windows version"
+        );
     }
 
     #[test]
@@ -2172,39 +2213,27 @@ mod tests {
 
     #[test]
     fn trash_operation_log_records_source_destination_and_origin() {
-        let _guard = SETTINGS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let appdata_dir = tempdir().unwrap();
-        let old_appdata = std::env::var("APPDATA").ok();
-        std::env::set_var("APPDATA", appdata_dir.path());
-
-        append_trash_operation(
-            Path::new("C:/notes/source.md"),
-            Path::new("C:/notes/Trash/source.md"),
-            "quick_launcher",
-        )
-        .unwrap();
-
-        let log = fs::read_to_string(
-            get_settings_path()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join("trash_operations.jsonl"),
-        )
-        .unwrap();
-        let record: serde_json::Value = serde_json::from_str(log.trim()).unwrap();
-        assert_eq!(record["origin"], "quick_launcher");
+        let dir=tempdir().unwrap(); let source=dir.path().join("source.md");
+        let destination=dir.path().join("Trash/source.md");
+        append_trash_operation(&source,&destination,"quick_launcher").unwrap();
+        let log=fs::read_to_string(trash_history_path(&source).unwrap()).unwrap();
+        let record:serde_json::Value=serde_json::from_str(log.trim()).unwrap();
+        assert_eq!(record["origin"],"quick_launcher");
         assert!(record["source"].as_str().unwrap().contains("source.md"));
         assert!(record["destination"].as_str().unwrap().contains("Trash"));
-
-        if let Some(value) = old_appdata {
-            std::env::set_var("APPDATA", value);
-        } else {
-            std::env::remove_var("APPDATA");
-        }
     }
 
-    // === rename_note のテスト ===
+    #[test]
+    fn changed_note_is_not_overwritten_or_moved_by_a_stale_launcher_snapshot() {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("note.md");
+        let destination = dir.path().join("Trash/note.md");
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(&source, "newer content").unwrap();
+        assert!(move_to_trash_recorded(&source, &destination, "quick_launcher", Some("older content")).is_err());
+        assert_eq!(fs::read_to_string(&source).unwrap(), "newer content");
+        assert!(!destination.exists());
+    }
 
     #[test]
     fn test_rename_note() {
@@ -2651,4 +2680,24 @@ tags: ["important"]
             file_path.to_string_lossy()
         );
     }
+    #[test]
+    fn settings_transactions_keep_hotkeys_when_general_settings_change_concurrently() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let workers: Vec<_> = (0..12).map(|i| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                update_settings_at(&path, |settings| {
+                    if i % 2 == 0 { settings.disabled_hotkeys = vec!["new_note".into()]; }
+                    else { settings.font_size = 18.0; }
+                    Ok(())
+                }).unwrap();
+            })
+        }).collect();
+        for worker in workers { worker.join().unwrap(); }
+        let settings = read_settings_file(&path).unwrap();
+        assert_eq!(settings.disabled_hotkeys, vec!["new_note"]);
+        assert_eq!(settings.font_size, 18.0);
+    }
+
 }

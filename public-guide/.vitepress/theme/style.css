@@ -1,0 +1,530 @@
+/* 用語集テーブル: 用語列（2列目）を150px固定、関連ファイル列を200px固定 */
+.glossary-table table {
+  table-layout: fixed;
+  width: 100%;
+}
+.glossary-table table th:nth-child(1),
+.glossary-table table td:nth-child(1) { width: 32px; white-space: nowrap; }
+.glossary-table table th:nth-child(2),
+.glossary-table table td:nth-child(2) { width: 150px; }
+.glossary-table table th:nth-child(4),
+.glossary-table table td:nth-child(4) { width: 200px; }
+
+/* 改版履歴テーブル: No/バージョン/日付列を固定幅・折り返しなし */
+.history-table table {
+  table-layout: fixed;
+  width: 100%;
+}
+.history-table table th:nth-child(1),
+.history-table table td:nth-child(1) { width: 32px; white-space: nowrap; }
+.history-table table th:nth-child(2),
+.history-table table td:nth-child(2) { width: 82px; white-space: nowrap; }
+.history-table table th:nth-child(3),
+.history-table table td:nth-child(3) { width: 72px; white-space: nowrap; }
+
+/* 表名・図名の共通スタイル */
+.vp-doc .table-caption, .vp-doc .mermaid-caption {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--vp-c-text-2);
+  margin: 6px 0 0 !important;
+  letter-spacing: 0.03em;
+}
+/* --- の直後の h2 は border-top を消す（hr と h2 の二重線を防ぐ） */
+.vp-doc hr + h2 {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Markdown テーブルをコンテナ幅いっぱいに広げる */
+.vp-doc table {
+  width: 100%;
+}
+.vp-doc table th:first-child,
+.vp-doc table td:first-child {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+.user-guide-page .vp-doc table {
+  table-layout: auto !important;
+  min-width: 0;
+}
+.user-guide-page .vp-doc table th:first-child,
+.user-guide-page .vp-doc table td:first-child {
+  width: auto !important;
+  min-width: 96px !important;
+  max-width: none !important;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+  text-align: left !important;
+}
+/* 表キャプション直後の要素（table / grid div）は上マージンを詰める */
+.vp-doc .table-caption + table,
+.vp-doc .table-caption + div {
+  margin-top: 4px !important;
+}
+/* グリッドdiv内のtable: VitePressデフォルトmarginをリセット（内側の空白対策） */
+.vp-doc .table-caption + div > table {
+  margin-top: 0 !important;
+}
+
+/* テーブルのヘッダーセルは折り返さない */
+.vp-doc table th {
+  white-space: nowrap;
+}
+
+/* Mermaid内のテキストがバウンディングボックスからはみ出して文字切れするのを防ぎ、文字サイズを統一する */
+.mermaid .nodeLabel,
+.mermaid .edgeLabel {
+  line-height: 1.2 !important;
+  font-family: sans-serif !important;
+  font-size: 13px !important;
+}
+
+.mermaid foreignObject {
+  overflow: visible !important;
+}
+
+/* VitePressのグローバルCSSがMermaid内のpタグ等のマージンを狂わせるのを防ぐ */
+/* 同時に、MermaidのSVG自体を画面幅いっぱい（フルワイド）に広げて余白を潰す */
+.mermaid {
+  display: flex !important;
+  justify-content: flex-start !important; /* 左寄せ */
+  max-width: 100% !important;
+  overflow-x: auto !important; /* 画面より大きい場合はスクロールさせる */
+}
+.mermaid svg {
+  max-width: 100%; /* !important を外すことで Mermaid のインライン max-width が優先される（小図の拡大防止） */
+  width: max-content !important; /* 本来のサイズ以上には拡大しない */
+  height: auto !important;
+}
+
+/* 参加者3人のシーケンス図：5人図と同じ縮尺（708/1843≒0.384）になるよう 540px に制限 */
+.seq-small .mermaid {
+  max-width: 540px !important;
+}
+
+.mermaid p {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* VitePress のレイアウト変数を上書きして、左右のサイドバーを狭め、真ん中を広くする */
+:root {
+  --vp-sidebar-width: 220px; /* 左の「俺の付箋」サイドバーを少し縮小 */
+  --vp-aside-width: 200px;   /* 右の「On this page」を縮小 */
+  --vp-layout-max-width: 100%; /* 全体の最大幅を完全にフルワイドに拡張 */
+}
+
+/* VitePress のコンテンツ幅制限（諸悪の根源である content-container 等）を撤廃して、画面いっぱいに使い切る */
+.VPDoc {
+  width: 100% !important;
+}
+.VPDoc .container,
+.VPDoc .content,
+.VPDoc .content-container,
+.vp-doc {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+.VPDoc .content {
+  margin: 0 !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+.VPDoc .content-container {
+  margin: 0 !important;
+}
+
+/* ダークモード：module-table の固定背景色（#f8fafc 等）をダークテーマ対応カラーに上書き */
+.dark .module-table td {
+  background-color: var(--vp-c-bg-soft) !important;
+  color: var(--vp-c-text-1) !important;
+}
+
+/* モジュール表の余白を詰めてコンパクトにする */
+.module-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.module-table th, .module-table td {
+  border: 1px solid var(--vp-c-divider);
+  padding: 6px 8px; /* 余白を詰める */
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.module-table th:first-child,
+.module-table td:first-child {
+  width: 32px;
+  white-space: nowrap;
+  text-align: center;
+}
+.module-table th code, .module-table td code {
+  white-space: nowrap;
+}
+.module-table th {
+  background: var(--vp-c-bg-mute);
+  font-weight: 700;
+  color: var(--vp-c-text-2);
+  white-space: nowrap;
+}
+
+/* =========================================
+   魂を込めたデザイン（UIモックアップ＆レイアウト復元）
+   ========================================= */
+
+/* ===== グループラベル ===== */
+.group-label {
+  font-size: 12px; font-weight: 700;
+  border-radius: 8px; padding: 6px 14px;
+  display: inline-block; margin-bottom: 16px;
+}
+.group-safari { color: #9a3412; background: #fff7ed; border: 1.5px solid #fb923c; }
+.group-pwa    { color: #065f46; background: #f0fdf4; border: 1.5px solid #34d399; }
+
+/* ===== 画面グリッド（モック + 説明）===== */
+.screens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+/* ===== スマホモック ===== */
+.phone { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.phone-frame {
+  width: 140px; height: 260px;
+  background: #1c1c1e; border-radius: 28px;
+  padding: 10px 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  display: flex; flex-direction: column;
+}
+.phone-notch { width: 48px; height: 8px; background: #1c1c1e; border-radius: 4px; margin: 0 auto 6px; }
+.phone-screen {
+  flex: 1; background: white; border-radius: 20px;
+  overflow: hidden; display: flex; flex-direction: column;
+  position: relative;
+}
+.phone-ver { position: absolute; bottom: 3px; right: 6px; font-size: 6px; color: #d1d5db; font-family: monospace; }
+.screen-name { font-size: 13px; font-weight: 700; color: var(--vp-c-text-1); }
+.screen-cond { font-size: 10px; color: var(--vp-c-text-2); font-family: monospace; }
+
+/* ===== 画面説明 ===== */
+.screen-def {
+  font-size: 11px; color: var(--vp-c-text-2); line-height: 1.6;
+  background: var(--vp-c-bg-soft); border-radius: 8px; padding: 10px 12px;
+  width: 100%; max-width: 200px;
+}
+.screen-def dt { font-weight: 700; color: var(--vp-c-text-1); margin-top: 6px; }
+.screen-def dt:first-child { margin-top: 0; }
+.screen-def dd { margin-left: 0; color: var(--vp-c-text-2); }
+
+/* ===== モックパーツ（ダークモード問わず固定色の部分はそのまま） ===== */
+.mock-text  { font-size: 6px; color: #374151; text-align: center; line-height: 1.5; }
+.mock-title { font-size: 8px; font-weight: 700; color: #111827; }
+.mock-btn   { background: #3b82f6; color: white; font-size: 6px; font-weight: 700; border-radius: 6px; padding: 4px 10px; text-align: center; }
+.mock-card  { background: white; border-radius: 8px; padding: 4px 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 4px; color: #111827; }
+.mock-dot   { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; flex-shrink: 0; }
+.mock-dot-blue { background: #3b82f6; }
+.mock-header { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; color: #111827; }
+.mock-input  { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; height: 30px; width: 100%; padding: 3px 5px; font-size: 6px; color: #9ca3af; }
+.mock-toolbar { display: flex; gap: 3px; padding: 3px 2px; border-top: 1px solid #f3f4f6; }
+.mock-tool-btn { font-size: 7px; color: #6b7280; background: #f9fafb; border-radius: 3px; padding: 1px 3px; }
+.step-badge { font-size: 5px; color: #6b7280; background: #f3f4f6; border-radius: 4px; padding: 2px 5px; }
+.mock-step-card { background: white; border-radius: 6px; padding: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); font-size: 5px; color: #374151; }
+.mock-sub-btn { background: #f3f4f6; color: #374151; font-size: 5px; font-weight: 700; border-radius: 5px; padding: 3px 7px; text-align: center; }
+
+/* ===== データ構造 (store-grid) ===== */
+.store-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+@media (max-width: 700px) { .store-grid { grid-template-columns: 1fr; } }
+
+.store-card {
+  border-radius: 10px;
+  padding: 16px 18px;
+  background: var(--vp-c-bg-soft);
+}
+.store-card h4 {
+  font-size: 13px; font-weight: 800;
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.store-idb    { border: 1.5px solid #eab308; }
+.store-idb h4 { color: #d97706; }
+.store-ls     { border: 1.5px solid #a855f7; }
+.store-ls h4  { color: #9333ea; }
+.store-drive  { border: 1.5px solid #22c55e; }
+.store-drive h4 { color: #16a34a; }
+
+/**
+ * 俺の付箋 ドキュメント・デザインシステム CSS
+ *
+ * VitePressのデフォルトテーマ（var(--vp-c-*) 等）を活用しつつ、
+ * 既存のHTMLデザイン（USDM、Note、Actor等）を再現するためのカスタムスタイル。
+ */
+
+:root {
+  /* カスタムカラー定義 */
+  --c-primary: #3b82f6;       /* Blue */
+  --c-primary-light: #eff6ff;
+  --c-success: #10b981;       /* Green */
+  --c-success-light: #ecfdf5;
+  --c-warning: #f59e0b;       /* Yellow */
+  --c-warning-light: #fffbeb;
+  --c-danger: #ef4444;        /* Red */
+  --c-danger-light: #fef2f2;
+  --c-req: #8b5cf6;           /* Purple for USDM Requirements */
+  --c-req-light: #f5f3ff;
+  --c-bg: #f8fafc;            /* Off-white background */
+  --c-text-main: #1e293b;
+  --c-text-muted: #64748b;
+  --c-border: #e2e8f0;
+}
+
+/* =========================================================
+ * C. 要求仕様カードとバッジ（USDM）
+ * ========================================================= */
+.req-card {
+  background-color: #ffffff;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  border-left: 4px solid var(--c-primary);
+  padding: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.req-card.new {
+  border-left-color: var(--c-success);
+}
+.req-card.req {
+  border-left-color: var(--c-req);
+}
+
+.req-id {
+  display: inline-block;
+  background-color: var(--c-req-light);
+  color: var(--c-req);
+  font-weight: bold;
+  font-size: 0.85em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-right: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+.req-id.done, .impl-badge {
+  background-color: var(--c-success-light);
+  color: var(--c-success);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.req-row {
+  display: flex;
+  margin-bottom: 8px;
+  align-items: flex-start;
+}
+.req-row:last-child {
+  margin-bottom: 0;
+}
+.req-label {
+  flex-shrink: 0;
+  width: 60px;
+  font-size: 0.85em;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  margin-right: 12px;
+  margin-top: 2px;
+}
+.req-label.type-req { background-color: var(--c-req); color: #fff; }
+.req-label.type-reason { background-color: #38bdf8; color: #fff; }
+.req-label.type-spec { background-color: #4f46e5; color: #fff; }
+
+.req-content {
+  flex-grow: 1;
+  font-size: 0.95em;
+  color: var(--c-text-main);
+  line-height: 1.5;
+}
+
+/* =========================================================
+ * D. テーブル・表組み
+ * ========================================================= */
+.vp-doc table {
+  width: 100%;
+  display: table;
+  border-collapse: collapse;
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.vp-doc th {
+  background-color: #f1f5f9;
+  font-weight: bold;
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--c-border);
+}
+.vp-doc td {
+  padding: 10px 14px;
+  border: 1px solid var(--c-border);
+  vertical-align: top;
+}
+.vp-doc td:first-child {
+  /* No column */
+  text-align: center;
+  width: 28px;
+  color: var(--c-text-muted);
+}
+
+/* =========================================================
+ * E. アラートと注釈・Note
+ * ========================================================= */
+.note-box {
+  padding: 16px 16px 16px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+.note-box strong { font-weight: 700; }
+
+.note-blue { background-color: var(--c-primary-light); border-left: 4px solid var(--c-primary); color: #1e3a8a; }
+.note-yellow { background-color: var(--c-warning-light); border-left: 4px solid var(--c-warning); color: #78350f; }
+.note-green { background-color: var(--c-success-light); border-left: 4px solid var(--c-success); color: #064e3b; }
+.note-red { background-color: var(--c-danger-light); border-left: 4px solid var(--c-danger); color: #7f1d1d; }
+
+/* =========================================================
+ * F. 特殊な図解コンポーネント (Actor, Grid)
+ * ========================================================= */
+.actor-group {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.actor-card {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background-color: #fff;
+  border: 1px solid var(--c-border);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  min-width: 180px;
+}
+.actor-icon {
+  font-size: 1.5em;
+  margin-right: 12px;
+}
+.actor-info {
+  display: flex;
+  flex-direction: column;
+}
+.actor-name { font-weight: bold; color: var(--c-text-main); }
+.actor-desc { font-size: 0.8em; color: var(--c-text-muted); }
+
+.actor-card.blue { border-left: 4px solid var(--c-primary); }
+.actor-card.green { border-left: 4px solid var(--c-success); }
+.actor-card.yellow { border-left: 4px solid var(--c-warning); }
+
+/* =========================================================
+ * G. Mermaid図
+ * ========================================================= */
+.mermaid-wrapper {
+  background-color: #1e2432;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 24px 0;
+  overflow-x: auto;
+  display: flex;
+  justify-content: center;
+}
+
+/* 図のサイズ統一 - height 固定で viewBox に沿って縦横比を保ったまま縮小 */
+.vp-doc svg {
+  height: 320px !important;
+  width: auto !important;
+  max-width: 100% !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+.mermaid-caption {
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--c-text-muted);
+  margin-top: -16px;
+  margin-bottom: 24px;
+}
+
+/* =========================================================
+ * H. テストピラミッド（004_TEST）
+ * ========================================================= */
+.vp-doc .pyramid {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 4px;
+  margin: 24px auto;
+  max-width: 600px;
+}
+.vp-doc .pyramid-tier {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 12px 20px !important;
+  border-radius: 6px !important;
+  font-weight: 700 !important;
+  font-size: 0.95em !important;
+  text-align: center !important;
+  color: #fff !important;
+  transition: opacity 0.15s;
+}
+.vp-doc .pyramid-tier:hover { opacity: 0.85; }
+.vp-doc .tier-label {
+  font-size: 0.78em !important;
+  font-weight: 400 !important;
+  margin-top: 4px;
+  opacity: 0.9;
+  display: block !important;
+}
+.vp-doc .tier-e2e  { width: 38% !important; background-color: #7c3aed !important; }
+.vp-doc .tier-unit { width: 64% !important; background-color: #2563eb !important; }
+.vp-doc .tier-rust { width: 90% !important; background-color: #059669 !important; }
+
+/* =========================================================
+ * その他ユーティリティ
+ * ========================================================= */
+.lead-text {
+  font-size: 1.1em;
+  color: var(--c-text-muted);
+  margin-top: -16px;
+  margin-bottom: 32px;
+}
+.version-info {
+  font-size: 0.85em;
+  color: var(--c-text-muted);
+  margin-bottom: 24px;
+}
+
+.help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.help-card{display:block;border:1px solid var(--vp-c-divider);border-radius:12px;padding:18px}.help-card strong{display:block;margin-bottom:8px}.help-pills{display:flex;gap:8px;flex-wrap:wrap}.help-pill{border-radius:20px;padding:4px 12px;background:var(--vp-c-bg-soft)}

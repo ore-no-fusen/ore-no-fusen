@@ -59,12 +59,14 @@ pub(crate) struct HotKeyState {
 #[derive(Clone)]
 struct HotKeyBindings {
     shortcuts: HashMap<HotKeyAction, Shortcut>,
+    disabled_hotkeys: Vec<String>,
     new_note_trigger: String,
     quick_launcher_triple_right_click: bool,
 }
 
 #[derive(Serialize)]
 pub(crate) struct HotKeyBindingsResponse {
+    disabled_hotkeys: Vec<String>,
     new_note_trigger: String,
     new_note: String,
     toggle_visibility: String,
@@ -92,6 +94,7 @@ pub(crate) struct HotKeyRegisterFailuresResponse {
 
 #[derive(Deserialize)]
 pub(crate) struct HotKeyApplyConfig {
+    enabled: Option<bool>,
     shortcut: Option<String>,
     new_note_trigger: Option<String>,
 }
@@ -106,8 +109,10 @@ impl HotKeyState {
 }
 
 fn load_bindings() -> HotKeyBindings {
-    let settings = storage::load_settings().unwrap_or_default();
+    bindings_from_settings(storage::load_settings().unwrap_or_default())
+}
 
+fn bindings_from_settings(settings: crate::state::Settings) -> HotKeyBindings {
     let shortcut_new_note_str = settings
         .shortcut_new_note
         .unwrap_or_else(|| "ctrl+n".to_string());
@@ -155,6 +160,7 @@ fn load_bindings() -> HotKeyBindings {
 
     HotKeyBindings {
         shortcuts,
+        disabled_hotkeys: settings.disabled_hotkeys,
         new_note_trigger: normalize_trigger(settings.new_note_trigger.as_deref()),
         quick_launcher_triple_right_click: settings
             .quick_launcher_triple_right_click
@@ -182,7 +188,20 @@ fn shortcut_to_string(shortcut: &Shortcut) -> String {
 }
 
 fn action_is_registered(action: HotKeyAction, bindings: &HotKeyBindings) -> bool {
-    action != HotKeyAction::NewNote || bindings.new_note_trigger == TRIGGER_SHORTCUT
+    action_is_enabled(action, bindings)
+        && (action != HotKeyAction::NewNote || bindings.new_note_trigger == TRIGGER_SHORTCUT)
+}
+
+fn action_is_enabled(action: HotKeyAction, bindings: &HotKeyBindings) -> bool {
+    !bindings.disabled_hotkeys.iter().any(|id| id == action.id())
+}
+
+fn double_tap_trigger(bindings: &HotKeyBindings) -> &str {
+    if action_is_enabled(HotKeyAction::NewNote, bindings) {
+        &bindings.new_note_trigger
+    } else {
+        TRIGGER_SHORTCUT
+    }
 }
 
 pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
@@ -205,7 +224,7 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                     .read()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone();
-                if current.new_note_trigger == TRIGGER_SHORTCUT
+                if action_is_registered(HotKeyAction::NewNote, &current)
                     && current
                         .shortcuts
                         .get(&HotKeyAction::NewNote)
@@ -226,11 +245,12 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                         serde_json::json!({})
                     );
                     let _ = app.emit("fusen:request_create_global", ());
-                } else if current
-                    .shortcuts
-                    .get(&HotKeyAction::Arrange)
-                    .map(|registered| shortcut == registered)
-                    .unwrap_or(false)
+                } else if action_is_registered(HotKeyAction::Arrange, &current)
+                    && current
+                        .shortcuts
+                        .get(&HotKeyAction::Arrange)
+                        .map(|registered| shortcut == registered)
+                        .unwrap_or(false)
                 {
                     logger::log_info("[Shortcut] Ctrl+Shift+L: fusen_arrange_by_tag trigger");
                     let app_handle = app.clone();
@@ -242,19 +262,21 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                             ));
                         }
                     });
-                } else if current
-                    .shortcuts
-                    .get(&HotKeyAction::QuickLauncher)
-                    .map(|registered| shortcut == registered)
-                    .unwrap_or(false)
+                } else if action_is_registered(HotKeyAction::QuickLauncher, &current)
+                    && current
+                        .shortcuts
+                        .get(&HotKeyAction::QuickLauncher)
+                        .map(|registered| shortcut == registered)
+                        .unwrap_or(false)
                 {
                     logger::log_info("[Shortcut] Ctrl+P: fusen:toggle_quick_launcher emit");
                     let _ = app.emit("fusen:toggle_quick_launcher", ());
-                } else if current
-                    .shortcuts
-                    .get(&HotKeyAction::ToggleVisibility)
-                    .map(|registered| shortcut == registered)
-                    .unwrap_or(false)
+                } else if action_is_registered(HotKeyAction::ToggleVisibility, &current)
+                    && current
+                        .shortcuts
+                        .get(&HotKeyAction::ToggleVisibility)
+                        .map(|registered| shortcut == registered)
+                        .unwrap_or(false)
                 {
                     // --- Ctrl+Shift+H: 全付箋隠す/表示 ---
                     if !can_do_visibility_op() {
@@ -296,14 +318,15 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                 &bindings,
                 HotKeyAction::QuickLauncher,
             );
-            if bindings.new_note_trigger == TRIGGER_SHORTCUT {
+            if action_is_registered(HotKeyAction::NewNote, &bindings) {
                 register_startup_shortcut(
                     app.handle(),
                     &hotkey_state,
                     &bindings,
                     HotKeyAction::NewNote,
                 );
-            } else if let Err(e) = sync_double_tap_hook(app.handle(), &bindings.new_note_trigger) {
+            } else if let Err(e) = sync_double_tap_hook(app.handle(), double_tap_trigger(&bindings))
+            {
                 logger::log_warn(&format!("[Shortcut] double tap hook start failed: {}", e));
             }
             if let Err(e) = sync_quick_launcher_triple_right_click(
@@ -336,7 +359,7 @@ pub(crate) fn register_global_shortcuts(app: &mut tauri::App) {
                 HotKeyAction::QuickLauncher,
                 &bindings.shortcuts[&HotKeyAction::QuickLauncher],
             );
-            if bindings.new_note_trigger == TRIGGER_SHORTCUT {
+            if action_is_registered(HotKeyAction::NewNote, &bindings) {
                 push_register_failure(
                     &hotkey_state,
                     HotKeyAction::NewNote,
@@ -353,6 +376,9 @@ fn register_startup_shortcut(
     bindings: &HotKeyBindings,
     action: HotKeyAction,
 ) {
+    if !action_is_registered(action, bindings) {
+        return;
+    }
     let shortcut = bindings.shortcuts[&action];
     if let Err(e) = app.global_shortcut().register(shortcut) {
         logger::log_warn(&format!("[Shortcut] {} 登録失敗: {}", action.id(), e));
@@ -363,6 +389,12 @@ fn register_startup_shortcut(
 }
 
 fn push_register_failure(state: &HotKeyState, action: HotKeyAction, shortcut: &Shortcut) {
+    if !action_is_registered(
+        action,
+        &state.inner.read().unwrap_or_else(|e| e.into_inner()),
+    ) {
+        return;
+    }
     state
         .register_failures
         .write()
@@ -412,6 +444,7 @@ pub(crate) fn sync_quick_launcher_triple_right_click<R: tauri::Runtime>(
 pub(crate) fn hotkey_get_bindings(state: State<'_, HotKeyState>) -> HotKeyBindingsResponse {
     let bindings = state.inner.read().unwrap_or_else(|e| e.into_inner());
     HotKeyBindingsResponse {
+        disabled_hotkeys: bindings.disabled_hotkeys.clone(),
         new_note_trigger: bindings.new_note_trigger.clone(),
         new_note: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::NewNote]),
         toggle_visibility: shortcut_to_string(&bindings.shortcuts[&HotKeyAction::ToggleVisibility]),
@@ -452,11 +485,13 @@ pub(crate) fn hotkey_check(
 
     {
         let bindings = state.inner.read().unwrap_or_else(|e| e.into_inner());
-        if bindings
-            .shortcuts
-            .get(&action)
-            .map(|current| current == &shortcut)
-            .unwrap_or(false)
+        if action_is_registered(action, &bindings)
+            && app.global_shortcut().is_registered(shortcut)
+            && bindings
+                .shortcuts
+                .get(&action)
+                .map(|current| current == &shortcut)
+                .unwrap_or(false)
         {
             return Ok(HotKeyCheckResponse {
                 available: true,
@@ -465,7 +500,10 @@ pub(crate) fn hotkey_check(
             });
         }
         for (other_action, other_shortcut) in bindings.shortcuts.iter() {
-            if *other_action != action && other_shortcut == &shortcut {
+            if *other_action != action
+                && action_is_registered(*other_action, &bindings)
+                && other_shortcut == &shortcut
+            {
                 return Ok(HotKeyCheckResponse {
                     available: false,
                     reason: "internal".to_string(),
@@ -505,122 +543,66 @@ pub(crate) fn hotkey_apply(
     config: HotKeyApplyConfig,
 ) -> Result<(), String> {
     let action = HotKeyAction::parse(&action)?;
-    let requested_trigger = normalize_trigger(config.new_note_trigger.as_deref());
-    let requested_shortcut =
-        if action == HotKeyAction::NewNote && requested_trigger != TRIGGER_SHORTCUT {
-            None
-        } else {
-            let shortcut = config.shortcut.as_deref().unwrap_or("");
-            if is_reserved_basic_shortcut(shortcut) {
-                return Err("reserved shortcut".to_string());
-            }
-            Some(parse_requested_shortcut(shortcut)?)
-        };
-
     let mut bindings = state.inner.write().unwrap_or_else(|e| e.into_inner());
-    let old_shortcut = bindings.shortcuts[&action];
-    let old_trigger = bindings.new_note_trigger.clone();
-    let old_registered = action_is_registered(action, &bindings);
-    let new_registered = action != HotKeyAction::NewNote || requested_trigger == TRIGGER_SHORTCUT;
-
+    let old = bindings.clone();
+    let next = configured_bindings(&old, action, config)?;
+    let old_shortcut = old.shortcuts[&action];
+    let new_shortcut = next.shortcuts[&action];
+    let old_registered =
+        action_is_registered(action, &old) && app.global_shortcut().is_registered(old_shortcut);
+    let new_registered = action_is_registered(action, &next);
+    if new_registered
+        && next.shortcuts.iter().any(|(other, key)| {
+            *other != action && action_is_registered(*other, &next) && *key == new_shortcut
+        })
+    {
+        return Err("shortcut is already assigned to another action".to_string());
+    }
     if old_registered {
-        if let Err(e) = app.global_shortcut().unregister(old_shortcut) {
-            logger::log_warn(&format!("[Shortcut] hotkey_apply unregister failed: {}", e));
-        }
+        // A failed release must not be reported as a successful OFF.
+        app.global_shortcut()
+            .unregister(old_shortcut)
+            .map_err(|e| e.to_string())?;
     }
-
-    if let Some(new_shortcut) = requested_shortcut {
-        if new_registered {
-            if let Err(e) = app.global_shortcut().register(new_shortcut) {
-                logger::log_warn(&format!("[Shortcut] hotkey_apply register failed: {}", e));
-                if old_registered {
-                    if let Err(rollback_error) = app.global_shortcut().register(old_shortcut) {
-                        logger::log_warn(&format!(
-                            "[Shortcut] hotkey_apply rollback failed: {}",
-                            rollback_error
-                        ));
-                    }
-                }
-                return Err(e.to_string());
-            }
-        }
-
-        bindings.shortcuts.insert(action, new_shortcut);
-    }
-    if action == HotKeyAction::NewNote {
-        if let Err(e) = sync_double_tap_hook(&app, &requested_trigger) {
-            logger::log_warn(&format!(
-                "[Shortcut] hotkey_apply double tap sync failed: {}",
-                e
-            ));
-            if new_registered {
-                if let Some(new_shortcut) = requested_shortcut {
-                    if let Err(unregister_error) = app.global_shortcut().unregister(new_shortcut) {
-                        logger::log_warn(&format!(
-                            "[Shortcut] hotkey_apply hook rollback unregister failed: {}",
-                            unregister_error
-                        ));
-                    }
-                }
-            }
+    if new_registered {
+        if let Err(e) = app.global_shortcut().register(new_shortcut) {
             if old_registered {
-                if let Err(rollback_error) = app.global_shortcut().register(old_shortcut) {
-                    logger::log_warn(&format!(
-                        "[Shortcut] hotkey_apply hook rollback register failed: {}",
-                        rollback_error
-                    ));
-                }
+                let _ = app.global_shortcut().register(old_shortcut);
             }
-            if let Err(rollback_error) = sync_double_tap_hook(&app, &old_trigger) {
-                logger::log_warn(&format!(
-                    "[Shortcut] hotkey_apply hook rollback failed: {}",
-                    rollback_error
-                ));
-            }
-            return Err(e);
+            return Err(e.to_string());
         }
     }
-    if action == HotKeyAction::NewNote {
-        bindings.new_note_trigger = requested_trigger;
-    }
-
-    if let Err(e) = save_bindings(&bindings) {
+    let result = (|| {
+        if action == HotKeyAction::NewNote {
+            sync_double_tap_hook(&app, double_tap_trigger(&next))?;
+        }
+        save_bindings(&next)
+    })();
+    if let Err(e) = result {
         if new_registered {
-            if let Some(new_shortcut) = requested_shortcut {
-                if let Err(unregister_error) = app.global_shortcut().unregister(new_shortcut) {
-                    logger::log_warn(&format!(
-                        "[Shortcut] hotkey_apply save rollback unregister failed: {}",
-                        unregister_error
-                    ));
-                }
-            }
+            let _ = app.global_shortcut().unregister(new_shortcut);
         }
         if old_registered {
-            if let Err(rollback_error) = app.global_shortcut().register(old_shortcut) {
-                logger::log_warn(&format!(
-                    "[Shortcut] hotkey_apply save rollback register failed: {}",
-                    rollback_error
-                ));
-            }
+            let _ = app.global_shortcut().register(old_shortcut);
         }
-        bindings.shortcuts.insert(action, old_shortcut);
-        bindings.new_note_trigger = old_trigger;
         if action == HotKeyAction::NewNote {
-            if let Err(rollback_error) = sync_double_tap_hook(&app, &bindings.new_note_trigger) {
-                logger::log_warn(&format!(
-                    "[Shortcut] hotkey_apply save rollback hook failed: {}",
-                    rollback_error
-                ));
+            if let Err(rollback) = sync_double_tap_hook(&app, double_tap_trigger(&old)) {
+                logger::log_warn(&format!("[Shortcut] hook rollback failed: {}", rollback));
             }
         }
         return Err(e);
     }
+    *bindings = next;
 
     state
         .register_failures
         .write()
         .unwrap_or_else(|e| e.into_inner())
         .retain(|failure| failure.action != action.id());
+
+    if let Ok(settings) = storage::load_settings() {
+        let _ = app.emit("settings_updated", &settings);
+    }
 
     // 保存済みのキー／2回押し設定をトレイ表示へ即時反映する。
     drop(bindings);
@@ -632,6 +614,33 @@ pub(crate) fn hotkey_apply(
     });
 
     Ok(())
+}
+
+fn configured_bindings(
+    old: &HotKeyBindings,
+    action: HotKeyAction,
+    config: HotKeyApplyConfig,
+) -> Result<HotKeyBindings, String> {
+    let mut next = old.clone();
+    if let Some(enabled) = config.enabled {
+        next.disabled_hotkeys.retain(|id| id != action.id());
+        if !enabled {
+            next.disabled_hotkeys.push(action.id().to_string());
+        }
+    }
+    if action == HotKeyAction::NewNote {
+        if let Some(trigger) = config.new_note_trigger.as_deref() {
+            next.new_note_trigger = normalize_trigger(Some(trigger));
+        }
+    }
+    if let Some(shortcut) = config.shortcut.as_deref() {
+        if is_reserved_basic_shortcut(shortcut) {
+            return Err("reserved shortcut".to_string());
+        }
+        next.shortcuts
+            .insert(action, parse_requested_shortcut(shortcut)?);
+    }
+    Ok(next)
 }
 
 fn parse_requested_shortcut(shortcut: &str) -> Result<Shortcut, String> {
@@ -674,22 +683,24 @@ fn is_reserved_basic_shortcut(shortcut: &str) -> bool {
 }
 
 fn save_bindings(bindings: &HotKeyBindings) -> Result<(), String> {
-    let mut settings = storage::load_settings().unwrap_or_default();
-    settings.shortcut_new_note = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::NewNote],
-    ));
-    settings.new_note_trigger = Some(bindings.new_note_trigger.clone());
-    settings.shortcut_toggle_visibility = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::ToggleVisibility],
-    ));
-    settings.shortcut_arrange = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::Arrange],
-    ));
-    settings.shortcut_quick_launcher = Some(shortcut_to_string(
-        &bindings.shortcuts[&HotKeyAction::QuickLauncher],
-    ));
-    settings.quick_launcher_triple_right_click = Some(bindings.quick_launcher_triple_right_click);
-    storage::save_settings(&settings)
+    storage::update_settings(|settings| {
+        settings.disabled_hotkeys = bindings.disabled_hotkeys.clone();
+        settings.shortcut_new_note = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::NewNote],
+        ));
+        settings.new_note_trigger = Some(bindings.new_note_trigger.clone());
+        settings.shortcut_toggle_visibility = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::ToggleVisibility],
+        ));
+        settings.shortcut_arrange = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::Arrange],
+        ));
+        settings.shortcut_quick_launcher = Some(shortcut_to_string(
+            &bindings.shortcuts[&HotKeyAction::QuickLauncher],
+        ));
+        Ok(())
+    })
+    .map(|_| ())
 }
 
 #[cfg(test)]
@@ -699,7 +710,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
+        action_is_registered, bindings_from_settings, configured_bindings, double_tap_trigger,
         is_reserved_basic_shortcut, load_bindings, save_bindings, shortcut_to_string, HotKeyAction,
+        HotKeyApplyConfig,
     };
     use crate::storage;
     use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
@@ -769,6 +782,87 @@ mod tests {
             std::env::set_var("APPDATA", value);
         } else {
             std::env::remove_var("APPDATA");
+        }
+    }
+    #[test]
+    fn disable_survives_settings_reload_without_losing_keys_or_trigger() {
+        let original = bindings_from_settings(crate::state::Settings::default());
+        for action in [
+            HotKeyAction::NewNote,
+            HotKeyAction::QuickLauncher,
+            HotKeyAction::Arrange,
+            HotKeyAction::ToggleVisibility,
+        ] {
+            let off = configured_bindings(
+                &original,
+                action,
+                HotKeyApplyConfig {
+                    enabled: Some(false),
+                    shortcut: None,
+                    new_note_trigger: None,
+                },
+            )
+            .unwrap();
+            assert!(!action_is_registered(action, &off));
+            assert_eq!(off.shortcuts[&action], original.shortcuts[&action]);
+            let mut saved = crate::state::Settings::default();
+            saved.disabled_hotkeys = off.disabled_hotkeys;
+            let reloaded = bindings_from_settings(
+                serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap(),
+            );
+            assert!(!action_is_registered(action, &reloaded));
+            let on = configured_bindings(
+                &reloaded,
+                action,
+                HotKeyApplyConfig {
+                    enabled: Some(true),
+                    shortcut: None,
+                    new_note_trigger: None,
+                },
+            )
+            .unwrap();
+            assert!(action_is_registered(action, &on));
+        }
+    }
+
+    #[test]
+    fn disabled_double_tap_stops_hook_and_remembers_selected_mode() {
+        let initial = bindings_from_settings(crate::state::Settings::default());
+        for mode in ["double_ctrl", "double_shift"] {
+            let gesture = configured_bindings(
+                &initial,
+                HotKeyAction::NewNote,
+                HotKeyApplyConfig {
+                    enabled: None,
+                    shortcut: None,
+                    new_note_trigger: Some(mode.into()),
+                },
+            )
+            .unwrap();
+            assert_eq!(double_tap_trigger(&gesture), mode);
+            let off = configured_bindings(
+                &gesture,
+                HotKeyAction::NewNote,
+                HotKeyApplyConfig {
+                    enabled: Some(false),
+                    shortcut: None,
+                    new_note_trigger: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(double_tap_trigger(&off), "shortcut");
+            assert_eq!(off.new_note_trigger, mode);
+            let on = configured_bindings(
+                &off,
+                HotKeyAction::NewNote,
+                HotKeyApplyConfig {
+                    enabled: Some(true),
+                    shortcut: None,
+                    new_note_trigger: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(double_tap_trigger(&on), mode);
         }
     }
 }

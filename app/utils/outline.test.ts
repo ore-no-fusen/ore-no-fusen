@@ -121,6 +121,14 @@ describe('outline utilities', () => {
         expect(lines.map(line => line.eligible)).toEqual([true, true, false, false, false, false, false]);
     });
 
+    it('folds an indented image with its parent and continues to the next child', () => {
+        const lines = parseOutline('親\n  ![x](a.png)\n  子\n次', [0]);
+        expect(lines[0]).toMatchObject({ subtreeEnd: 2, hasChildren: true });
+        expect(lines[1]).toMatchObject({ hidden: true, eligible: false });
+        expect(lines[2].hidden).toBe(true);
+        expect(lines[3].hidden).toBe(false);
+    });
+
     it('round-trips a flat single-line frontmatter value', () => {
         expect(formatCollapsedLines([7, 1, 7])).toBe('[1, 7]');
         expect(readCollapsedLines('---\noutlineCollapsed: [1, 7]\n---')).toEqual([1, 7]);

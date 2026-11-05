@@ -478,8 +478,8 @@ export default function ImageAnnotationModal({ absolutePath, displayUrl, onSaved
                         cropOutlineRef.current?.hide(); cropOutlineRef.current?.getLayer()?.batchDraw();
                     }}>{language === 'en' ? 'Clear selection' : '選択を解除'}</button>}
                 </div>}
-                <div className="overflow-auto flex-1 flex items-center justify-center bg-gray-100 p-4">
-                    <div ref={containerRef} style={{ cursor: 'crosshair', lineHeight: 0 }} />
+                <div data-testid="annotation-scroll-area" className="min-h-0 min-w-0 overflow-auto flex-1 flex bg-gray-100 p-4">
+                    <div ref={containerRef} className="m-auto shrink-0" style={{ cursor: 'crosshair', lineHeight: 0 }} />
                 </div>
                 <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
                     <div className="flex gap-2">

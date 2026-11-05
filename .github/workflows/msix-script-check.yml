@@ -3,6 +3,7 @@ name: MSIX Script Check
 on:
   workflow_dispatch:
   push:
+    branches: [develop, main]
     paths:
       - "packaging/msix/*.ps1"
       - "packaging/msix/AppxManifest.xml"

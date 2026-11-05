@@ -1,6 +1,6 @@
 ﻿param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Probe', 'Build', 'Install', 'VerifyInstalled', 'OpenFolder')]
+  [ValidateSet('Probe', 'Build', 'Install', 'VerifyInstalled', 'OpenFolder', 'DevVersion')]
   [string] $Action,
   [string] $RepoRoot,
   [string] $ReleaseDirectory,
@@ -63,8 +63,21 @@ function Assert-Installed {
 }
 
 switch ($Action) {
+  'DevVersion' {
+    $packages = @(Get-AppxPackage -Name 'ONFStudios.FUSEN.Dev')
+    if ($packages.Count -gt 1) { throw 'Multiple development packages found; inspect before continuing.' }
+    if ($packages.Count -eq 0) { Write-Output 'NONE' } else { Write-Output $packages[0].Version.ToString() }
+  }
   'Probe' {
     Assert-Idle
+    $certificate = Get-ChildItem Cert:\CurrentUser\My | Where-Object {
+      $_.Subject -eq 'CN=OreNoFusenDev' -and $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date).AddDays(30)
+    } | Sort-Object NotAfter -Descending | Select-Object -First 1
+    $trusted = $null
+    if ($certificate) { $trusted = Get-ChildItem Cert:\CurrentUser\Root | Where-Object Thumbprint -eq $certificate.Thumbprint }
+    if (-not $trusted) {
+      throw 'Local test certificate is not ready. Before building, run packaging\msix\test-msix.ps1 -PrepareCertificateOnly in a visible PowerShell window and approve the Windows certificate dialog yourself.'
+    }
     foreach ($command in @('git','node','npm.cmd','npx.cmd','cargo')) {
       if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Missing command: $command" }
     }

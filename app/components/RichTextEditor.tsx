@@ -23,6 +23,7 @@ import { createLinkTargetRegex, isAbsoluteOrExternalPath } from '../utils/pathUt
 import type { Language } from '@/lib/i18n';
 import { moveCollapsedLines, moveOutlineSubtree, parseOutline } from '../utils/outline';
 import { indentSelectedLines, outdentSelectedLines } from '../utils/editorIndent';
+import { editorOutlineExtension, refreshEditorOutline } from '../utils/editorOutline';
 
 export const IMAGE_WIDGET_CLICK_EVENT = 'fusen:image-widget-click';
 export const getLogicalLineSelectionFallback = (state: EditorState, head: number, forward: boolean): number | null => {
@@ -55,7 +56,6 @@ export const verticalSelectionKeymap: readonly KeyBinding[] = [
     { key: 'ArrowDown', shift: view => extendSelectionVertically(view, true) },
     { key: 'ArrowUp', shift: view => extendSelectionVertically(view, false) },
 ];
-const outlineRefreshEffect = StateEffect.define<null>();
 
 export type PendingImage = { id: string; objectUrl: string };
 
@@ -364,6 +364,7 @@ export interface RichTextEditorProps {
     onEnsureFilePath?: () => Promise<string | null>;
     formatShortcuts?: {
         bold?: string; heading?: string; bulletList?: string; checkbox?: string;
+        disabled?: string[];
     };
     collapsedOutlineLines?: number[];
     onCollapsedOutlineLinesChange?: (lines: number[]) => void;
@@ -728,7 +729,7 @@ const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): bo
     if (!range.empty) return false;
 
     const line = view.state.doc.lineAt(range.head);
-    if (range.head <= line.from || !IMAGE_MARKDOWN_LINE_REGEX.test(line.text)) {
+    if (range.head !== line.to || !IMAGE_MARKDOWN_LINE_REGEX.test(line.text)) {
         return false;
     }
 
@@ -749,6 +750,8 @@ const moveFromImageLineEnd = (view: EditorView, direction: 'left' | 'right'): bo
 
 const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props, ref) => {
     const { value, onChange, filePath, onKeyDown, backgroundColor, cursorPosition, initialCoords, isNewNote, fontSize = 16, onBlur, onSelectionChange, onFirstChar, onEnsureFilePath, formatShortcuts, collapsedOutlineLines = [], onCollapsedOutlineLinesChange } = props;
+    const disabledFormatShortcutsRef = useRef<string[]>([]);
+    disabledFormatShortcutsRef.current = formatShortcuts?.disabled ?? [];
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const themeCompartment = useRef(new Compartment());
@@ -1208,6 +1211,20 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     EditorView.editable.of(true),
                     // 基本的な編集機能
                     history(),
+                    editorOutlineExtension(collapsedOutlineLinesRef.current, index => {
+                        const current = collapsedOutlineLinesRef.current;
+                        const next = current.includes(index) ? current.filter(value => value !== index) : [...current, index].sort((a, b) => a - b);
+                        collapsedOutlineLinesRef.current = next;
+                        const line = viewRef.current?.state.doc.line(index + 1);
+                        if (line && viewRef.current && !current.includes(index)) {
+                            const range = parseOutline(viewRef.current.state.doc.toString())[index];
+                            const end = viewRef.current.state.doc.line(range.subtreeEnd + 1).to;
+                            const selection = viewRef.current.state.selection.main;
+                            if (selection.from < end && selection.to > line.to) viewRef.current.dispatch({ selection: { anchor: line.to } });
+                        }
+                        viewRef.current?.dispatch({ effects: refreshEditorOutline.of(next) });
+                        latestOnCollapsedOutlineLinesChangeRef.current?.(next);
+                    }, () => latestLanguageRef.current === 'en'),
                     keymap.of([
                         ...verticalSelectionKeymap,
                         // Ctrl+B: 太字トグル
@@ -1224,6 +1241,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.bold ?? 'ctrl+b'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_bold')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 if (from === to) {
@@ -1247,6 +1265,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.heading ?? 'ctrl+h'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_heading')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const { lineStart, lineEnd } = getSelectedLineRange(state, from, to);
@@ -1273,6 +1292,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.bulletList ?? 'ctrl+l'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_bullet_list')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;
@@ -1300,6 +1320,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                         {
                             key: shortcutToCodeMirrorKey(formatShortcuts?.checkbox ?? 'ctrl+shift+c'),
                             run: (view) => {
+                                if (disabledFormatShortcutsRef.current.includes('editor_checkbox')) return false;
                                 const { state } = view;
                                 const { from, to } = state.selection.main;
                                 const lineStart = state.doc.lineAt(from).number;
@@ -1727,8 +1748,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
 
     useEffect(() => {
         if (!viewRef.current) return;
-        viewRef.current.dispatch({ effects: outlineRefreshEffect.of(null) });
-    }, [collapsedOutlineLines]);
+        viewRef.current.dispatch({ effects: refreshEditorOutline.of(collapsedOutlineLines) });
+    }, [collapsedOutlineLines, props.language]);
 
 
     useEffect(() => {
@@ -1762,6 +1783,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>((props
                     width: '100%',
                     boxSizing: 'border-box',
                 },
+                '.cm-outline-toggle': {
+                    display: 'inline-grid', placeItems: 'center', width: '12px', marginLeft: '-12px', padding: '0', border: '0',
+                    background: 'transparent', color: '#655f4d', cursor: 'pointer', verticalAlign: 'top',
+                },
+                '.cm-outline-folded': { opacity: '0.5', userSelect: 'none' },
                 '.cm-content, .cm-content *': {
                     fontFamily: '"BIZ UDPGothic", "Meiryo", "Yu Gothic UI", sans-serif !important',
                     fontSize: `${fontSize}px`,

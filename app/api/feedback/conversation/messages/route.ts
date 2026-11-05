@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from '@/app/api/feedback/lib/request-budget';
 import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import {
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
 
     const discordUrl = new URL(webhookUrl);
     discordUrl.searchParams.set('wait', 'true');
-    const discordResponse = await fetch(discordUrl.toString(), {
+    const discordResponse = await fetchWithDeadline(discordUrl.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

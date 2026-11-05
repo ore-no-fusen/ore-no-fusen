@@ -78,6 +78,9 @@ export function parseOutline(body: string, collapsedLines: readonly number[] = [
         if (!current.eligible) continue;
         let end = index;
         for (let next = index + 1; next < result.length; next += 1) {
+            const imageChild = /^!\[[^\]]*\]\([^)]+\)$/.test(source[next].trim())
+                && Math.floor(leadingSpaces(source[next]) / OUTLINE_INDENT) > current.depth;
+            if (imageChild) { end = next; continue; }
             if (!result[next].eligible || result[next].depth <= current.depth) break;
             end = next;
         }

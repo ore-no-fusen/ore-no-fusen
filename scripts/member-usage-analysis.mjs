@@ -62,8 +62,9 @@ export function buildUsageComparison(members,historyRows,now=new Date(),anonymiz
     if(member.usageConsent!==true)classification=member.usageConsent===false?'consent_denied':'consent_unknown';
     else if(!firstUseAt)classification=reports.length?'legacy_unmeasured':'unmeasured';
     else if(!baselineMature)classification='new';
+    else if(recentActive)classification='active';
     else if(!recentObserved)classification='observation_insufficient';
-    else classification=recentActive?'active':'churn_candidate';
+    else classification='churn_candidate';
     const isBaselineEligible=member.usageConsent===true&&baselineMature&&baselineObserved&&baselineSupported;
     const reason=member.usageConsent!==true?(member.usageConsent===false?'同意拒否。機能利用は保存していません':'同意状態不明。機能利用を収集していません')
       :!firstUseAt?'新計測スキーマの初回実利用なし。旧週次情報では初回7日間を復元できません'

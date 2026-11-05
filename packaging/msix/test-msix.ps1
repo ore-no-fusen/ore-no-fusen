@@ -1,6 +1,7 @@
 param(
   [switch] $SkipBuild,
   [switch] $NoInstall,
+  [switch] $PrepareCertificateOnly,
   [string] $ReleaseDirectory,
   [string] $DevPackageVersion
 )
@@ -164,6 +165,13 @@ function Import-BuildEnvironment {
     }
     [Environment]::SetEnvironmentVariable($Name, $Value)
   }
+}
+
+if ($PrepareCertificateOnly) {
+  if ($env:GITHUB_ACTIONS -eq 'true') { throw 'Local certificate setup must not run in CI.' }
+  $null = Get-OrCreateDevCertificate
+  Write-Host 'Local development certificate is ready. Restart the release machine.'
+  return
 }
 
 if (-not $SkipBuild) {

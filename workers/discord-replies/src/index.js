@@ -19,10 +19,19 @@ export class DiscordIngestCoordinator {
   }
 
   async fetch(request) {
+    if (request.method === 'POST' && new URL(request.url).pathname === '/reset-auth') {
+      return this.state.blockConcurrencyWhile(async () => {
+        for (const key of ['ingest-auth-error', 'ingest-upstream-error', RETRY_KEY]) await this.state.storage.delete(key);
+        return Response.json({ retryReady: true, checkpointRetained: true });
+      });
+    }
     if (request.method !== 'POST' || new URL(request.url).pathname !== '/tick') {
       return new Response(null, { status: 404 });
     }
     return this.state.blockConcurrencyWhile(async () => {
+      const upstreamStop = await this.state.storage.get('ingest-upstream-error');
+      if (upstreamStop?.repairRevision === (this.env.INGEST_REPAIR_REVISION ?? '0')) return Response.json({ error: 'Discord configuration requires repair and operator retry' }, { status: 503 });
+      if (upstreamStop) { await this.state.storage.delete('ingest-upstream-error'); await this.state.storage.delete(RETRY_KEY); }
       const retryAfter = await this.state.storage.get(RETRY_KEY);
       if (typeof retryAfter === 'number' && Date.now() < retryAfter) {
         return Response.json({ deferred: true });
@@ -31,7 +40,12 @@ export class DiscordIngestCoordinator {
       if (!secret) return Response.json({ error: 'Missing ingest configuration' }, { status: 503 });
       const environment = ingestEnvironment(this.env);
       if (!environment) return Response.json({ error: 'Invalid ingest environment' }, { status: 503 });
+      const fingerprint = await credentialFingerprint(secret);
+      const stopped = await this.state.storage.get('ingest-auth-error');
+      if (stopped?.credentialFingerprint === fingerprint) return Response.json({ error: 'Ingest authentication failed; rotate the repaired credential to resume' }, { status: 503 });
+      if (stopped) await this.state.storage.delete('ingest-auth-error');
       const afterId = await this.state.storage.get(CURSOR_KEY);
+      const continuation = await this.state.storage.get('discord-scan');
       try {
         // Check before the write request: an old Preview may still share the
         // production collections and must never receive a development import.
@@ -48,11 +62,22 @@ export class DiscordIngestCoordinator {
         const response = await fetch(INGEST_URLS[environment], {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
-          body: JSON.stringify(afterId ? { afterId } : {}),
+          body: JSON.stringify({ ...(afterId ? { afterId } : {}), ...(continuation ? { continuation } : {}) }),
           signal: AbortSignal.timeout(20_000),
           redirect: 'manual',
         });
-        if (!response.ok) throw new Error('Import rejected');
+        if (!response.ok) {
+          const failure = await response.json().catch(() => null);
+          if (failure?.dependency?.source === 'discord') {
+            if (failure.dependency.kind === 'authentication') await this.state.storage.put('ingest-upstream-error', { code: 'discord_authentication', at: Date.now(), repairRevision: this.env.INGEST_REPAIR_REVISION ?? '0' });
+            if (failure.dependency.kind === 'rate_limit' && Number.isFinite(failure.dependency.retryAfterMs)) await this.state.storage.put(RETRY_KEY, Date.now() + Math.max(RETRY_DELAY_MS, failure.dependency.retryAfterMs));
+          }
+          if (response.status === 401 || response.status === 403) {
+            await this.state.storage.put('ingest-auth-error', { status: response.status, at: Date.now(), credentialFingerprint: fingerprint });
+          }
+          if (response.status === 429) await this.state.storage.put(RETRY_KEY, Date.now() + Math.max(RETRY_DELAY_MS, retryAfterMs(response.headers.get('Retry-After'))));
+          throw new Error('Import rejected');
+        }
         const result = await response.json();
         // A development deployment must confirm its isolated data namespace.
         if (environment === 'development' && result.environment !== 'development') {
@@ -66,12 +91,24 @@ export class DiscordIngestCoordinator {
             || (afterId && BigInt(result.lastSeenId) < BigInt(afterId))) {
             throw new Error('Invalid checkpoint');
           }
-          if (result.lastSeenId !== afterId) await this.state.storage.put(CURSOR_KEY, result.lastSeenId);
         }
+        const next = result.continuation;
+        if (next && (!['beforeId','highWaterId','floorId'].every(key => typeof next[key] === 'string' && /^\d{1,25}$/.test(next[key]))
+          || next.environment !== environment || typeof next.channelId !== 'string'
+          || BigInt(next.floorId) >= BigInt(next.beforeId) || BigInt(next.beforeId) > BigInt(next.highWaterId)
+          || (afterId && next.floorId !== afterId) || result.lastSeenId !== afterId
+          || (continuation && (next.highWaterId !== continuation.highWaterId || next.floorId !== continuation.floorId || next.channelId !== continuation.channelId || BigInt(next.beforeId) >= BigInt(continuation.beforeId))))) throw new Error('Invalid scan continuation');
+        if (!next && continuation && result.lastSeenId !== continuation.highWaterId) throw new Error('Incomplete scan checkpoint');
+        await this.state.storage.transaction(async txn => {
+          if (next) await txn.put('discord-scan', next);
+          else if (continuation) await txn.delete('discord-scan');
+          if (result.lastSeenId !== undefined && result.lastSeenId !== afterId) await txn.put(CURSOR_KEY, result.lastSeenId);
+        });
         // Only counts are returned/logged, never credentials or message bodies.
         return Response.json({ ingested: result.ingested, rejected: result.rejected.length });
       } catch {
-        await this.state.storage.put(RETRY_KEY, Date.now() + RETRY_DELAY_MS);
+        const existingDelay = await this.state.storage.get(RETRY_KEY) ?? 0;
+        await this.state.storage.put(RETRY_KEY, Math.max(existingDelay, Date.now() + RETRY_DELAY_MS));
         return Response.json({ error: 'Discord import failed; checkpoint retained' }, { status: 502 });
       }
     });
@@ -81,6 +118,13 @@ export class DiscordIngestCoordinator {
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (request.method === 'POST' && path === '/ingest/retry') {
+      const secret = env.FEEDBACK_CONVERSATION_INGEST_SECRET?.trim();
+      if (!secret || request.headers.get('authorization') !== 'Bearer ' + secret) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      const environment = ingestEnvironment(env);
+      if (!environment) return new Response(null, { status: 503 });
+      return env.INGEST_COORDINATOR.get(env.INGEST_COORDINATOR.idFromName(environment)).fetch('https://coordinator/reset-auth', { method: 'POST' });
+    }
     if (!path.startsWith('/gateway/') || !env?.DISCORD_GATEWAY) return new Response(null, { status: 404 });
     const id = env.DISCORD_GATEWAY.idFromName('discord-feedback-gateway');
     const internalUrl = new URL(request.url);
@@ -115,6 +159,6 @@ export default {
     if (!response.ok) throw new Error('Discord server import failed');
   },
 };
-import { DiscordGateway } from './gateway.js';
+import { DiscordGateway, credentialFingerprint, retryAfterMs } from './gateway.js';
 
 export { DiscordGateway };

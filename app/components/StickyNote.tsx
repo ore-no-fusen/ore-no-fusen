@@ -11,6 +11,7 @@
  */
 
 'use client';
+import { useNoteReading } from '../hooks/useNoteReading';
 import { storeFavoriteInOrder } from '../utils/shelfMotion';
 import { useStoreFavoriteListener } from '../hooks/useStoreFavoriteListener';
 
@@ -253,6 +254,9 @@ const StickyNote = memo(function StickyNote() {
         },
         onSaveError: () => setShowSaveError(true),
     });
+    useNoteReading(noteContentRef, urlPath ?? '', !loading && !isPoolRef.current && !!note && !!content.trim()
+        && note?.meta.context !== 'はじめての付箋（消してOK）'
+        && note?.meta.context !== 'Your first note (safe to delete)');
     const collapsedOutlineLines = useMemo(() => readCollapsedLines(rawFrontmatter), [rawFrontmatter]);
     const updateCollapsedOutlineLines = useCallback((lines: number[]) => {
         const nextFrontmatter = updateFrontmatterValue(
@@ -2035,7 +2039,7 @@ const StickyNote = memo(function StickyNote() {
      */
     useEffect(() => {
         const handleKeyDown = async (e: KeyboardEvent) => {
-            if ((settings.new_note_trigger ?? 'shortcut') === 'double_ctrl' && e.key === 'Control' && !e.repeat) {
+            if (!settings.disabled_hotkeys?.includes('new_note') && (settings.new_note_trigger ?? 'shortcut') === 'double_ctrl' && e.key === 'Control' && !e.repeat) {
                 const now = performance.now();
                 const lastDown = lastJsDoubleCtrlDownMsRef.current;
                 const elapsed = lastDown === null ? Number.POSITIVE_INFINITY : now - lastDown;
@@ -2063,7 +2067,7 @@ const StickyNote = memo(function StickyNote() {
                 return;
             }
             // [New] 設定された新規付箋ショートカット: 新規付箋作成
-            if ((settings.new_note_trigger ?? 'shortcut') === 'shortcut' && matchesShortcut(e, settings.shortcut_new_note ?? 'ctrl+n')) {
+            if (!settings.disabled_hotkeys?.includes('new_note') && (settings.new_note_trigger ?? 'shortcut') === 'shortcut' && matchesShortcut(e, settings.shortcut_new_note ?? 'ctrl+n')) {
                 e.preventDefault();
                 // [NEW] JS 1.2s スロットル撤去: Pool アーキテクチャで webview 新規作成しないためクラッシュ原因が消えた
                 // フォールバック側（openNoteWindow）は page.tsx の 400ms global throttle + Rust 500ms で保護
@@ -2103,7 +2107,7 @@ const StickyNote = memo(function StickyNote() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath, settings.new_note_trigger, settings.shortcut_new_note]);
+    }, [editBodyRef, handleDeleteNote, resolveCreateFolderPath, settings.new_note_trigger, settings.shortcut_new_note, settings.disabled_hotkeys]);
 
     // ============================================================
     // レンダリング
@@ -2261,7 +2265,7 @@ const StickyNote = memo(function StickyNote() {
                     onAlarmClick={() => setShowAlarmDialog(true)}
                     alarmAtStr={alarmAtStr}
                     alarmTooltip={alarmTooltip || t('menu.setAlarm')}
-                    newNoteShortcutHint={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, language)}
+                    newNoteShortcutHint={formatNewNoteTriggerLabel(settings.new_note_trigger, settings.shortcut_new_note, language, !settings.disabled_hotkeys?.includes('new_note'))}
                     onCreateNewNote={async () => {
                         const folderPath = await resolveCreateFolderPath();
                         if (!folderPath) {
@@ -2424,6 +2428,7 @@ const StickyNote = memo(function StickyNote() {
                                         heading: settings.shortcut_heading,
                                         bulletList: settings.shortcut_bullet_list,
                                         checkbox: settings.shortcut_checkbox,
+                                        disabled: settings.disabled_editor_hotkeys,
                                     }}
                                     onBlur={isEditing ? handleEditBlur : undefined}
                                     onSelectionChange={isEditing ? handleSelectionChange : undefined}

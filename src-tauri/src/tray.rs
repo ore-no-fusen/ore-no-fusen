@@ -54,6 +54,9 @@ pub(crate) fn format_shortcut_for_menu(shortcut: &str) -> String {
 }
 
 fn menu_label(base: &str, shortcut: &str, is_en: bool) -> String {
+    if shortcut.is_empty() {
+        return base.to_string();
+    }
     if is_en {
         format!("{}\t{}", base, shortcut)
     } else {
@@ -89,22 +92,38 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     // [i18n] Get language and shortcut settings
     let settings = crate::settings::get_settings(app.clone()).unwrap_or_default();
     let is_en = settings.language == "en";
-    let new_note_shortcut = new_note_shortcut_for_menu(
-        settings.new_note_trigger.as_deref().unwrap_or("shortcut"),
-        settings.shortcut_new_note.as_deref().unwrap_or("ctrl+n"),
-        is_en,
+    let shortcut_hint = |action: &str, hint: String| {
+        if settings.disabled_hotkeys.iter().any(|id| id == action) {
+            String::new()
+        } else {
+            hint
+        }
+    };
+    let new_note_shortcut = shortcut_hint(
+        "new_note",
+        new_note_shortcut_for_menu(
+            settings.new_note_trigger.as_deref().unwrap_or("shortcut"),
+            settings.shortcut_new_note.as_deref().unwrap_or("ctrl+n"),
+            is_en,
+        ),
     );
-    let toggle_shortcut = format_shortcut_for_menu(
-        settings
-            .shortcut_toggle_visibility
-            .as_deref()
-            .unwrap_or("ctrl+shift+h"),
+    let toggle_shortcut = shortcut_hint(
+        "toggle_visibility",
+        format_shortcut_for_menu(
+            settings
+                .shortcut_toggle_visibility
+                .as_deref()
+                .unwrap_or("ctrl+shift+h"),
+        ),
     );
-    let arrange_shortcut = format_shortcut_for_menu(
-        settings
-            .shortcut_arrange
-            .as_deref()
-            .unwrap_or("ctrl+shift+l"),
+    let arrange_shortcut = shortcut_hint(
+        "arrange",
+        format_shortcut_for_menu(
+            settings
+                .shortcut_arrange
+                .as_deref()
+                .unwrap_or("ctrl+shift+l"),
+        ),
     );
 
     // Labels
@@ -147,11 +166,14 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         } else {
             "クイックランチャーを開く"
         },
-        &format_shortcut_for_menu(
-            settings
-                .shortcut_quick_launcher
-                .as_deref()
-                .unwrap_or("ctrl+p"),
+        &shortcut_hint(
+            "quick_launcher",
+            format_shortcut_for_menu(
+                settings
+                    .shortcut_quick_launcher
+                    .as_deref()
+                    .unwrap_or("ctrl+p"),
+            ),
         ),
         is_en,
     );
