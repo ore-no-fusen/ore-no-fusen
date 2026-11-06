@@ -354,7 +354,6 @@ export default function QuickLauncher() {
         operationRef.current = true; setBusy(true); setError(null);
         try {
             const result = await storeTag(activeTagFilter);
-            setShowStored(true);
             await reloadItems(activeTab, debouncedQuery);
             if (result.failed.length) setError(result.failed.join(' / '));
         } catch(e) { setError(String(e)); }
