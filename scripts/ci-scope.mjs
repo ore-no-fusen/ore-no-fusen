@@ -20,14 +20,9 @@ export function classifyScope(paths) {
   };
 }
 
-// Only known non-app paths may omit the installer test. Unknown paths fail closed.
-export function needsMsix(paths) {
-  if (paths.length > 0 && paths.every(isDocumentContent)) return false;
-  return paths.length === 0 || paths.some(path => !(
-    /^(docs\/|docs-v2\/|\.planning\/|app\/landing\/|workers\/badges\/)/.test(path) ||
-    /^(README[^/]*|LICENSE|AGENTS\.md|CLAUDE\.md)$/.test(path) ||
-    /^scripts\/member-(stats|usage-analysis)(\.test)?\.mjs$/.test(path)
-  ));
+// MSIX is built and verified on the release PC, not in GitHub Actions.
+export function needsMsix(_paths) {
+  return false;
 }
 
 export function gatePasses(scope, results) {

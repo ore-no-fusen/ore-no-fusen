@@ -99,6 +99,12 @@ jobs:
         if: steps.validation.outputs.reused != 'true'
       - run: npx tsc --noEmit
         if: steps.validation.outputs.reused != 'true'
+      - name: Web and API production build
+        if: steps.validation.outputs.reused != 'true'
+        env:
+          GDRIVE_CLIENT_ID: msix-ci-placeholder
+          GDRIVE_CLIENT_SECRET: msix-ci-placeholder
+        run: npm run build
       - name: Tauri frontend build (without MSIX)
         if: steps.validation.outputs.reused != 'true' && (needs.scope.outputs.msix != 'true')
         run: npm run build:tauri
