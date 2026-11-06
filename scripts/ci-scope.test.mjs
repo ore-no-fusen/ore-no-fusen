@@ -10,16 +10,16 @@ import { classifyScope, gatePasses, needsMsix } from './ci-scope.mjs';
 test('dashboard and documentation changes do not build installers', () => {
   assert.equal(needsMsix(['scripts/member-stats.mjs', 'scripts/member-usage-analysis.test.mjs', 'docs/CI_MERGE_POLICY.md']), false);
 });
-test('app, dependencies, configuration, CI and unknown paths require MSIX', () => {
+test('GitHub does not build MSIX for app, dependencies, configuration or unknown paths', () => {
   for (const path of ['app/shared/page.tsx', 'components/ui/button.tsx', 'worker/index.js', 'public/icon.png', 'package-lock.json', 'src-tauri/Cargo.lock', 'next.config.mjs', 'vitest.config.ts', '.github/workflows/test.yml', 'scripts/ci-msix-certificate.ps1', 'unknown']) {
-    assert.equal(needsMsix([path]), true, path);
-    assert.equal(needsMsix(['docs/a.md', path]), true, path);
+    assert.equal(needsMsix([path]), false, path);
+    assert.equal(needsMsix(['docs/a.md', path]), false, path);
   }
-  assert.equal(needsMsix([]), true);
+  assert.equal(needsMsix([]), false);
 });
 test('gate rejects failure, cancellation, missing and unexpectedly skipped tests', () => {
   const scope = classifyScope(['app/page.tsx']);
-  const green = { scope: 'success', usage: 'success', frontend: 'success', rust: 'success', msix: 'success', documentation: 'skipped', designDocs: 'skipped' };
+  const green = { scope: 'success', usage: 'success', frontend: 'success', rust: 'success', msix: 'skipped', documentation: 'skipped', designDocs: 'skipped' };
   assert.equal(gatePasses(scope, green), true);
   assert.equal(gatePasses(classifyScope(['app/landing/page.tsx']), { ...green, msix: 'skipped' }), true);
   for (const name of Object.keys(green)) for (const result of ['failure', 'cancelled', 'skipped', 'success', 'pending', undefined]) {
@@ -27,7 +27,7 @@ test('gate rejects failure, cancellation, missing and unexpectedly skipped tests
     assert.equal(gatePasses(scope, { ...green, [name]: result }), false, `${name}: ${result}`);
   }
   for (const invalid of [null, 'unknown', {}, { ...scope, docsOnly: 'false' }]) assert.equal(gatePasses(invalid, green), false);
-  assert.equal(gatePasses({ ...scope, docsOnly: true }, green), false);
+  assert.equal(gatePasses({ ...scope, docsOnly: true, msix: true }, green), false);
 });
 
 test('only document content can omit application checks', () => {
@@ -42,7 +42,7 @@ test('only document content can omit application checks', () => {
     assert.equal(classifyScope([file]).docsOnly, false, file);
   }
   assert.equal(classifyScope([]).docsOnly, false);
-  assert.equal(classifyScope([]).msix, true);
+  assert.equal(classifyScope([]).msix, false);
 });
 
 test('documentation gate requires the actual document builds and rejects arbitrary skips', () => {
@@ -76,7 +76,7 @@ test('actual Git diffs include deleted app paths when renamed into docs', () => 
     execFileSync(process.execPath, [script, 'documents', base, head], { cwd });
     git('mv', 'app/page.tsx', 'docs/moved.md'); git('commit', '-qm', 'move'); const moved = git('rev-parse', 'HEAD').trim();
     const classified = JSON.parse(execFileSync(process.execPath, [script, head, moved], { cwd, env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' }));
-    assert.equal(classified.docsOnly, false); assert.equal(classified.msix, true);
+    assert.equal(classified.docsOnly, false); assert.equal(classified.msix, false);
     assert.throws(() => execFileSync(process.execPath, [script, 'documents', head, moved], { cwd, stdio: 'pipe' }));
     assert.throws(() => execFileSync(process.execPath, [script, 'bad-sha', head], { cwd, stdio: 'pipe' }));
   } finally {

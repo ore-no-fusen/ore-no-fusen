@@ -16,11 +16,9 @@ E2Eは空きポートと固有のNext出力を使う。終了・中断時には�
 
 ## CIの役割と期限
 
-### Tauri画面ビルドの重複を避ける
+### CIとPCの分担
 
-MSIXが必要な変更ではfrontendの単独build:tauriを省略し、MSIX jobのtauri buildがbeforeBuildCommandで行う画面ビルドへ集約する。MSIX不要のコード変更ではfrontendのbuild:tauriを残す。判定が不明ならfrontendのビルドを残し、gateは不正なscopeを拒否する。文書だけは従来どおりアプリ検査対象外。
-
-画面ビルド失敗はTauri exe作成を失敗させ、梱包・導入を進めずMSIX jobとgateを失敗させる。単独MSIX起動の前提テストやWeb/API production buildは省略しない。失敗の検知は先行job合格後のexe作成時へ移る。MSIX時の画面buildは2回から1回になる。通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。
+GitHubではWeb/API production buildとTauri用画面build、必要なテストを行い、MSIXは作成しない。MSIXの署名・導入・実機確認はPCで行い、合格した実行ファイルからStore提出物を作る。失敗・未確認を成功扱いしない。
 
 表1 CIの工程上限（分）
 
@@ -28,21 +26,17 @@ MSIXが必要な変更ではfrontendの単独build:tauriを省略し、MSIX job�
 |---|---:|---|
 | scope / 分析 / gate | 各3 | gateは前提失敗・キャンセル・不明を拒否 |
 | frontend / Rust | 各30 | 全単体・型・E2E・静的出力 / all-target locked tests |
-| MSIX全体 | 70 | 単独呼出しのテスト時間も含む上限 |
-| 証明書 / npm ci / Web production | 2 / 5 / 10 | Web/API検証は静的ビルドで代用しない |
-| Rust単独検査 / Tauri実行ファイル | 15 / 25 | 通常Test合格済みなら同一SHAの単体/Rust再検査だけ省略 |
-| 梱包署名 / 署名検証 / 導入起動 | 5 / 2 / 3 | OS処理にも工程上限を適用 |
 | 公開ガイドのbuild / deploy | 各10 | 独立した公開repoにも同じ設定 |
 
-旧do-release/do-non-app-releaseは直接push経路を廃止し、明示的に失敗終了する案内専用へ変更する。リモートの旧エントリーも無効化し、正規のリリースマシンと保護PRを使う。Rust Windows Testは独立した手動診断専用とし、通常PRではTestの全target検査へ集約する。前提検査が失敗したときは高価なMSIXビルドを始めない。TestはPR/branch単位で実行を直列化し、実行中の古いSHAを自動取消しない。待機中はGitHubの最新1件に集約されるため、未開始の古いrunの取消しと計算済み工程の破棄を区別する。修正コミット追加で旧SHAの検査が不要になった場合に手動取消するなら、旧SHA・理由を保存し、新しいheadの全CI合格を別に確認する。確認待ちだけを理由に同じSHAのビルドを再実行しない。PowerShell構文検査はfeature pushとPRの二重実行を避け、PRとmain/develop統合後に行う。
+旧do-release/do-non-app-releaseは直接push経路を廃止し、明示的に失敗終了する案内専用へ変更する。リモートの旧エントリーも無効化し、正規のリリースマシンと保護PRを使う。Rust Windows Testは独立した手動診断専用とし、通常PRではTestの全target検査へ集約する。GitHubではMSIXを作成しない。TestはPR/branch単位で実行を直列化し、実行中の古いSHAを自動取消しない。待機中はGitHubの最新1件に集約されるため、未開始の古いrunの取消しと計算済み工程の破棄を区別する。修正コミット追加で旧SHAの検査が不要になった場合に手動取消するなら、旧SHA・理由を保存し、新しいheadの全CI合格を別に確認する。確認待ちだけを理由に同じSHAのビルドを再実行しない。PowerShell構文検査はfeature pushとPRの二重実行を避け、PRとmain/develop統合後に行う。
 
 status JSONはrun ID・attempt・SHAごとの成果物へ保存する。必須工程がskip/失敗/未完了なら補助JSONをsuccessにしない。共有ci-statusブランチへの書込みは廃止する。成果物保存自体が失敗した場合もGitHub jobの結果を確認する。最新head/baseのすべての適用対象チェックと統合後CIの合格を要求する条件は変わらない。
 
 ### PR成功証跡を使う統合後検証
 
-develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全条件は [CI_MERGE_POLICY.md](CI_MERGE_POLICY.md) に従う。
+develop統合後のfrontend・rustは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全条件は [CI_MERGE_POLICY.md](CI_MERGE_POLICY.md) に従う。
 
-ログの `Verified ... identical tree/parents/environment` と参照元run、gateの `Audited ... remains successful` を確認する。MSIX状態は `overall: reused` / `created: false` と参照元を記録し、新規パッケージは生成しない。署名・導入の成功根拠は参照元runに残る。新規診断パッケージが必要なら手動MSIXを使う。参照元の変化でgateが失敗したら原因を調べ、Actionsの **Re-run all jobs（全ジョブ再実行）** で全検査を行う。失敗jobだけでは成功済みの再利用jobが走り直さないため、全件復旧時には選ばない。確認待ちだけを理由に同じSHAを再実行しない。
+ログの `Verified ... identical tree/parents/environment` と参照元run、gateの `Audited ... remains successful` を確認する。参照元が変われば全ジョブを再実行する。
 
 小さなsuite別JSON証跡も1日保持とする。整理後は次の統合時に全検査へ戻る。PC署名鍵・常設runnerは追加しない。
 

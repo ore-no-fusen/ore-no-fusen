@@ -18,7 +18,7 @@
 
 ## develop統合後の同一入力の検証（2026-10-28追加）
 
-古いSHAの成功だけを流用することは禁止する。その上で、develop統合後のfrontend・rust・msixは、現在SHAのジョブで以下をすべて照合した場合だけ、同一入力を検査済みと認定する。この条項はPR検査を省略する規則ではない。
+古いSHAの成功だけを流用することは禁止する。その上で、develop統合後のfrontend・rustは、現在SHAのジョブで以下をすべて照合した場合だけ、同一入力を検査済みと認定する。この条項はPR検査を省略する規則ではない。
 
 - 同じリポジトリ内のPRが通常mergeされ、現在コミットの親2個がPRのbase/headと同じ順序で一致する。push前SHAもbaseと一致し、ソースtree全体がPRの検査済みtreeと一致する。依存lock・workflow・コマンド・設定の変更もtree差として拒否する。
 - 最新の該当PR実行が完了・成功しており、run/attempt・workflow・ブランチ・リポジトリ・PRを照合する。別PR、fork、過去の成功への巻戻し、失敗・キャンセル・未完了は認めない。
@@ -26,16 +26,16 @@
 - OS/image版・Node・必要時Rustの実際の版・関連環境設定のハッシュが完全一致する。期限切れ、欠落、API障害、環境不明、不一致では通常の全検査を実行する。
 - 最後のCI gateで参照元の最新run/attemptと成功、統合元/先を再確認する。再利用後に参照元が変わった場合はgateを失敗させる。復旧時はActionsの **Re-run all jobs（全ジョブ再実行）** を選ぶ。再実行されるジョブでは再利用せず実検査を行う。失敗jobだけの再実行では成功済みの再利用jobが残るため、全検査の復旧にはならない。
 
-PR、main、merge_group、手動実行、強制push、親が2個でない統合、2回目以降のattemptは全検査を行う。scope・文書・分析・外部Vercel等はこの再利用の対象外。現在SHAのジョブとgateは必ず実行し、未実施を成功表示へ置き換えない。MSIX再利用時は状態を `reused` / `created:false` とし、新しいパッケージは作成せず参照元runを記録する。正式提出物の作成・署名・実機確認は従来のリリース手順に従う。
+PR、main、merge_group、手動実行、強制push、親が2個でない統合、2回目以降のattemptは全検査を行う。scope・文書・分析・外部Vercel等はこの再利用の対象外。現在SHAのジョブとgateは必ず実行し、未実施を成功表示へ置き換えない。GitHubではMSIXを作成しない。正式提出物の作成・署名・実機確認は従来のリリース手順に従う。
 
 ## テスト構成
 
 - Testはpull_request、main/developへのpush、merge_groupで起動し、pathsフィルターを付けない。
-- 文書コンテンツだけの変更では、frontend・rust・Dashboard analysis・MSIXを起動しない。scopeがMarkdown/画像等の明示した対象だけであることを判定し、documentationが実際の差分と空白エラーを検査する。public-guideのコンテンツを変更した場合は公開マニュアルのbuild/リンク検査も行う。
+- 文書コンテンツだけの変更では、frontend・rust・Dashboard analysisを起動しない。scopeがMarkdown/画像等の明示した対象だけであることを判定し、documentationが実際の差分と空白エラーを検査する。public-guideのコンテンツを変更した場合は公開マニュアルのbuild/リンク検査も行う。
 - 文書以外の変更や混在変更では、frontendの全単体・型・Tauri向けフロントビルド、rustの`cargo test --locked`、Dashboard analysisのNodeテストを従来どおり実行する。文書フォルダー内でもスクリプト・設定・依存lockの変更はコンテンツだけとは判定しない。botにも同じ条件を適用する。
-- scopeは実際のgit diffをNUL区切りで読み、リネームの両側も調べる。既知の分析/文書/LPだけならMSIXを省略できる。アプリ、components、worker、public、依存、設定、CI、未知のパスを含む変更はMSIX必須。空差分・判定失敗で成功扱いしない。
-- MSIX CIはTestから再利用する。単独の手動診断も可能。MSIXを必要とする変更では、梱包・署名検証・インストール・起動まで成功を要求する。インストーラー生成だけで合格にしない。
-- CI gateはalwaysで全結果を集約する。文書だけの場合はdocumentation成功とアプリ4ジョブの明示的skipを、通常変更ではアプリ検査成功を要求する。MSIXが不要と明示された場合だけMSIXのskipを許可する。scopeの失敗、出力不明、必要な検査の失敗/キャンセル/skipはすべて拒否する。
+- scopeは実際のgit diffをNUL区切りで読み、リネームの両側も調べる。GitHubではMSIXを作成しない。Web/APIとTauri向けフロントはそれぞれビルドを確認する。
+- MSIXの作成・導入・実機確認と提出物との一致は、このPCで[リリース手順書](010_RELEASE.md)に従って行う。
+- CI gateは全結果を集約し、文書だけならdocumentation成功、それ以外はfrontend・rust・分析検査成功を要求する。不要なMSIXジョブは明示的skipとし、失敗・キャンセル・不明は拒否する。
 - docs-v2に変更があれば、Testから再利用workflowのdesign-docsを一度呼び出し、build/リンク検査の成功もgateへ含める。独立したpush workflowとの二重起動はしない。mainへのpush時だけPagesへ配信し、PR/developではbuildのみ行う。手動の文書検証も可能だが、main以外から配信しない。
 - 他の起動済みCI（docs、PowerShell検査、Rust Windows Test等）の失敗も最終確認で見落とさない。
 
