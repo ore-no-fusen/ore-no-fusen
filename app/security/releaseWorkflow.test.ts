@@ -31,9 +31,9 @@ describe('release verification gate', () => {
     expect(stage).not.toContain('renameSync(routeFile');
   });
 
-  it('keeps standalone MSIX validation and reusable prevalidation distinct', () => {
+  it('does not offer manual GitHub MSIX builds and retains reusable validation safeguards', () => {
     const msix = fs.readFileSync(path.resolve('.github/workflows/msix-ci.yml'), 'utf8');
-    expect(msix).toContain('workflow_dispatch:');
+    expect(msix).not.toContain('workflow_dispatch:');
     expect(msix).toContain('default: false');
     const parsed = yaml.load(msix) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> };
     const checks = Object.values(parsed.jobs).flatMap(job => job.steps).filter(step =>
