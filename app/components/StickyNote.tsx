@@ -1130,15 +1130,26 @@ const StickyNote = memo(function StickyNote() {
                 const win = (await import('@tauri-apps/api/webviewWindow')).getCurrentWebviewWindow();
                 const success = await storeFavoriteInOrder(
                     () => saveNoteContent(body, rawFrontmatterForAlarmRef.current, false),
-                    async () => { await invoke('fusen_store_favorite', {path:payload.path, windowLabel:win.label, requestId:payload.requestId}); stored = true; },
+                    async () => {
+                        const saved = await invoke<string>('fusen_store_favorite', {path:payload.path, windowLabel:win.label, requestId:payload.requestId});
+                        stored = true;
+                        // Bulk storage may register this note after saving the latest edits.
+                        // Adopt the committed metadata so a subsequent save cannot undo it.
+                        const { front } = splitFrontMatter(saved);
+                        rawFrontmatterForAlarmRef.current = front;
+                        setRawFrontmatter(front);
+                        const tagMatch = front.match(/(?:^|\n)tags:\s*\[([^\]]*)\]/);
+                        if (tagMatch) setCurrentTags(tagMatch[1].split(',')
+                            .map(tag => tag.trim().replace(/^["']|["']$/g, '')).filter(Boolean));
+                    },
                     async () => {},
                     async () => {
                         await win.hide();
                         if (process.env.NODE_ENV === 'development') void invoke('fusen_debug_log', {message: `[LauncherStorage] hidden_ms=${Math.round(performance.now() - storageStarted)}`}).catch(() => {});
                     },
                     async () => {
-                        if (stored) await invoke('fusen_take_out_favorite', {path:payload.path});
-                        await win.show();
+                        if (stored && !payload.wasStored) await invoke('fusen_take_out_favorite', {path:payload.path});
+                        if (payload.wasStored) await win.hide(); else await win.show();
                     },
                 );
                 if (!success) throw new Error('保存できなかったため画面に戻します');

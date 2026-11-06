@@ -26,7 +26,13 @@ for (const mode of ['individual', 'bulk'] as const) {
                             case 'fusen_quick_open_notes': return order.map(path => notes.find(note => note.path === path));
                             case 'fusen_storage_snapshot': return { paths: [...stored], items: notes.filter(note => stored.has(note.path)), tags: ['仕事'] };
                             case 'fusen_request_store': stored.add(args.path!); emit(); return;
-                            case 'fusen_store_tag': notes.forEach(note => stored.add(note.path)); emit(); return { stored: 3, failed: [] };
+                            case 'fusen_store_tag':
+                                notes.forEach(note => {
+                                    if (!note.tags.includes('shortcut')) note.tags.push('shortcut');
+                                    if (!order.includes(note.path)) order.push(note.path);
+                                    stored.add(note.path);
+                                });
+                                emit(); return { stored: 3, failed: [] };
                             case 'fusen_open_quick_note': stored.delete(args.path!); emit(); return;
                             case 'fusen_reorder_quick_note': {
                                 const index = order.indexOf(args.path!);
@@ -52,7 +58,13 @@ for (const mode of ['individual', 'bulk'] as const) {
         }
         await expect(page.getByRole('button', { name: '登録Aを取り出す', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: '登録一覧', exact: true })).toHaveClass(/text-sky-300/);
-        await expect(page.getByText('未登録C', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('未登録C', { exact: true })).toHaveCount(mode === 'bulk' ? 1 : 0);
+        if (mode === 'bulk') {
+            await page.getByText('未登録C', { exact: true }).click();
+            await expect(page.getByRole('button', { name: '未登録Cを格納', exact: true })).toBeVisible();
+            await page.getByText('未登録C', { exact: true }).click();
+            await expect(page.getByText('未登録C', { exact: true })).toBeVisible();
+        }
         await page.getByText('登録A', { exact: true }).click();
         await expect(page.getByRole('button', { name: '登録Aを格納', exact: true })).toBeVisible();
         await page.getByText('登録A', { exact: true }).click();
@@ -60,9 +72,9 @@ for (const mode of ['individual', 'bulk'] as const) {
         const rowB = page.getByRole('button').filter({ has: page.getByText('登録B', { exact: true }) });
         await rowB.hover();
         await rowB.getByRole('button', { name: '上へ', exact: true }).click();
-        await expect(page.locator('span.truncate')).toHaveText(['登録B', '登録A']);
+        await expect(page.locator('span.truncate')).toHaveText(mode === 'bulk' ? ['登録B', '登録A', '未登録C'] : ['登録B', '登録A']);
         const calls: string[] = await page.evaluate(() => Reflect.get(window, '__LAUNCHER_TEST_CALLS__'));
-        expect(calls.filter(cmd => cmd === 'fusen_open_quick_note')).toHaveLength(2);
+        expect(calls.filter(cmd => cmd === 'fusen_open_quick_note')).toHaveLength(mode === 'bulk' ? 4 : 2);
         expect(calls).not.toContain('fusen_remove_from_shelf');
         await page.screenshot({ path: info.outputPath(`${mode}-registrations-remain.png`) });
     });

@@ -52,7 +52,7 @@ afterEach(cleanup);
 beforeEach(() => {
     vi.clearAllMocks();
     backend.listeners.clear();
-    backend.notes = [noteA, noteB, plain];
+    backend.notes = [noteA, noteB, plain].map(note => ({ ...note, tags: [...note.tags] }));
     backend.order = [noteA.path, noteB.path];
     backend.stored = new Set();
     backend.failed = [];
@@ -63,7 +63,11 @@ beforeEach(() => {
     }));
     backend.storeTag.mockImplementation(async () => {
         for (const note of backend.notes) {
-            if (!backend.failed.includes(note.path)) backend.stored.add(note.path);
+            if (!backend.failed.includes(note.path)) {
+                if (!note.tags.includes('shortcut')) note.tags.push('shortcut');
+                if (!backend.order.includes(note.path)) backend.order.push(note.path);
+                backend.stored.add(note.path);
+            }
         }
         return { stored: backend.stored.size, failed: backend.failed.map(() => '保存できませんでした') };
     });
@@ -87,6 +91,19 @@ async function bulkStore() {
 }
 
 describe('individual and bulk storage keep the launcher usable', () => {
+    it('newly registered notes remain after opening and can be reordered', async () => {
+        render(<QuickLauncher />);
+        await bulkStore();
+        fireEvent.click(screen.getByRole('button', { name: '未登録Cを取り出す' }));
+        await screen.findByRole('button', { name: '未登録Cを格納' });
+        fireEvent.click(screen.getByText('未登録C'));
+        await waitFor(() => expect(backend.open).toHaveBeenCalledTimes(2));
+        const row = screen.getByText('未登録C').closest('[role="button"]')!;
+        fireEvent.click(row.querySelector('button[title="上へ"]')!);
+        await waitFor(() => expect(backend.order).toEqual([noteA.path, plain.path, noteB.path]));
+        expect(backend.notes.find(note => note.path === plain.path)?.tags).toContain('shortcut');
+        expect(backend.remove).not.toHaveBeenCalled();
+    });
     it('individual storage keeps the registered list selected', async () => {
         render(<QuickLauncher />);
         fireEvent.click(await screen.findByRole('button', { name: '登録Aを格納' }));
@@ -98,7 +115,7 @@ describe('individual and bulk storage keep the launcher usable', () => {
     it('bulk storage keeps the same registered list selected', async () => {
         render(<QuickLauncher />);
         await bulkStore();
-        expect(screen.queryByText('未登録C')).toBeNull();
+        expect(screen.getByRole('button', { name: '未登録Cを取り出す' })).toBeTruthy();
         expect(screen.getByRole('button', { name: '登録一覧' }).className).toContain('text-sky-300');
     });
 
@@ -129,7 +146,7 @@ describe('individual and bulk storage keep the launcher usable', () => {
         await bulkStore();
         await screen.findByText('保存できませんでした');
         expect(screen.getByRole('button', { name: '登録Bを格納' })).toBeTruthy();
-        expect(screen.queryByText('未登録C')).toBeNull();
+        expect(screen.getByRole('button', { name: '未登録Cを取り出す' })).toBeTruthy();
     });
 
     it('bulk storage preserves an explicitly selected stored-notes view too', async () => {

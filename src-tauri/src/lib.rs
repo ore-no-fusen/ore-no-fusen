@@ -1598,6 +1598,10 @@ fn fusen_save_note(
             "保存対象が移動・削除されたか読み直せないため、古い名前での再作成を止めました".into()));
     }
     let expected_snapshot = old_note.as_ref().map(|note| note.body.clone());
+    let frontmatter_raw = favorite_storage::preserve_launcher_registration(
+        expected_snapshot.as_deref().unwrap_or_default(),
+        &frontmatter_raw,
+    )?;
     let incoming_snapshot = format!("{}\n\n{}", frontmatter_raw, body);
     if let Some(current) = &old_note {
         if let Err(error) = reject_stale_iphone_return_save(&current.body, &frontmatter_raw)

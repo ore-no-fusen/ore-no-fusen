@@ -579,7 +579,7 @@ export default function QuickLauncher() {
                 </div>}
                 {webSyncMessage && activeTab === 'shortcut' && <div role="status" className="rounded border border-sky-500/30 bg-sky-950/30 px-2 py-1 text-xs text-sky-100">{webSyncMessage}</div>}
 
-                {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Stores all desktop notes with this tag, including unregistered notes.' : 'タグ全体の格納は、未登録の付箋も対象です。'}</p>}
+                {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Registers all desktop notes with this tag in the launcher and hides them.' : 'このタグの付箋をまとめてランチャーに登録し、画面から隠します。'}</p>}
                 <input
                     ref={inputRef}
                     value={query}
