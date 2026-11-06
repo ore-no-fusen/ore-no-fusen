@@ -51,7 +51,7 @@ PR、main、merge_group、手動実行、強制push、親が2個でない統合�
 4. 保存後に両ブランチの有効ルールをAPI/画面で再確認する。通常のPRでgate未完了/失敗/キャンセル時のマージ禁止と、base更新後の再検証要求を確認する。直接push・削除・force pushを試験のために共有ブランチへ実行しない。
 5. 正規リリースAppを許可する場合も全ルールを無制限にbypassさせない。PR要件とCI要件を別rulesetに分け、必要ならAppにはPR要件の「For pull requests only」だけを許可する。CI必須rulesetにはbypassを設けない。ユーザー/管理者の恒久例外は作らない。
 
-リリースマシンは版番号更新のdevelop PR完了を前提に、専用候補ブランチで実機検証・MSIX保全を行う。main宛てPRとmain→develop同期PRはGitHub画面で全CI成功後に通常マージし、同じボタンで再開する。各統合後CIと候補tree一致を検証し、直接push・保護回避を行わない。旧do-release/do-non-app-releaseは案内専用へ廃止し、リモートでも無効化して利用せず、この正規経路を使う。今回はリリース操作を行わない。
+リリース作業の順序と確認項目は[リリース手順書](010_RELEASE.md)を正本とする。
 
 ## 早すぎるマージの是正
 
