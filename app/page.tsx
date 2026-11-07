@@ -432,7 +432,7 @@ function OrchestratorContent() {
     return WebviewWindow.getByLabel(getWindowLabel(path));
   }, [getWindowLabel]);
 
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean, physical_bounds?: { x: number; y: number; width: number; height: number } }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean, launcher_open?: boolean, physical_bounds?: { x: number; y: number; width: number; height: number } }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
     const startupRestore = meta?.startup_restore === true;
 
@@ -552,7 +552,7 @@ function OrchestratorContent() {
                 console.warn('[付箋表示] ツールウィンドウ化に失敗しました:', e);
               }
               }
-              if (!startupRestore) await invoke("fusen_take_out_favorite", {path});
+              if (!startupRestore && !meta?.launcher_open) await invoke("fusen_take_out_favorite", {path});
               settleCreation();
             });
 
@@ -872,7 +872,7 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean; x?: number; y?: number; width?: number; height?: number }>('fusen:open_note', async (event) => {
+    const promise = listen<{ path: string; launcherOpen?: boolean; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean; x?: number; y?: number; width?: number; height?: number }>('fusen:open_note', async (event) => {
       const bg = event.payload.backgroundColor;
       const notePath = event.payload.path;
       if (event.payload.isCrystal && event.payload.content !== undefined) {
@@ -885,6 +885,7 @@ function OrchestratorContent() {
             await mappedWindow.show();
             await mappedWindow.unminimize();
             await mappedWindow.setFocus();
+            if (event.payload.launcherOpen) await emit('fusen:note_display_ready', { path: notePath, label: mappedLabel });
             return;
           }
           crystalPoolWindowsRef.current.delete(key);
@@ -953,7 +954,7 @@ function OrchestratorContent() {
           return;
         }
       }
-      await openNoteWindow(notePath, bg ? { background_color: bg } : undefined, event.payload.isNew);
+      await openNoteWindow(notePath, { background_color: bg, launcher_open: event.payload.launcherOpen }, event.payload.isNew);
       if (event.payload.isCrystal) {
         await invoke('fusen_register_crystal_arrange_window', {
           label: getWindowLabel(notePath),

@@ -27,7 +27,7 @@ import { useEditMode } from '@/app/hooks/useEditMode';
 import { useWindowManager } from '@/app/hooks/useWindowManager';
 import { fitCroppedNote } from '@/app/utils/fitCroppedNote';
 import TopRightResizeHandle from './TopRightResizeHandle';
-import { useTagManager } from '@/app/hooks/useTagManager';
+import { assertTagCanBeAdded, useTagManager } from '@/app/hooks/useTagManager';
 import { useScreenCapture } from '@/app/hooks/useScreenCapture';
 import { useStickyNoteContextMenu } from '@/app/hooks/useStickyNoteContextMenu';
 import { useNoteStyles } from '@/app/hooks/useNoteStyles';
@@ -272,6 +272,19 @@ const StickyNote = memo(function StickyNote() {
 
     const startupReadyEmittedRef = useRef(false);
     const [startupWindowStateReady, setStartupWindowStateReady] = useState(!isStartupRestore);
+    useEffect(() => {
+        if (loading || !note || !urlPath || isStartupRestore) return;
+        let cancelled = false;
+        const ready = async () => {
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            if (cancelled) return;
+            const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            await emit('fusen:note_display_ready', { path: urlPath, label: getCurrentWebviewWindow().label });
+        };
+        void ready().catch(error => console.warn('[付箋表示] 準備完了の通知に失敗しました:', error));
+        return () => { cancelled = true; };
+    }, [loading, note, urlPath, isStartupRestore]);
     useEffect(() => {
         if (!isStartupRestore || loading || !startupWindowStateReady || startupReadyEmittedRef.current) return;
 
@@ -1068,6 +1081,7 @@ const StickyNote = memo(function StickyNote() {
         const folderPath = lazyFolderPathRef.current;
         if (!folderPath) {
             console.warn('[POOL] handleFirstChar: folderPath empty, skipping lazy create');
+            firstCharFiredRef.current = false;
             return null;
         }
 
@@ -1186,6 +1200,20 @@ const StickyNote = memo(function StickyNote() {
         })).then(fn => { if(cancelled) fn(); else dispose=fn; }).catch(() => {});
         return () => { cancelled=true; dispose?.(); };
     }, []);
+    // Metadata-only updates must not discard an editor's unsaved body or caret.
+    useEffect(() => {
+        let cancelled = false;
+        let dispose: (() => void) | undefined;
+        listen<{ path: string; tags: string[] }>('fusen:note_tags_changed', ({ payload }) => {
+            if (cancelled || !noteFilePathRef.current || !pathsEqual(payload.path, noteFilePathRef.current)) return;
+            const front = updateFrontmatterValue(rawFrontmatterForAlarmRef.current, 'tags', JSON.stringify(payload.tags));
+            rawFrontmatterForAlarmRef.current = front;
+            setRawFrontmatter(front);
+            setCurrentTags(payload.tags);
+        }).then(unlisten => { if (cancelled) unlisten(); else dispose = unlisten; })
+            .catch(error => console.error('[Tags] listener failed:', error));
+        return () => { cancelled = true; dispose?.(); };
+    }, [noteFilePathRef, setCurrentTags, setRawFrontmatter]);
     // リロードイベントリスナー
     useEffect(() => {
         if (!selectedFile) return;
@@ -1536,17 +1564,17 @@ const StickyNote = memo(function StickyNote() {
     const handleTagSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const tag = tagInputValue.trim();
-        if (tag && selectedFile) {
+        if (tag) {
             try {
-                await addTagToNote(selectedFile.path, tag);
+                assertTagCanBeAdded(tag);
+                const path = selectedFile?.path ?? await handleFirstChar();
+                if (!path) throw new Error('付箋の保存先を作成できませんでした。');
+                await addTagToNote(path, tag);
                 // [FIX] UI即時更新: addTagToNote後にcurrentTagsをすぐ反映する
                 if (!currentTags.includes(tag)) {
                     setCurrentTags([...currentTags, tag].sort());
                 }
-                // reload_noteでノート本文も最新化（タグのフロントマター含む）
-                await import('@tauri-apps/api/event').then(({ emit }) => {
-                    emit('fusen:reload_note', { path: selectedFile.path });
-                });
+                // The metadata notification updates tags without replacing unsaved text.
                 trackEvent('feature_used', { event_category: 'usage', feature_name: 'tag_add' });
             } catch (err) {
                 console.error('[Tag] Failed to add tag:', err);
@@ -1554,6 +1582,7 @@ const StickyNote = memo(function StickyNote() {
                 alert(language === 'en'
                     ? 'Could not add the tag. Please try again.'
                     : (err instanceof Error ? err.message : 'タグの追加に失敗しました。'));
+                return;
             }
         }
         setShowTagModal(false);
@@ -1882,6 +1911,7 @@ const StickyNote = memo(function StickyNote() {
         saveNoteContent,
         loadAllTags,
         addTagToNote,
+        ensureNotePath: handleFirstChar,
         removeTagFromNote,
         isDeletingRef,
         setNoteBackgroundColor,

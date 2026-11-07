@@ -166,6 +166,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><td><span class="doc-badge badge-007">007</span></td><td><strong><a href="./007_COMMUNICATION">コミュニケーション設計</a></strong></td><td>ユーザーと開発者の 1 対 1 掲示板・安全な日次確認</td></tr>
   <tr><td><span class="doc-badge badge-008">008</span></td><td><strong><a href="./008_DISTRIBUTION">配布設計（Microsoft Store MSIX）</a></strong></td><td>5.0.0移行開始から5.1.0 MSIX一本化までの配布・更新・データ移行</td></tr>
   <tr><td><span class="doc-badge badge-003">013</span></td><td><strong><a href="./013_WEB_SHARE">クイックランチャー付箋 Web共有</a></strong></td><td>Drive経由のWeb閲覧・編集、保存容量と自動整理</td></tr>
+  <tr><td><span class="doc-badge badge-002">014</span></td><td><strong><a href="./014_PC_OPERATIONS">PC画面・機能割り当て設計</a></strong></td><td>画面・配置・機能一覧・代表ユースケースと段階的改善案</td></tr>
   <tr><td><span class="doc-badge badge-100">100</span></td><td><strong><a href="./100_PRIVACY">プライバシーポリシー</a></strong></td><td>Google Drive連携・ログ・データ削除方針</td></tr>
   <tr><td><span class="doc-badge badge-101">101</span></td><td><strong><a href="./101_TERMS">利用規約</a></strong></td><td>利用条件・免責事項・外部サービスの扱い</td></tr>
   <tr><td><span class="doc-badge badge-200">200</span></td><td><strong><a href="./200_SIRI_SETUP">Siri から PC に付箋を送る</a></strong></td><td>iPhone のショートカット App を使った音声送信の設定手順（実験的）</td></tr>

@@ -142,6 +142,7 @@ type UseStickyNoteContextMenuProps = {
     saveNoteContent: (body: string, front: string, allowRename: boolean) => Promise<boolean>;
     loadAllTags: () => Promise<void>;
     addTagToNote: (path: string, tag: string) => Promise<void>;
+    ensureNotePath: () => Promise<string | null>;
     removeTagFromNote: (path: string, tag: string) => Promise<void>;
     isDeletingRef: React.MutableRefObject<boolean>;
     setNoteBackgroundColor: (color: string) => void;
@@ -191,6 +192,7 @@ export function useStickyNoteContextMenu({
     saveNoteContent,
     loadAllTags,
     addTagToNote,
+    ensureNotePath,
     removeTagFromNote,
     isDeletingRef,
     setNoteBackgroundColor,
@@ -751,15 +753,16 @@ export function useStickyNoteContextMenu({
                             id: contextMenuTagItemId('tag', index),
                             text: isChecked ? `☑ ${tag}` : `☐ ${tag}`,
                             action: async () => {
-                                if (!selectedFile) return;
-                                if (isChecked) {
-                                    await removeTagFromNote(selectedFile.path, tag);
-                                } else {
-                                    await addTagToNote(selectedFile.path, tag);
+                                const path = selectedFile?.path ?? await ensureNotePath();
+                                if (!path) {
+                                    onToast?.(language === 'en' ? 'Could not create the note.' : '付箋の保存先を作成できませんでした。');
+                                    return;
                                 }
-                                await import('@tauri-apps/api/event').then(({ emit }) => {
-                                    emit('fusen:reload_note', { path: selectedFile.path });
-                                });
+                                if (isChecked) {
+                                    await removeTagFromNote(path, tag);
+                                } else {
+                                    await addTagToNote(path, tag);
+                                }
                             }
                         });
                     }));
@@ -954,7 +957,7 @@ export function useStickyNoteContextMenu({
         } catch (e) {
             console.error('Failed to show context menu', e);
         }
-    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, getCurrentDuplicateSnapshot, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange, noteBackgroundColor, handleToggleShortcutShelf]);
+    }, [selectedFile, t, currentTags, editBody, rawFrontmatter, getCurrentDuplicateSnapshot, saveNoteContent, loadAllTags, removeTagFromNote, addTagToNote, ensureNotePath, isEditing, onInsertText, isDeletingRef, language, setShowTagModal, setTagInputValue, isTagDeleteMode, setTagToDelete, onSetAlarm, handleColorChange, handleOpacityChange, handleDeleteNote, handleOpenFolder, onToast, resolveCreateFolderPath, iphoneSendEnabled, handleFontSizeChange, noteBackgroundColor, handleToggleShortcutShelf]);
 
 
     // ref を常に最新の showContextMenu に同期（リスナー内から呼ぶため）

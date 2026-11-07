@@ -444,6 +444,17 @@ fn accessible_notes(base: &str) -> Vec<crate::state::NoteMeta> {
         })
         .collect()
 }
+fn checked_desktop_notes(base: &str) -> Result<Vec<crate::state::NoteMeta>, String> {
+    let mut notes = Vec::new();
+    for entry in std::fs::read_dir(base).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if !path.is_file() || path.extension().is_none_or(|e| e != "md") {
+            continue;
+        }
+        notes.push(storage::read_note(&path.to_string_lossy())?.meta);
+    }
+    Ok(notes)
+}
 fn tag_targets(notes: Vec<crate::state::NoteMeta>, tag: &str) -> Vec<crate::state::NoteMeta> {
     notes
         .into_iter()
@@ -507,7 +518,7 @@ fn storage_snapshot(app: &AppHandle) -> Result<StorageSnapshot, String> {
     Ok(StorageSnapshot {
         paths,
         items,
-        tags: tags.into_iter().collect(),
+        tags: crate::user_tags::remember(&base(app), tags)?,
     })
 }
 #[tauri::command]
@@ -648,15 +659,11 @@ pub(crate) struct TagStoreResult {
 }
 #[tauri::command]
 pub(crate) async fn fusen_store_tag(app: AppHandle, tag: String) -> Result<TagStoreResult, String> {
-    if tag.trim().is_empty()
-        || matches!(
-            logic::normalize_reserved_tag(&tag).as_str(),
-            "shortcut" | "qa" | "term" | "recipe"
-        )
+    if tag.trim().is_empty() || logic::is_reserved_tag(&tag)
     {
         return Err("ユーザーのタグを選んでください".into());
     }
-    let notes = accessible_notes(&base(&app));
+    let notes = checked_desktop_notes(&base(&app))?;
     let mut result = TagStoreResult {
         stored: 0,
         failed: Vec::new(),
@@ -665,6 +672,24 @@ pub(crate) async fn fusen_store_tag(app: AppHandle, tag: String) -> Result<TagSt
         match request_store(app.clone(), note.path.clone(), None, true).await {
             Ok(()) => result.stored += 1,
             Err(e) => result.failed.push(format!("{}: {}", note.context, e)),
+        }
+    }
+    Ok(result)
+}
+#[tauri::command]
+pub(crate) fn fusen_register_tag(app: AppHandle, tag: String) -> Result<TagStoreResult, String> {
+    if tag.trim().is_empty() || logic::is_reserved_tag(&tag) {
+        return Err("ユーザーのタグを選んでください".into());
+    }
+    let notes = checked_desktop_notes(&base(&app))?;
+    let mut result = TagStoreResult {
+        stored: 0,
+        failed: Vec::new(),
+    };
+    for note in tag_targets(notes, &tag) {
+        match crate::apply_note_tag(&app, &note.path, "shortcut", true) {
+            Ok(()) => result.stored += 1,
+            Err(error) => result.failed.push(format!("{}: {error}", note.context)),
         }
     }
     Ok(result)

@@ -11,7 +11,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
+use tauri::{AppHandle, Emitter, Listener, Manager, State, WebviewUrl};
 
 const MAX_WEB_SHARE_IMAGE_BYTES: u64 = 50 * 1024 * 1024;
 
@@ -1658,15 +1658,6 @@ pub(crate) fn fusen_quick_open_notes(
 /// ファイル全文（frontmatter を含む）を読み込み、launches を +1 して書き戻す。
 /// note.body（frontmatter を除いた本文）ではなく全文を対象にすることで、
 /// frontmatter（recipe タグ・backgroundColor 等）を破壊しないことを保証する。
-#[cfg(test)]
-fn increment_launches_in_file(path: &str) -> Result<(), String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let usage = logic::extract_recipe_usage_meta(&content);
-    let updated_content =
-        logic::update_frontmatter_value(&content, "launches", (usage.launches + 1).to_string());
-    std::fs::write(path, &updated_content).map_err(|e| e.to_string())
-}
-
 fn launcher_background_color(content: &str) -> Option<String> {
     let mut in_frontmatter = false;
     for line in content.lines() {
@@ -1740,6 +1731,16 @@ where
     persist_launches(&updated_content)
 }
 
+fn increment_launches_in_file(path: &str) -> Result<String, String> {
+    for _ in 0..3 {
+        let current = storage::read_note(path)?.body;
+        let usage = logic::extract_recipe_usage_meta(&current);
+        let updated = logic::update_frontmatter_value(&current, "launches", usage.launches.saturating_add(1).to_string());
+        if storage::write_note_if_unchanged(path, &current, &updated).is_ok() { return Ok(updated); }
+    }
+    Err("利用回数を保存できませんでした。付箋の内容は変更していません".into())
+}
+
 #[tauri::command]
 pub(crate) async fn fusen_open_quick_note(
     app: AppHandle,
@@ -1753,6 +1754,7 @@ pub(crate) async fn fusen_open_quick_note(
             .open_note_windows
             .get(&crate::normalize_path_for_label(&path))
             .cloned()
+            .or_else(|| state.arrange_crystal_windows.iter().find(|(_, p)| crate::normalize_path_for_label(p) == crate::normalize_path_for_label(&path)).map(|(label, _)| label.clone()))
     }
     .and_then(|label| app.get_webview_window(&label));
     if let Some(window) = &retained {
@@ -1772,7 +1774,19 @@ pub(crate) async fn fusen_open_quick_note(
         )
     });
     let emit_path = path.clone();
-    run_quick_open_after_read(
+    let (ready_sender, ready_receiver) = tokio::sync::oneshot::channel::<String>();
+    let ready_sender = Mutex::new(Some(ready_sender));
+    let ready_path = crate::normalize_path_for_label(&path);
+    let ready_listener = app.listen("fusen:note_display_ready", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            if payload.get("path").and_then(|p| p.as_str()).is_some_and(|p| crate::normalize_path_for_label(p) == ready_path) {
+                if let Some(label) = payload.get("label").and_then(|p| p.as_str()) {
+                    if let Some(sender) = ready_sender.lock().unwrap_or_else(|p|p.into_inner()).take() { let _ = sender.send(label.into()); }
+                }
+            }
+        }
+    });
+    let dispatched = run_quick_open_after_read(
         &content,
         |background_color| {
             if retained.is_some() {
@@ -1782,6 +1796,7 @@ pub(crate) async fn fusen_open_quick_note(
                 "fusen:open_note",
                 serde_json::json!({
                     "path": emit_path,
+                    "launcherOpen": true,
                     "backgroundColor": background_color,
                     "content": content,
                     "isCrystal": is_crystal,
@@ -1793,12 +1808,31 @@ pub(crate) async fn fusen_open_quick_note(
             )
             .map_err(|e| e.to_string())
         },
-        |updated_content| {
-            std::fs::write(&path, updated_content).map_err(|e| e.to_string())?;
-            cache_quick_open_content(Path::new(&path), updated_content);
-            Ok(())
-        },
-    )?;
+        |_updated_content| Ok(()),
+    );
+    if let Err(error) = dispatched { app.unlisten(ready_listener); return Err(error); }
+    if retained.is_none() {
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(15), ready_receiver).await;
+        app.unlisten(ready_listener);
+        let label = ready.map_err(|_| "付箋の表示準備が完了しませんでした。登録と格納状態は保持しています")?
+            .map_err(|_| "付箋の表示準備が中断されました")?;
+        let mut displayed = false;
+        for _ in 0..100 {
+            if let Some(window) = app.get_webview_window(&label) {
+                if window.is_visible().unwrap_or(false) {
+                    window.unminimize().map_err(|e|e.to_string())?;
+                    window.set_focus().map_err(|e|e.to_string())?;
+                    displayed = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if !displayed { return Err("付箋を表示できませんでした。登録と格納状態は保持しています".into()); }
+        crate::favorite_storage::fusen_take_out_favorite(app.clone(), path.clone())?;
+    } else { app.unlisten(ready_listener); }
+    let updated_content = increment_launches_in_file(&path)?;
+    cache_quick_open_content(Path::new(&path), &updated_content);
     invalidate_shortcut_cache(shortcut_cache());
     Ok(())
 }
@@ -2337,6 +2371,19 @@ mod tests {
         .unwrap();
 
         assert_eq!(&*calls.borrow(), &["emit:#cfd8dc", "write"]);
+    }
+
+    #[test]
+    fn quick_open_usage_preserves_latest_body_tags_and_geometry() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        let latest = "---\ntags: [shortcut, 調査]\nlaunches: 9\nwindow: { x: 11, y: 22 }\n---\n最新本文\n![画像](assets/a.png)";
+        std::fs::write(&path, latest).unwrap();
+        let updated = increment_launches_in_file(&path.to_string_lossy()).unwrap();
+        assert!(updated.contains("launches: 10"));
+        assert!(updated.contains("tags: [shortcut, 調査]"));
+        assert!(updated.contains("window: { x: 11, y: 22 }"));
+        assert_eq!(logic::split_frontmatter(&updated).1, logic::split_frontmatter(latest).1);
     }
 
     #[test]
