@@ -104,14 +104,13 @@ pub(crate) async fn fusen_store_favorite(
     path: String,
     window_label: String,
     request_id: String,
-) -> Result<(), String> {
-    if !pending()
+) -> Result<String, String> {
+    let register = pending()
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .contains_key(&request_id)
-    {
-        return Err("収納要求は期限切れです".into());
-    }
+        .get(&request_id)
+        .map(|request| request.register)
+        .ok_or("収納要求は期限切れです")?;
     validate_path(&app, &path)?;
     let state = app.state::<Mutex<AppState>>();
     if state
@@ -137,7 +136,7 @@ pub(crate) async fn fusen_store_favorite(
         return Err("Use the crystal return operation".into());
     }
     // Read the saved snapshot; never replace the body with stale frontend content.
-    let mut content = note.body.clone();
+    let mut content = launcher_storage_content(&note.body, register)?;
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
     let pos = window
         .outer_position()
@@ -160,7 +159,11 @@ pub(crate) async fn fusen_store_favorite(
             pos.x, pos.y, size.width, height
         ),
     );
-    storage::write_note(&path, &content)?;
+    storage::write_note_if_unchanged(&path, &note.body, &content)?;
+    if register {
+        // Registration remains valid even if the local storage-state write fails.
+        launcher::emit_launcher_shelf_changed_for_tag(&app, "shortcut");
+    }
     let saved = storage::read_note(&path)?.meta;
     // Persistence must succeed before the frontend animates or destroys its window.
     let changed = set_stored(&path, true)?;
@@ -182,7 +185,56 @@ pub(crate) async fn fusen_store_favorite(
     }
     drop(state);
     let _ = app.emit("fusen:storage_changed", &path);
-    Ok(())
+    Ok(content)
+}
+
+// Registration is applied to the latest saved body, never a pre-save snapshot.
+fn launcher_storage_content(content: &str, register: bool) -> Result<String, String> {
+    let mut tags = logic::extract_meta_from_content(logic::split_frontmatter(content).0).6;
+    if !register
+        || tags
+            .iter()
+            .any(|tag| logic::normalize_reserved_tag(tag) == "shortcut")
+    {
+        return Ok(content.to_string());
+    }
+    tags.push("shortcut".into());
+    tags.sort();
+    Ok(logic::update_frontmatter_value(
+        content,
+        "tags",
+        format!("[{}]", tags.join(", ")),
+    ))
+}
+
+// Body/geometry saves cannot undo an explicit registration or removal made
+// since that window's metadata snapshot was loaded.
+pub(crate) fn preserve_launcher_registration(
+    current: &str,
+    incoming: &str,
+) -> Result<String, String> {
+    let (current_front, _) = logic::split_frontmatter(current);
+    let registered = logic::extract_meta_from_content(current_front)
+        .6
+        .iter()
+        .any(|tag| logic::normalize_reserved_tag(tag) == "shortcut");
+    let incoming_registered = logic::extract_meta_from_content(incoming)
+        .6
+        .iter()
+        .any(|tag| logic::normalize_reserved_tag(tag) == "shortcut");
+    if registered == incoming_registered {
+        return Ok(incoming.to_string());
+    }
+    let mut tags = logic::extract_meta_from_content(incoming).6;
+    tags.retain(|tag| logic::normalize_reserved_tag(tag) != "shortcut");
+    if registered {
+        tags.push("shortcut".into());
+    }
+    Ok(logic::update_frontmatter_value(
+        incoming,
+        "tags",
+        format!("[{}]", tags.join(", ")),
+    ))
 }
 
 #[cfg(test)]
@@ -201,10 +253,14 @@ mod tests {
         ] {
             let id = uuid::Uuid::new_v4().to_string();
             let (sender, mut receiver) = tokio::sync::oneshot::channel();
-            pending()
-                .lock()
-                .unwrap()
-                .insert(id.clone(), StoreReply { sender, changed });
+            pending().lock().unwrap().insert(
+                id.clone(),
+                StoreReply {
+                    sender,
+                    changed,
+                    register: false,
+                },
+            );
             fusen_complete_store(id.clone(), error);
             assert_eq!(receiver.try_recv().unwrap(), expected);
             assert!(!pending().lock().unwrap().contains_key(&id));
@@ -346,6 +402,7 @@ use std::collections::HashMap;
 struct StoreReply {
     sender: tokio::sync::oneshot::Sender<Result<bool, String>>,
     changed: bool,
+    register: bool,
 }
 fn pending() -> &'static Mutex<HashMap<String, StoreReply>> {
     static PENDING: OnceLock<Mutex<HashMap<String, StoreReply>>> = OnceLock::new();
@@ -386,6 +443,17 @@ fn accessible_notes(base: &str) -> Vec<crate::state::NoteMeta> {
                 .map(|n| n.meta)
         })
         .collect()
+}
+fn checked_desktop_notes(base: &str) -> Result<Vec<crate::state::NoteMeta>, String> {
+    let mut notes = Vec::new();
+    for entry in std::fs::read_dir(base).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if !path.is_file() || path.extension().is_none_or(|e| e != "md") {
+            continue;
+        }
+        notes.push(storage::read_note(&path.to_string_lossy())?.meta);
+    }
+    Ok(notes)
 }
 fn tag_targets(notes: Vec<crate::state::NoteMeta>, tag: &str) -> Vec<crate::state::NoteMeta> {
     notes
@@ -450,7 +518,7 @@ fn storage_snapshot(app: &AppHandle) -> Result<StorageSnapshot, String> {
     Ok(StorageSnapshot {
         paths,
         items,
-        tags: tags.into_iter().collect(),
+        tags: crate::user_tags::remember(&base(app), tags)?,
     })
 }
 #[tauri::command]
@@ -486,8 +554,18 @@ pub(crate) async fn fusen_request_store(
     path: String,
     requested_at: Option<u64>,
 ) -> Result<(), String> {
+    request_store(app, path, requested_at, false).await
+}
+
+async fn request_store(
+    app: AppHandle,
+    path: String,
+    requested_at: Option<u64>,
+    register: bool,
+) -> Result<(), String> {
     validate_path(&app, &path)?;
-    if stored_paths()?.contains(&key(&path)) {
+    let already_stored = stored_paths()?.contains(&key(&path));
+    if already_stored && !register {
         return Ok(());
     }
     let label = {
@@ -501,6 +579,12 @@ pub(crate) async fn fusen_request_store(
     };
     let window = app.get_webview_window(&label);
     if window.is_none() {
+        if register {
+            let note = storage::read_note(&path)?;
+            let content = launcher_storage_content(&note.body, true)?;
+            storage::write_note_if_unchanged(&path, &note.body, &content)?;
+            launcher::emit_launcher_shelf_changed_for_tag(&app, "shortcut");
+        }
         let changed = set_stored(&path, true)?;
         app.emit("fusen:storage_changed", &path)
             .map_err(|e| e.to_string())?;
@@ -518,18 +602,21 @@ pub(crate) async fn fusen_request_store(
         StoreReply {
             sender,
             changed: false,
+            register,
         },
     );
     if let Err(e) = app.emit_to(
         &label,
         "fusen:store_favorite",
-        serde_json::json!({"path":path,"requestId":id}),
+        serde_json::json!({"path":path,"requestId":id,"wasStored":already_stored}),
     ) {
         pending()
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .remove(&id);
-        let _ = window.show();
+        if !already_stored {
+            let _ = window.show();
+        }
         return Err(e.to_string());
     }
     let result = tokio::time::timeout(std::time::Duration::from_secs(15), receiver).await;
@@ -544,8 +631,12 @@ pub(crate) async fn fusen_request_store(
         .and_then(|reply| reply.map_err(|e| e.to_string()))
         .and_then(|reply| reply);
     if outcome.is_err() {
-        let _ = set_stored(&path, false);
-        let _ = window.show();
+        let _ = set_stored(&path, already_stored);
+        if already_stored {
+            let _ = window.hide();
+        } else {
+            let _ = window.show();
+        }
     }
     if let Ok(changed) = &outcome {
         count_successful_store(&app, *changed);
@@ -568,23 +659,37 @@ pub(crate) struct TagStoreResult {
 }
 #[tauri::command]
 pub(crate) async fn fusen_store_tag(app: AppHandle, tag: String) -> Result<TagStoreResult, String> {
-    if tag.trim().is_empty()
-        || matches!(
-            logic::normalize_reserved_tag(&tag).as_str(),
-            "shortcut" | "qa" | "term" | "recipe"
-        )
+    if tag.trim().is_empty() || logic::is_reserved_tag(&tag)
     {
         return Err("ユーザーのタグを選んでください".into());
     }
-    let notes = accessible_notes(&base(&app));
+    let notes = checked_desktop_notes(&base(&app))?;
     let mut result = TagStoreResult {
         stored: 0,
         failed: Vec::new(),
     };
     for note in tag_targets(notes, &tag) {
-        match fusen_request_store(app.clone(), note.path.clone(), None).await {
+        match request_store(app.clone(), note.path.clone(), None, true).await {
             Ok(()) => result.stored += 1,
             Err(e) => result.failed.push(format!("{}: {}", note.context, e)),
+        }
+    }
+    Ok(result)
+}
+#[tauri::command]
+pub(crate) fn fusen_register_tag(app: AppHandle, tag: String) -> Result<TagStoreResult, String> {
+    if tag.trim().is_empty() || logic::is_reserved_tag(&tag) {
+        return Err("ユーザーのタグを選んでください".into());
+    }
+    let notes = checked_desktop_notes(&base(&app))?;
+    let mut result = TagStoreResult {
+        stored: 0,
+        failed: Vec::new(),
+    };
+    for note in tag_targets(notes, &tag) {
+        match crate::apply_note_tag(&app, &note.path, "shortcut", true) {
+            Ok(()) => result.stored += 1,
+            Err(error) => result.failed.push(format!("{}: {error}", note.context)),
         }
     }
     Ok(result)
@@ -609,6 +714,59 @@ pub(crate) fn fusen_stored_window_labels(app: AppHandle) -> Result<Vec<String>, 
 #[cfg(test)]
 mod tag_storage_tests {
     use super::*;
+    #[test]
+    fn bulk_registration_preserves_body_and_tags_and_is_repeatable() {
+        let original =
+            "---\ntags: [仕事]\nwindow: { x: 10, y: 20 }\n---\n最新本文 ![画像](assets/a.png)";
+        let registered = launcher_storage_content(original, true).unwrap();
+        assert_eq!(
+            logic::split_frontmatter(&registered).1,
+            logic::split_frontmatter(original).1
+        );
+        let tags = logic::extract_meta_from_content(&registered).6;
+        assert!(tags.contains(&"仕事".to_string()));
+        assert!(tags.contains(&"shortcut".to_string()));
+        assert_eq!(
+            launcher_storage_content(&registered, true).unwrap(),
+            registered
+        );
+        assert_eq!(launcher_storage_content(original, false).unwrap(), original);
+    }
+    #[test]
+    fn stale_saves_cannot_undo_registration_or_explicit_removal() {
+        let plain = "---\ntags: [仕事]\n---";
+        let registered = launcher_storage_content(plain, true).unwrap();
+        let kept = preserve_launcher_registration(&registered, plain).unwrap();
+        assert!(logic::extract_meta_from_content(&kept)
+            .6
+            .contains(&"shortcut".into()));
+        let removed = preserve_launcher_registration(plain, &registered).unwrap();
+        assert!(!logic::extract_meta_from_content(&removed)
+            .6
+            .contains(&"shortcut".into()));
+        let body_only = format!("{plain}\n本文\ntags: [shortcut]");
+        assert_eq!(
+            preserve_launcher_registration(&body_only, plain).unwrap(),
+            plain
+        );
+        let uppercase = "---\ntags: [仕事, Shortcut]\n---";
+        assert!(logic::extract_meta_from_content(
+            &preserve_launcher_registration(uppercase, plain).unwrap()
+        )
+        .6
+        .iter()
+        .any(|tag| logic::normalize_reserved_tag(tag) == "shortcut"));
+        assert!(!logic::extract_meta_from_content(
+            &preserve_launcher_registration(plain, uppercase).unwrap()
+        )
+        .6
+        .iter()
+        .any(|tag| logic::normalize_reserved_tag(tag) == "shortcut"));
+        assert_eq!(
+            launcher_storage_content(uppercase, true).unwrap(),
+            uppercase
+        );
+    }
     fn note(path: &str, tags: &[&str]) -> crate::state::NoteMeta {
         crate::state::NoteMeta {
             path: path.into(),

@@ -66,3 +66,4 @@ export type StorageSnapshot = {paths:string[]; items:QuickOpenItem[]; tags:strin
 export const storageSnapshot = () => invoke<StorageSnapshot>('fusen_storage_snapshot');
 export const storeQuickNote = (path:string) => invoke<void>('fusen_request_store', {path, requestedAt: Date.now()});
 export const storeTag = (tag:string) => invoke<{stored:number;failed:string[]}>('fusen_store_tag', {tag});
+export const registerTag = (tag:string) => invoke<{stored:number;failed:string[]}>('fusen_register_tag', {tag});

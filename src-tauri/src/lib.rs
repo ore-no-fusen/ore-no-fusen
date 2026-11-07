@@ -20,6 +20,7 @@ mod desktop_shortcut;
 mod distribution;
 mod double_tap;
 mod favorite_storage;
+mod user_tags;
 mod file_drop; // Google Drive 連携
 mod gdrive;
 mod hotkey_manager;
@@ -1598,6 +1599,10 @@ fn fusen_save_note(
             "保存対象が移動・削除されたか読み直せないため、古い名前での再作成を止めました".into()));
     }
     let expected_snapshot = old_note.as_ref().map(|note| note.body.clone());
+    let frontmatter_raw = user_tags::preserve_saved_tags(
+        expected_snapshot.as_deref().unwrap_or_default(),
+        &frontmatter_raw,
+    );
     let incoming_snapshot = format!("{}\n\n{}", frontmatter_raw, body);
     if let Some(current) = &old_note {
         if let Err(error) = reject_stale_iphone_return_save(&current.body, &frontmatter_raw)
@@ -2351,168 +2356,47 @@ async fn fusen_delete_drive_queue_json(
     Ok(())
 }
 
+fn apply_note_tag(app: &AppHandle, path: &str, tag: &str, add: bool) -> Result<(), String> {
+    let tag = tag.trim();
+    if tag.is_empty() || tag.chars().any(|c|c.is_control() || ",[]\"'".contains(c)) { return Err("タグ名を確認してください".into()); }
+    let state = app.state::<Mutex<AppState>>();
+    let mut state = state.lock().unwrap_or_else(|p|p.into_inner());
+    if add { if let Some(base) = state.base_path.as_ref().or(state.folder_path.as_ref()) { user_tags::check_assignment(base, tag)?; } }
+    let original = storage::read_note(path)?;
+    let mut tags = user_tags::tags_in(&original.body);
+    let matches = |t: &String| if logic::is_reserved_tag(tag) { logic::normalize_reserved_tag(t) == logic::normalize_reserved_tag(tag) } else { t == tag };
+    if add { if !tags.iter().any(matches) { tags.push(tag.to_string()); } }
+    else { tags.retain(|t|!matches(t)); }
+    let updated = logic::update_frontmatter_value(&original.body, "tags", serde_json::to_string(&tags).map_err(|e|e.to_string())?);
+    storage::write_note_if_unchanged(path, &original.body, &updated)?;
+    if let Some(note) = state.notes.iter_mut().find(|n|n.path == path) { note.tags = tags.clone(); }
+    let catalog_result = if let Some(base) = state.base_path.as_ref().or(state.folder_path.as_ref()) { user_tags::remember(base, tags.clone()).map(|_|()) } else { Ok(()) };
+    drop(state);
+    let _ = app.emit("fusen:note_tags_changed", serde_json::json!({"path":path,"tags":tags}));
+    launcher::emit_launcher_shelf_changed(app);
+    let _ = crate::tray::refresh_tray_menu(app);
+    catalog_result
+}
 #[tauri::command]
-fn fusen_add_tag(
-    state: State<'_, Mutex<AppState>>,
-    path: String,
-    tag: String,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
+fn fusen_add_tag(path: String, tag: String, app: AppHandle) -> Result<(), String> { apply_note_tag(&app, &path, &tag, true) }
+#[tauri::command]
+fn fusen_remove_tag(path: String, tag: String, app: AppHandle) -> Result<(), String> { apply_note_tag(&app, &path, &tag, false) }
 
-    // Read current content
-    let content = storage::read_note(&path).map_err(|e| format!("Failed to read note: {}", e))?;
-
-    // Add tag
-    let effect = logic::handle_add_tag(&mut *app_state, &path, &content.body, &tag)?;
-
-    // Execute effect
-    if let logic::Effect::WriteNote { path, content } = effect {
-        storage::write_note(&path, &content).map_err(|e| format!("Failed to write note: {}", e))?;
-    }
-
-    // Update tray menu
-    drop(app_state);
-    launcher::emit_launcher_shelf_changed_for_tag(&app, &tag);
-    let _ = crate::tray::refresh_tray_menu(&app);
-
-    Ok(())
+#[tauri::command]
+fn fusen_delete_tag_globally(app: AppHandle, tag: String) -> Result<usize, String> {
+    let result = user_tags::change(&app, &tag, None)?;
+    if !result.failed.is_empty() { return Err(result.failed.join("\n")); }
+    Ok(result.changed)
 }
 
 #[tauri::command]
-fn fusen_remove_tag(
-    state: State<'_, Mutex<AppState>>,
-    path: String,
-    tag: String,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-
-    // Read current content
-    let content = storage::read_note(&path).map_err(|e| format!("Failed to read note: {}", e))?;
-
-    // Remove tag
-    let effect = logic::handle_remove_tag(&mut *app_state, &path, &content.body, &tag)?;
-
-    // Execute effect
-    if let logic::Effect::WriteNote { path, content } = effect {
-        storage::write_note(&path, &content).map_err(|e| format!("Failed to write note: {}", e))?;
+fn fusen_get_all_tags(state: State<'_, Mutex<AppState>>) -> Result<Vec<String>, String> {
+    let state = state.lock().unwrap_or_else(|p| p.into_inner());
+    let tags = logic::get_all_unique_tags(&state);
+    match state.base_path.as_ref().or(state.folder_path.as_ref()) {
+        Some(base) => user_tags::remember(base, tags),
+        None => Ok(tags),
     }
-
-    // Update tray menu
-    drop(app_state); // Release lock before calling refresh_tray_menu
-    launcher::emit_launcher_shelf_changed_for_tag(&app, &tag);
-    let _ = crate::tray::refresh_tray_menu(&app);
-
-    Ok(())
-}
-
-#[tauri::command]
-fn fusen_delete_tag_globally(
-    state: State<'_, Mutex<AppState>>,
-    tag: String,
-    app: tauri::AppHandle,
-) -> Result<usize, String> {
-    // CRITICAL FIX: Refresh notes list before processing to ensure we have the latest state
-    let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    let base_path = app_state
-        .base_path
-        .clone()
-        .or(app_state.folder_path.clone())
-        .ok_or("base_path is not set")?;
-
-    // Reload all notes to get the most up-to-date list
-    app_state.notes = storage::list_notes(&base_path);
-
-    // [事前チェック] 1枚でも書き換える前に、保存先フォルダが書き込み可能かを試し書きで確認する。
-    // 権限なし・フォルダ消失・ディスク満杯などの「全滅する失敗」をここで先に弾き、
-    // 付箋を中途半端に書き換えた状態を作らない（ユーザーに部分失敗を踏ませない）。
-    // 個別ファイルの一時ロックは検知時刻と書込時刻の差で見抜けないため、そこはリトライが受け持つ。
-    {
-        let probe_path = std::path::Path::new(&base_path).join(".fusen_write_probe.tmp");
-        if let Err(e) = std::fs::write(&probe_path, b"") {
-            return Err(format!(
-                "保存先フォルダに書き込めません。タグ削除を中止しました（付箋は変更していません）: {}",
-                e
-            ));
-        }
-        let _ = std::fs::remove_file(&probe_path);
-    }
-
-    let mut modified_count = 0;
-    let mut modified_paths: Vec<String> = Vec::new(); // Track modified paths
-    let mut failed_writes: Vec<String> = Vec::new();
-
-    // Create a list of paths to process to avoid borrowing issues
-    let paths: Vec<String> = app_state.notes.iter().map(|n| n.path.clone()).collect();
-
-    // Iterate through all notes
-    for path in paths {
-        // Read note content
-        if let Ok(note) = storage::read_note(&path) {
-            let (_, _, _, _, _, _, tags, _) = logic::extract_meta_from_content(&note.body);
-
-            // Check if tag exists (trim both sides for safety)
-            let tag_trimmed = tag.trim();
-            if tags.iter().any(|t| t.trim() == tag_trimmed) {
-                // Remove tag
-                if let Ok(effect) =
-                    logic::handle_remove_tag(&mut *app_state, &path, &note.body, tag_trimmed)
-                {
-                    if let logic::Effect::WriteNote {
-                        path: write_path,
-                        content,
-                    } = effect
-                    {
-                        // 一時的な書込失敗（ファイルロック等）は、その1枚だけ短いリトライで
-                        // 自動復旧を試みる。最大3回試して全滅した分だけ failed_writes に記録する。
-                        let mut write_result = storage::write_note(&write_path, &content);
-                        let mut attempts = 1;
-                        while write_result.is_err() && attempts < 3 {
-                            std::thread::sleep(std::time::Duration::from_millis(50 * attempts));
-                            write_result = storage::write_note(&write_path, &content);
-                            attempts += 1;
-                        }
-                        match write_result {
-                            Ok(_) => {
-                                modified_count += 1;
-                                modified_paths.push(write_path);
-                            }
-                            Err(e) => {
-                                failed_writes
-                                    .push(format!("{} ({}回試行後): {}", write_path, attempts, e));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Update tray menu
-    drop(app_state);
-    let _ = crate::tray::refresh_tray_menu(&app);
-
-    // [NEW] Notify each modified window to reload
-    for path in modified_paths {
-        let _ = app.emit("fusen:reload_note", path);
-    }
-
-    if !failed_writes.is_empty() {
-        return Err(format!(
-            "Failed to delete tag from {} note(s): {}",
-            failed_writes.len(),
-            failed_writes.join("; ")
-        ));
-    }
-
-    Ok(modified_count)
-}
-
-#[tauri::command]
-fn fusen_get_all_tags(state: State<'_, Mutex<AppState>>) -> Vec<String> {
-    let app_state = state.lock().unwrap_or_else(|p| p.into_inner());
-    logic::get_all_unique_tags(&*app_state)
 }
 
 #[tauri::command]
@@ -6440,6 +6324,11 @@ pub fn run() {
             fusen_add_tag,
             fusen_remove_tag,
             fusen_delete_tag_globally,
+            user_tags::fusen_user_tag_catalog,
+            user_tags::fusen_create_user_tag,
+            user_tags::fusen_rename_user_tag,
+            user_tags::fusen_delete_user_tag,
+            user_tags::fusen_stop_user_tag_change,
             fusen_get_all_tags,
             fusen_get_active_tags,
             fusen_set_active_tags,
@@ -6489,6 +6378,7 @@ pub fn run() {
             favorite_storage::fusen_request_store,
             favorite_storage::fusen_complete_store,
             favorite_storage::fusen_store_tag,
+            favorite_storage::fusen_register_tag,
             launcher::fusen_quick_open_notes,
             launcher::fusen_open_quick_note,
             launcher::fusen_rename_quick_note,

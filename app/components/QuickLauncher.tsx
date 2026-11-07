@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SharedWebQr from './SharedWebQr';
+import LauncherTagActions, { type LauncherTagMenu } from './LauncherTagActions';
+import LauncherAppActions from './LauncherAppActions';
 import { formatWebSyncProgress } from '../utils/webSyncProgress';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -159,6 +161,7 @@ export default function QuickLauncher() {
     const [storedItems, setStoredItems] = useState<QuickOpenItem[]>([]);
     const [allTags, setAllTags] = useState<string[]>([]);
     const [showStored, setShowStored] = useState(false);
+    const [tagMenu, setTagMenu] = useState<LauncherTagMenu>(null);
     const [busy, setBusy] = useState(false);
     const [webSyncBusy, setWebSyncBusy] = useState(false);
     const [alwaysOnTop, setAlwaysOnTop] = useState(true);
@@ -354,7 +357,6 @@ export default function QuickLauncher() {
         operationRef.current = true; setBusy(true); setError(null);
         try {
             const result = await storeTag(activeTagFilter);
-            setShowStored(true);
             await reloadItems(activeTab, debouncedQuery);
             if (result.failed.length) setError(result.failed.join(' / '));
         } catch(e) { setError(String(e)); }
@@ -513,6 +515,7 @@ export default function QuickLauncher() {
             >
                 <span data-tauri-drag-region className="font-medium tracking-normal">Quick Launcher</span>
                 <div className="flex items-center gap-1">
+                <LauncherAppActions english={isEnglish} disabled={busy} onBusy={value => { operationRef.current = value; setBusy(value); }} onError={setError} />
                 <button type="button" disabled={pinBusy} aria-label={isEnglish ? 'Always on Top' : '最前面'} title={isEnglish ? 'Always on Top' : '最前面'} aria-pressed={alwaysOnTop} onClick={() => void toggleAlwaysOnTop()} className={`flex h-6 w-7 items-center justify-center rounded ${alwaysOnTop ? 'bg-red-50 text-red-600' : 'text-zinc-400 hover:bg-zinc-700'}`}><PinTackIcon active={alwaysOnTop}/></button>
                 <button type="button" aria-label={isEnglish ? 'Close Launcher' : 'ランチャーを閉じる'} title={isEnglish ? 'Close Launcher' : 'ランチャーを閉じる'} onClick={() => void closeLauncherWindow().catch(() => {})} className="flex h-6 w-7 items-center justify-center rounded text-lg text-zinc-300 hover:bg-zinc-700 hover:text-white">×</button>
                 </div>
@@ -524,6 +527,7 @@ export default function QuickLauncher() {
                         <button
                             key={tab.key}
                             type="button"
+                            disabled={busy}
                             onClick={() => switchTab(tab.key).catch(() => {})}
                             className={`h-8 rounded text-xs font-medium ${
                                 activeTab === tab.key
@@ -553,6 +557,12 @@ export default function QuickLauncher() {
                             key={tag}
                             type="button"
                             onClick={() => selectTagFilter(tag)}
+                            onContextMenu={e => {
+                                if (activeTab !== 'shortcut' || tag === UNCLASSIFIED_TAG_FILTER || busy) return;
+                                e.preventDefault();
+                                setTagMenu({ tag, x: Math.max(8, Math.min(e.clientX, window.innerWidth - 280)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 160)) });
+                            }}
+                            title={activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックで登録・タグ名変更・削除') : undefined}
                             className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
                                 activeTagFilter === tag
                                     ? 'bg-sky-500 text-white'
@@ -562,6 +572,19 @@ export default function QuickLauncher() {
                             {tag === UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Unclassified' : '未分類') : tag}
                         </button>
                     ))}
+                    {activeTab === 'shortcut' && <LauncherTagActions english={isEnglish} disabled={busy} menu={tagMenu}
+                        closeMenu={() => setTagMenu(null)} onBusy={value => { operationRef.current = value; setBusy(value); }} onError={setError}
+                        onChanged={async (old, name) => {
+                            if (old && activeTagFilter === old) {
+                                const next = name ?? ALL_TAGS_FILTER;
+                                setTagFilters(current => ({ ...current, shortcut: next }));
+                                await setLauncherTagFilter('shortcut', next);
+                            } else if (!old && name) {
+                                setTagFilters(current => ({ ...current, shortcut: name }));
+                                await setLauncherTagFilter('shortcut', name);
+                            }
+                            await reloadItems(activeTab, debouncedQuery);
+                        }} />}
                 </div>
 
                 {activeTab === 'shortcut' && <div className="flex flex-wrap gap-2 text-xs">
@@ -580,7 +603,7 @@ export default function QuickLauncher() {
                 </div>}
                 {webSyncMessage && activeTab === 'shortcut' && <div role="status" className="rounded border border-sky-500/30 bg-sky-950/30 px-2 py-1 text-xs text-sky-100">{webSyncMessage}</div>}
 
-                {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Stores all desktop notes with this tag, including unregistered notes.' : 'タグ全体の格納は、未登録の付箋も対象です。'}</p>}
+                {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Registers all desktop notes with this tag in the launcher and hides them.' : 'このタグの付箋をまとめてランチャーに登録し、画面から隠します。'}</p>}
                 <input
                     ref={inputRef}
                     value={query}
@@ -602,7 +625,7 @@ export default function QuickLauncher() {
                 <div className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-800 bg-zinc-900/70">
                     {visibleItems.length === 0 && !isLoading ? (
                         <div className="flex h-full items-center justify-center px-5 text-center text-sm leading-6 text-zinc-500">
-                            {showStored && activeTab === 'shortcut' && storageSource.length === 0 ? (isEnglish ? 'No stored notes.' : '格納した付箋はありません。') : items.length === 0 ? emptyMessageForTab(activeTab, language) : (isEnglish ? 'No items match this tag.' : 'このタグに該当する項目はありません。')}
+                            {showStored && activeTab === 'shortcut' && storageSource.length === 0 ? <span>{isEnglish ? 'No stored notes.' : '格納した付箋はありません。'} <button type="button" className="text-sky-300 underline" onClick={() => setShowStored(false)}>{isEnglish ? 'Show registered notes' : '登録一覧を表示'}</button></span> : items.length === 0 ? emptyMessageForTab(activeTab, language) : (isEnglish ? 'No items match this tag.' : 'このタグに該当する項目はありません。')}
                         </div>
                     ) : (
                         <div className="py-1">
