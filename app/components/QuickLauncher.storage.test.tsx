@@ -43,8 +43,8 @@ describe('launcher storage buttons', () => {
     it('stores the entire selected tag even when the favorite list is empty', async () => {
         mocks.list.mockResolvedValue([]);
         render(<QuickLauncher/>);
-        fireEvent.click(await screen.findByRole('button',{name:'仕事'}));
-        fireEvent.click(await screen.findByRole('button',{name:'このタグをまとめて格納'}));
+        fireEvent.contextMenu(await screen.findByRole('button',{name:'仕事'}));
+        fireEvent.click(await screen.findByRole('menuitem',{name:'このタグをまとめて登録して隠す'}));
         await waitFor(() => expect(mocks.tag).toHaveBeenCalledWith('仕事'));
     });
     it('reports a save failure and leaves the favorite accessible', async () => {

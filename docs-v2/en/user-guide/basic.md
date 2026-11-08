@@ -65,7 +65,7 @@ The default key is **Ctrl+P**. You can also right-click the tray icon or taskbar
 | Store | Click **Store** on the note’s row. Its content and registration stay intact. |
 | Take out | Click **Take out** or the note’s row to return it to the desktop. It remains in **Registered**. The **Stored in Launcher** view only lists hidden notes, so taking one out removes it from that view. |
 | Register a tag | Right-click a user tag → **Register all notes with this tag**. Note visibility stays unchanged. |
-| Store a tag | Right-click a user tag → **Store all notes with this tag**. All desktop notes with that tag are registered and stored, including previously unregistered notes and notes outside the current text search. |
+| Store a tag | Right-click a user tag → **Register and hide all notes with this tag**. All desktop notes with that tag are registered and stored, including previously unregistered notes and notes outside the current text search. |
 | Remove registration | Right-click a row → **Remove from Launcher**. The note is not deleted. A stored note is taken out first. |
 
 ::: tip Storing and filing are different

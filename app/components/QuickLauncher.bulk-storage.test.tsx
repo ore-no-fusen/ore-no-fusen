@@ -86,9 +86,9 @@ beforeEach(() => {
 
 async function bulkStore() {
     fireEvent.click(await screen.findByRole('button', { name: '仕事' }));
-    expect(screen.queryByRole('button', { name: 'このタグをまとめて格納' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'このタグをまとめて登録して隠す' })).toBeNull();
     fireEvent.contextMenu(screen.getByRole('button', { name: '仕事' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて格納' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて登録して隠す' }));
     await screen.findByRole('button', { name: '登録Aを取り出す' });
 }
 
@@ -97,7 +97,7 @@ describe('individual and bulk storage keep the launcher usable', () => {
         render(<QuickLauncher />);
         fireEvent.contextMenu(await screen.findByRole('button', { name: '仕事' }));
         expect(screen.getByRole('menuitem', { name: 'このタグをまとめて登録' })).toBeTruthy();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて格納' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて登録して隠す' }));
         await screen.findByRole('button', { name: '登録Aを取り出す' });
         expect(backend.storeTag).toHaveBeenCalledWith('仕事');
         expect(screen.getByRole('button', { name: 'すべて' }).className).toContain('bg-sky-500');

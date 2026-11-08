@@ -551,7 +551,7 @@ export default function QuickLauncher() {
                                 e.preventDefault();
                                 setTagMenu({ tag, x: Math.max(8, Math.min(e.clientX, window.innerWidth - 280)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 200)) });
                             }}
-                            title={activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックで一括登録・一括格納・タグ名変更・削除') : undefined}
+                            title={activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックで一括登録・登録して隠す・タグ名変更・削除') : undefined}
                             className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
                                 activeTagFilter === tag
                                     ? 'bg-sky-500 text-white'

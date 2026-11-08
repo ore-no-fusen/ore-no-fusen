@@ -60,7 +60,7 @@ describe('launcher tag management', () => {
         api.store.mockResolvedValue({ stored: 2, failed: ['保存できない付箋'] });
         const { changed, error } = setup(true);
         expect(screen.getByRole('menuitem', { name: 'このタグをまとめて登録' })).toBeTruthy();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて格納' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて登録して隠す' }));
         await waitFor(() => expect(changed).toHaveBeenCalledWith());
         expect(api.store).toHaveBeenCalledWith('test');
         expect(api.register).not.toHaveBeenCalled();
