@@ -76,6 +76,15 @@ describe('SimpleNoteBody', () => {
     expect(container.textContent).toContain('こんにちは');
   });
 
+  it('**強調** を朱の太字 <strong> でレンダリングする', () => {
+    const { container } = render(<SimpleNoteBody body={'前 **強調** 後'} />);
+    const strong = container.querySelectorAll('strong');
+    expect(strong.length).toBe(1);
+    expect(strong[0].textContent).toBe('強調');
+    expect((strong[0] as HTMLElement).style.color).toBe('red');
+    expect(container.textContent).not.toContain('**');
+  });
+
   it('data: URI 画像を <img> タグでレンダリングする', () => {
     const body = '前のテキスト\n![テスト画像](data:image/png;base64,abc123)\n後のテキスト';
     const { container } = render(<SimpleNoteBody body={body} />);
