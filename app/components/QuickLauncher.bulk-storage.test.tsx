@@ -86,11 +86,22 @@ beforeEach(() => {
 
 async function bulkStore() {
     fireEvent.click(await screen.findByRole('button', { name: '仕事' }));
-    fireEvent.click(screen.getByRole('button', { name: 'このタグをまとめて格納' }));
+    expect(screen.queryByRole('button', { name: 'このタグをまとめて格納' })).toBeNull();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '仕事' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて格納' }));
     await screen.findByRole('button', { name: '登録Aを取り出す' });
 }
 
 describe('individual and bulk storage keep the launcher usable', () => {
+    it('stores the right-clicked tag without changing the selected filter', async () => {
+        render(<QuickLauncher />);
+        fireEvent.contextMenu(await screen.findByRole('button', { name: '仕事' }));
+        expect(screen.getByRole('menuitem', { name: 'このタグをまとめて登録' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて格納' }));
+        await screen.findByRole('button', { name: '登録Aを取り出す' });
+        expect(backend.storeTag).toHaveBeenCalledWith('仕事');
+        expect(screen.getByRole('button', { name: 'すべて' }).className).toContain('bg-sky-500');
+    });
     it('newly registered notes remain after opening and can be reordered', async () => {
         render(<QuickLauncher />);
         await bulkStore();

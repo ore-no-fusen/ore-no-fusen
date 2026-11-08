@@ -10,7 +10,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
     storageSnapshot,
     storeQuickNote,
-    storeTag,
     getLauncherState,
     openQuickNote,
     quickOpenNotes,
@@ -352,16 +351,6 @@ export default function QuickLauncher() {
         } catch(e) { setError(String(e)); }
         finally { operationRef.current = false; setBusy(false); }
     };
-    const storeSelectedTag = async () => {
-        if (operationRef.current) return;
-        operationRef.current = true; setBusy(true); setError(null);
-        try {
-            const result = await storeTag(activeTagFilter);
-            await reloadItems(activeTab, debouncedQuery);
-            if (result.failed.length) setError(result.failed.join(' / '));
-        } catch(e) { setError(String(e)); }
-        finally { operationRef.current = false; setBusy(false); }
-    };
     const displayTagOptions = useMemo(() => {
         if (activeTagFilter !== ALL_TAGS_FILTER && !tagOptions.includes(activeTagFilter)) {
             return [activeTagFilter, ...tagOptions];
@@ -560,9 +549,9 @@ export default function QuickLauncher() {
                             onContextMenu={e => {
                                 if (activeTab !== 'shortcut' || tag === UNCLASSIFIED_TAG_FILTER || busy) return;
                                 e.preventDefault();
-                                setTagMenu({ tag, x: Math.max(8, Math.min(e.clientX, window.innerWidth - 280)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 160)) });
+                                setTagMenu({ tag, x: Math.max(8, Math.min(e.clientX, window.innerWidth - 280)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 200)) });
                             }}
-                            title={activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックで登録・タグ名変更・削除') : undefined}
+                            title={activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックで一括登録・一括格納・タグ名変更・削除') : undefined}
                             className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
                                 activeTagFilter === tag
                                     ? 'bg-sky-500 text-white'
@@ -599,11 +588,9 @@ export default function QuickLauncher() {
                             } else { window.open(url, '_blank', 'noopener,noreferrer'); }
                         } catch { setWebSyncMessage(isEnglish ? 'Could not open the Web page.' : 'Web画面を開けませんでした。'); }
                     }} />
-                    {activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <button type="button" disabled={busy} onClick={() => void storeSelectedTag()} className="ml-auto rounded bg-zinc-800 px-2 py-1 disabled:opacity-50">{busy ? (isEnglish ? 'Saving…' : '保存中…') : (isEnglish ? 'Store tag in Launcher' : 'このタグをまとめて格納')}</button>}
                 </div>}
                 {webSyncMessage && activeTab === 'shortcut' && <div role="status" className="rounded border border-sky-500/30 bg-sky-950/30 px-2 py-1 text-xs text-sky-100">{webSyncMessage}</div>}
 
-                {activeTab === 'shortcut' && activeTagFilter !== ALL_TAGS_FILTER && activeTagFilter !== UNCLASSIFIED_TAG_FILTER && <p className="text-[11px] text-zinc-400">{isEnglish ? 'Registers all desktop notes with this tag in the launcher and hides them.' : 'このタグの付箋をまとめてランチャーに登録し、画面から隠します。'}</p>}
                 <input
                     ref={inputRef}
                     value={query}

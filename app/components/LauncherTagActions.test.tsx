@@ -1,9 +1,9 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const api = vi.hoisted(() => ({ catalog: vi.fn(), create: vi.fn(), rename: vi.fn(), remove: vi.fn(), stop: vi.fn(), register: vi.fn() }));
+const api = vi.hoisted(() => ({ catalog: vi.fn(), create: vi.fn(), rename: vi.fn(), remove: vi.fn(), stop: vi.fn(), register: vi.fn(), store: vi.fn() }));
 vi.mock('../api/tags', () => ({ getUserTagCatalog: api.catalog, createUserTag: api.create, renameUserTag: api.rename, deleteUserTag: api.remove, stopUserTagChange: api.stop }));
-vi.mock('../api/launcher', () => ({ registerTag: api.register }));
+vi.mock('../api/launcher', () => ({ registerTag: api.register, storeTag: api.store }));
 import LauncherTagActions from './LauncherTagActions';
 afterEach(cleanup);
 beforeEach(() => { vi.resetAllMocks(); api.catalog.mockResolvedValue({ tags: ['test'], counts: { test: 3 }, pending: null }); });
@@ -53,6 +53,17 @@ describe('launcher tag management', () => {
         fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて登録' }));
         await waitFor(() => expect(changed).toHaveBeenCalledWith());
         expect(api.register).toHaveBeenCalledWith('test');
+        expect(api.store).not.toHaveBeenCalled();
         expect(api.remove).not.toHaveBeenCalled();
+    });
+    it('stores the right-clicked tag through the same menu and reports partial failures', async () => {
+        api.store.mockResolvedValue({ stored: 2, failed: ['保存できない付箋'] });
+        const { changed, error } = setup(true);
+        expect(screen.getByRole('menuitem', { name: 'このタグをまとめて登録' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグをまとめて格納' }));
+        await waitFor(() => expect(changed).toHaveBeenCalledWith());
+        expect(api.store).toHaveBeenCalledWith('test');
+        expect(api.register).not.toHaveBeenCalled();
+        expect(error).toHaveBeenLastCalledWith('保存できない付箋');
     });
 });

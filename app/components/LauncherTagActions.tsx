@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createUserTag, deleteUserTag, getUserTagCatalog, renameUserTag, stopUserTagChange, type PendingTagChange } from '../api/tags';
-import { registerTag } from '../api/launcher';
+import { registerTag, storeTag } from '../api/launcher';
 
 export type LauncherTagMenu = { tag: string; x: number; y: number } | null;
 type Dialog = { mode: 'create' | 'rename' | 'delete'; tag: string; value: string; count: number };
@@ -61,12 +61,12 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
         } catch (e) { setError(String(e)); }
         finally { inFlight.current = false; setRunning(false); onBusy(false); }
     };
-    const register = async (tag: string) => {
+    const bulk = async (tag: string, store: boolean) => {
         if (inFlight.current || disabled) return;
         inFlight.current = true;
-        closeMenu(); setRunning(true); onBusy(true);
+        closeMenu(); setRunning(true); onBusy(true); onError('');
         try {
-            const result = await registerTag(tag);
+            const result = await (store ? storeTag(tag) : registerTag(tag));
             await onChanged();
             if (result.failed.length) onError(result.failed.join('\n'));
         } catch (e) { onError(String(e)); }
@@ -86,7 +86,8 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
             <div className="fixed inset-0 z-40" onClick={closeMenu} onContextMenu={e => { e.preventDefault(); closeMenu(); }} />
             <div role="menu" aria-label={english ? 'Tag actions' : 'タグ操作'} className="fixed z-50 min-w-48 rounded border border-zinc-600 bg-zinc-900 py-1 text-sm shadow-xl"
                 style={{ left: menu.x, top: menu.y }}>
-                <button role="menuitem" disabled={disabled || running} className="block w-full px-3 py-2 text-left hover:bg-zinc-700" onClick={() => void register(menu.tag)}>{english ? 'Register all notes with this tag' : 'このタグをまとめて登録'}</button>
+                <button role="menuitem" disabled={disabled || running} title={english ? 'Register notes without changing their visibility' : '画面の表示状態を変えず、ランチャーに登録します'} className="block w-full px-3 py-2 text-left hover:bg-zinc-700" onClick={() => void bulk(menu.tag, false)}>{english ? 'Register all notes with this tag' : 'このタグをまとめて登録'}</button>
+                <button role="menuitem" disabled={disabled || running} title={english ? 'Register notes in the launcher and hide them from the desktop' : '未登録分もランチャーに登録し、画面から隠します'} className="block w-full px-3 py-2 text-left hover:bg-zinc-700" onClick={() => void bulk(menu.tag, true)}>{english ? 'Store all notes with this tag' : 'このタグをまとめて格納'}</button>
                 <button role="menuitem" disabled={disabled || running} className="block w-full px-3 py-2 text-left hover:bg-zinc-700" onClick={() => void open('rename', menu.tag)}>{english ? 'Rename tag' : 'タグ名を変更'}</button>
                 <button role="menuitem" disabled={disabled || running} className="block w-full px-3 py-2 text-left text-red-200 hover:bg-zinc-700" onClick={() => void open('delete', menu.tag)}>{english ? 'Delete tag from all notes' : 'タグを削除（すべての付箋から外す）'}</button>
             </div>

@@ -52,7 +52,11 @@ for (const mode of ['individual', 'bulk'] as const) {
         await expect(page.getByText('登録A', { exact: true })).toBeVisible();
         if (mode === 'bulk') {
             await page.getByRole('button', { name: '仕事', exact: true }).click();
-            await page.getByRole('button', { name: 'このタグをまとめて格納' }).click();
+            await expect(page.getByRole('button', { name: 'このタグをまとめて格納' })).toHaveCount(0);
+            await page.getByRole('button', { name: '仕事', exact: true }).click({ button: 'right' });
+            await expect(page.getByRole('menuitem', { name: 'このタグをまとめて登録' })).toBeVisible();
+            await page.screenshot({ path: info.outputPath('tag-bulk-menu.png') });
+            await page.getByRole('menuitem', { name: 'このタグをまとめて格納' }).click();
         } else {
             await page.getByRole('button', { name: '登録Aを格納', exact: true }).click();
         }
