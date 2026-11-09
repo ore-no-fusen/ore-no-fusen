@@ -6329,6 +6329,7 @@ pub fn run() {
             user_tags::fusen_rename_user_tag,
             user_tags::fusen_delete_user_tag,
             user_tags::fusen_stop_user_tag_change,
+            user_tags::fusen_delete_unused_user_tags,
             fusen_get_all_tags,
             fusen_get_active_tags,
             fusen_set_active_tags,

@@ -24,7 +24,7 @@ If the developer has a moment, you might get a quick reply.
 
 - [Install and get started](/en/user-guide/install)
 - [Basic use](/en/user-guide/basic)
-- [Quick Launcher: register, store, and take out](/en/user-guide/basic#quick-launcher)
+- [Quick Launcher: register, hide, and show](/en/user-guide/basic#quick-launcher)
 - [Advanced use](/en/user-guide/advanced)
 - [iPhone Sync](/en/user-guide/iphone)
 - [Troubleshooting](/en/user-guide/troubleshooting)

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NoteMeta } from '@/app/api/notes';
 import { playArchiveSound, playDeleteSound } from '../utils/soundManager';
-import { TranslationKey, Language } from '@/lib/i18n';
+import { getTranslation, TranslationKey, Language } from '@/lib/i18n';
 import { getFeedbackConversationUnreadState } from '@/app/utils/feedbackConversation';
 import { getUserTags, isReservedTag, normalizeTagForReservation } from '@/app/utils/reservedTags';
 import { addTag as addRawTag, removeTag as removeRawTag } from '@/app/api/tags';
@@ -115,7 +115,7 @@ export function getShortcutShelfMenuState(tags: string[]): ShortcutShelfMenuStat
     return {
         visible: true,
         isRegistered,
-        label: isRegistered ? '📌 ランチャーの登録を解除' : '📌 ランチャーに登録',
+        label: `📌 ${getTranslation('ja')(isRegistered ? 'menu.favoriteRemove' : 'menu.favoriteAdd')}`,
     };
 }
 
@@ -314,7 +314,7 @@ export function useStickyNoteContextMenu({
 
         if (state.isRegistered) {
             await removeRawTag(selectedFile.path, 'shortcut');
-            onToast?.(language === 'en' ? '📌 Removed from Launcher' : '📌 ランチャーの登録を解除しました');
+            onToast?.(language === 'en' ? '📌 Removed from Launcher' : '📌 ランチャーから登録解除しました');
         } else {
             await addRawTag(selectedFile.path, 'shortcut');
             onToast?.(language === 'en' ? '📌 Registered in Launcher' : '📌 ランチャーに登録しました');

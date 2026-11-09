@@ -16,13 +16,13 @@ describe('i18n Utility', () => {
         expect(t('settings.title')).toBe('俺の付箋');
         expect(t('common.save')).toBe('保存');
         expect(t('settings.data.basePathPlaceholder')).toBe('フォルダを選択してください...');
-        expect(t('settings.data.import')).toBe('Markdownのインポート＆しまったタグのインポート');
+        expect(t('settings.data.import')).toBe('Markdownを付箋として読み込む');
         expect(t('settings.data.importTagDesc')).toContain('元のタグフォルダにも残ります');
         expect(t('settings.help.menuTitle')).toBe('使い方');
         expect(t('settings.help.workflow.title')).toBe('よくある使い方');
         expect(t('settings.help.contextTable.title')).toBe("付箋を右クリックしてできること");
-        expect(t('settings.help.contextTable.archive.action')).toBe('タグフォルダへしまう');
-        expect(t('menu.archive')).toBe('タグフォルダへしまう');
+        expect(t('settings.help.contextTable.archive.action')).toBe('フォルダーに保管');
+        expect(t('menu.archive')).toBe('フォルダーに保管');
         expect(t('menu.openHelp')).toBe('使い方を開く');
         expect(t('menu.colors.yellow')).toBe('黄 - アイデア保存');
         expect(t('menu.colors.black')).toBe('黒 - レシピ・手順');
@@ -34,7 +34,7 @@ describe('i18n Utility', () => {
         expect(t('settings.title')).toBe('Settings');
         expect(t('common.save')).toBe('Save & Close');
         expect(t('settings.data.basePathPlaceholder')).toBe('Select a folder...');
-        expect(t('settings.data.import')).toBe('Import Markdown & Put-Away Tags');
+        expect(t('settings.data.import')).toBe('Import Markdown notes');
         expect(t('settings.help.menuTitle')).toBe('Help');
         expect(t('settings.help.workflow.title')).toBe('Common Workflows');
         expect(t('settings.help.contextTable.title')).toBe("Actions in the note’s right-click menu");

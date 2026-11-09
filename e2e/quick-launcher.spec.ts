@@ -52,21 +52,33 @@ for (const mode of ['individual', 'bulk'] as const) {
         await expect(page.getByText('登録A', { exact: true })).toBeVisible();
         if (mode === 'bulk') {
             await page.getByRole('button', { name: '仕事', exact: true }).click();
-            await page.getByRole('button', { name: 'このタグをまとめて格納' }).click();
+            await expect(page.getByRole('button', { name: 'このタグの付箋をランチャーに登録して画面から隠す' })).toHaveCount(0);
+            await page.setViewportSize({ width: 420, height: 520 });
+            await page.getByRole('button', { name: '仕事', exact: true }).click({ button: 'right' });
+            const menuBounds = await page.getByRole('menu', { name: 'タグ操作' }).boundingBox();
+            expect(menuBounds).not.toBeNull();
+            expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
+            expect(menuBounds!.y).toBeGreaterThanOrEqual(0);
+            expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(420);
+            expect(menuBounds!.y + menuBounds!.height).toBeLessThanOrEqual(520);
+            await expect(page.getByRole('menuitem', { name: 'このタグの付箋をランチャーに登録', exact: true })).toBeVisible();
+            await page.screenshot({ path: info.outputPath('tag-bulk-menu.png') });
+            await page.getByRole('menuitem', { name: 'このタグの付箋をランチャーに登録して画面から隠す' }).click();
+            await page.setViewportSize({ width: 1000, height: 760 });
         } else {
-            await page.getByRole('button', { name: '登録Aを格納', exact: true }).click();
+            await page.getByRole('button', { name: '登録Aを画面から隠す', exact: true }).click();
         }
-        await expect(page.getByRole('button', { name: '登録Aを取り出す', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: '登録一覧', exact: true })).toHaveClass(/text-sky-300/);
+        await expect(page.getByRole('button', { name: '登録Aを画面に表示', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'ランチャー登録済み', exact: true })).toHaveClass(/text-sky-300/);
         await expect(page.getByText('未登録C', { exact: true })).toHaveCount(mode === 'bulk' ? 1 : 0);
         if (mode === 'bulk') {
             await page.getByText('未登録C', { exact: true }).click();
-            await expect(page.getByRole('button', { name: '未登録Cを格納', exact: true })).toBeVisible();
+            await expect(page.getByRole('button', { name: '未登録Cを画面から隠す', exact: true })).toBeVisible();
             await page.getByText('未登録C', { exact: true }).click();
             await expect(page.getByText('未登録C', { exact: true })).toBeVisible();
         }
         await page.getByText('登録A', { exact: true }).click();
-        await expect(page.getByRole('button', { name: '登録Aを格納', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: '登録Aを画面から隠す', exact: true })).toBeVisible();
         await page.getByText('登録A', { exact: true }).click();
         await expect(page.getByText('登録A', { exact: true })).toBeVisible();
         const rowB = page.getByRole('button').filter({ has: page.getByText('登録B', { exact: true }) });

@@ -11,7 +11,7 @@ describe('Tooltip', () => {
     it('右寄せ表示の矢印を対象ボタンの中央へ合わせる', () => {
         vi.useFakeTimers();
         render(
-            <Tooltip text="「俺の付箋」へしまう" placement="top-right-arrow-shifted">
+            <Tooltip text="「俺の付箋」フォルダーに保管" placement="top-right-arrow-shifted">
                 <button type="button">しまう</button>
             </Tooltip>,
         );

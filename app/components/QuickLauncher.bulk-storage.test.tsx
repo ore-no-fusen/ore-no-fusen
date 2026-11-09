@@ -86,16 +86,27 @@ beforeEach(() => {
 
 async function bulkStore() {
     fireEvent.click(await screen.findByRole('button', { name: '仕事' }));
-    fireEvent.click(screen.getByRole('button', { name: 'このタグをまとめて格納' }));
-    await screen.findByRole('button', { name: '登録Aを取り出す' });
+    expect(screen.queryByRole('button', { name: 'このタグの付箋をランチャーに登録して画面から隠す' })).toBeNull();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '仕事' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'このタグの付箋をランチャーに登録して画面から隠す' }));
+    await screen.findByRole('button', { name: '登録Aを画面に表示' });
 }
 
 describe('individual and bulk storage keep the launcher usable', () => {
+    it('stores the right-clicked tag without changing the selected filter', async () => {
+        render(<QuickLauncher />);
+        fireEvent.contextMenu(await screen.findByRole('button', { name: '仕事' }));
+        expect(screen.getByRole('menuitem', { name: 'このタグの付箋をランチャーに登録' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'このタグの付箋をランチャーに登録して画面から隠す' }));
+        await screen.findByRole('button', { name: '登録Aを画面に表示' });
+        expect(backend.storeTag).toHaveBeenCalledWith('仕事');
+        expect(screen.getByRole('button', { name: 'すべて' }).className).toContain('bg-sky-500');
+    });
     it('newly registered notes remain after opening and can be reordered', async () => {
         render(<QuickLauncher />);
         await bulkStore();
-        fireEvent.click(screen.getByRole('button', { name: '未登録Cを取り出す' }));
-        await screen.findByRole('button', { name: '未登録Cを格納' });
+        fireEvent.click(screen.getByRole('button', { name: '未登録Cを画面に表示' }));
+        await screen.findByRole('button', { name: '未登録Cを画面から隠す' });
         fireEvent.click(screen.getByText('未登録C'));
         await waitFor(() => expect(backend.open).toHaveBeenCalledTimes(2));
         const row = screen.getByText('未登録C').closest('[role="button"]')!;
@@ -106,8 +117,8 @@ describe('individual and bulk storage keep the launcher usable', () => {
     });
     it('individual storage keeps the registered list selected', async () => {
         render(<QuickLauncher />);
-        fireEvent.click(await screen.findByRole('button', { name: '登録Aを格納' }));
-        await screen.findByRole('button', { name: '登録Aを取り出す' });
+        fireEvent.click(await screen.findByRole('button', { name: '登録Aを画面から隠す' }));
+        await screen.findByRole('button', { name: '登録Aを画面に表示' });
         expect(screen.queryByText('未登録C')).toBeNull();
         expect(screen.getByText('登録B')).toBeTruthy();
     });
@@ -115,8 +126,8 @@ describe('individual and bulk storage keep the launcher usable', () => {
     it('bulk storage keeps the same registered list selected', async () => {
         render(<QuickLauncher />);
         await bulkStore();
-        expect(screen.getByRole('button', { name: '未登録Cを取り出す' })).toBeTruthy();
-        expect(screen.getByRole('button', { name: '登録一覧' }).className).toContain('text-sky-300');
+        expect(screen.getByRole('button', { name: '未登録Cを画面に表示' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'ランチャー登録済み' }).className).toContain('text-sky-300');
     });
 
     it.each(['row', 'take-out button'])('opening after bulk storage through %s leaves registration visible', async method => {
@@ -124,9 +135,9 @@ describe('individual and bulk storage keep the launcher usable', () => {
         await bulkStore();
         fireEvent.click(method === 'row'
             ? screen.getByText('登録A')
-            : screen.getByRole('button', { name: '登録Aを取り出す' }));
+            : screen.getByRole('button', { name: '登録Aを画面に表示' }));
         await waitFor(() => expect(backend.stored.has(noteA.path)).toBe(false));
-        await screen.findByRole('button', { name: '登録Aを格納' });
+        await screen.findByRole('button', { name: '登録Aを画面から隠す' });
         expect(screen.getByText('登録B')).toBeTruthy();
         expect(backend.order).toContain(noteA.path);
         expect(backend.remove).not.toHaveBeenCalled();
@@ -145,16 +156,16 @@ describe('individual and bulk storage keep the launcher usable', () => {
         render(<QuickLauncher />);
         await bulkStore();
         await screen.findByText('保存できませんでした');
-        expect(screen.getByRole('button', { name: '登録Bを格納' })).toBeTruthy();
-        expect(screen.getByRole('button', { name: '未登録Cを取り出す' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '登録Bを画面から隠す' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '未登録Cを画面に表示' })).toBeTruthy();
     });
 
     it('bulk storage preserves an explicitly selected stored-notes view too', async () => {
         backend.stored.add(noteA.path);
         render(<QuickLauncher />);
-        fireEvent.click(await screen.findByRole('button', { name: '格納した付箋 (1)' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'ランチャーで隠した付箋 (1)' }));
         await bulkStore();
         expect(screen.getByText('未登録C')).toBeTruthy();
-        expect(screen.getByRole('button', { name: '格納した付箋 (3)' }).className).toContain('text-sky-300');
+        expect(screen.getByRole('button', { name: 'ランチャーで隠した付箋 (3)' }).className).toContain('text-sky-300');
     });
 });

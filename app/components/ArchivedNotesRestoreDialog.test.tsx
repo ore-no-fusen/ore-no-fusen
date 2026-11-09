@@ -49,7 +49,7 @@ describe('ArchivedNotesRestoreDialog', () => {
     const preview = await screen.findByText(/^本文 5/);
     fireEvent.click(preview.closest('[role="checkbox"]')!);
     fireEvent.click(screen.getByRole('button', { name: /Archive/ }));
-    await waitFor(() => expect((screen.getByText('1枚を取り出す') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByText('1枚を画面に戻す') as HTMLButtonElement).disabled).toBe(false));
   });
 
   it('shows an error and re-enables restore when the restore command fails', async () => {
@@ -61,9 +61,9 @@ describe('ArchivedNotesRestoreDialog', () => {
     render(<ArchivedNotesRestoreDialog language="ja" onClose={() => {}} onRestored={() => {}} />);
     const preview = await screen.findByText(/^本文 5/);
     fireEvent.click(preview.closest('[role="checkbox"]')!);
-    fireEvent.click(screen.getByText('1枚を取り出す'));
+    fireEvent.click(screen.getByText('1枚を画面に戻す'));
     await screen.findByText(/復元できません/);
-    expect((screen.getByText('1枚を取り出す') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText('1枚を画面に戻す') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('refreshes the open list when another note is archived', async () => {

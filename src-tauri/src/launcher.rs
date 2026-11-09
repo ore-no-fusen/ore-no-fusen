@@ -1814,7 +1814,7 @@ pub(crate) async fn fusen_open_quick_note(
     if retained.is_none() {
         let ready = tokio::time::timeout(std::time::Duration::from_secs(15), ready_receiver).await;
         app.unlisten(ready_listener);
-        let label = ready.map_err(|_| "付箋の表示準備が完了しませんでした。登録と格納状態は保持しています")?
+        let label = ready.map_err(|_| "付箋の表示準備が完了しませんでした。ランチャー登録と画面の非表示状態は保持しています")?
             .map_err(|_| "付箋の表示準備が中断されました")?;
         let mut displayed = false;
         for _ in 0..100 {
@@ -1828,7 +1828,7 @@ pub(crate) async fn fusen_open_quick_note(
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        if !displayed { return Err("付箋を表示できませんでした。登録と格納状態は保持しています".into()); }
+        if !displayed { return Err("付箋を表示できませんでした。ランチャー登録と画面の非表示状態は保持しています".into()); }
         crate::favorite_storage::fusen_take_out_favorite(app.clone(), path.clone())?;
     } else { app.unlisten(ready_listener); }
     let updated_content = increment_launches_in_file(&path)?;
