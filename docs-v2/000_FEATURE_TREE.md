@@ -258,8 +258,8 @@
 >
 > 凡例：●＝充実／◐＝あり・薄い／○＝なし〜ほぼなし。充足度は「テスト件数 × データ損失リスクに対する検証の深さ」で判定。
 
-全体像：TS テスト179ファイル・実測983件パス／Rust 452件／E2E 21本／scripts系 16ファイル。
-弱点は3点に集約：(1) E2E 21本のうち CI で回るのは1本だけ (2) Web共有の Rust 側スナップショットが薄い (3) fusen_restore_backup と capture.rs に専用テストがない。
+初回監査時の記録：TS テスト179ファイル・実測983件パス／Rust 452件／E2E 21本／scripts系 16ファイル。現在の総数・成功は最新headのCI結果で確認する。
+初回監査で挙がったWeb共有・バックアップ復旧・書式バーの不足は、本改訂で通常テストを追加した。安全系4E2EのCI導入は別PR #134で扱う。capture.rsの分岐テストと実Drive・実機確認は残る。
 
 ## コンセプト1：すぐ書ける
 
@@ -295,7 +295,7 @@
 
 ### 要求2-1 大事な一文を目立たせたい
 - 太字の朱表示 — app/components/__tests__/MarkdownRenderer.test.tsx — ●（PC表示）。※iPhone ビューア側の朱太字テストは PR #125 で追加、未マージのため main 未収録 — ◐
-- **フローティングフォーマットバー — components/FloatingFormatBar.tsx — ○ 専用テストなし**
+- フローティングフォーマットバー — app/components/FloatingFormatBar.tsx、FloatingFormatBar.test.tsx（8件：日英ラベル・配置・各操作・選択保持） — ●
 - 編集用ホットキー — shortcutKey.test.ts、hotkey_manager.rs — ◐
 
 ### 要求2-2 画像に書き込みたい
@@ -331,13 +331,13 @@
 - iPhone に送る（PC→iPhone） — lib.rs（push ペイロード系）、webpush.rs（3件）、gdrive.rs（8件：トークン暗号化・OAuth state 検証は●） — ●
 - 通知常駐（ロックだぜ） — e2e/lock-notification.spec.ts — ◐（CI で回らない）
 - iPhone から PC へ送る — IphoneReturnDialog.test.tsx、app/utils/receiveIphoneNote.test.ts、file_drop.rs（5件）、lib.rs — ●
-- **Web共有 — TS 側 ●／Rust 側 ○〜◐**：web_share_snapshot.rs（1,266行）＝実質1件＋#[ignore]1件（Drive fixture 必須）、web_sharing_state.rs 2件、web_share_read_cache.rs 2件、web_share_download.rs 3件。web_share_contract.rs（17件）・web_share_markdown.rs（16件）は ●。「競合・欠落を自動上書きしない」という仕様の中核が Rust 側で最も薄い
+- **Web共有 — TS 側 ●／Rust 側 ●（通常テストの範囲）**：web_share_snapshot.rsは通常10件（整合性・scope/digest・CAS競合時の上書き拒否・GCゲート失敗時の削除0・重複競合の保留）。実Drive fixture1件はignoreであり未実施と区別する。web_share_contract.rs・web_share_markdown.rs・web_sharing_state.rs・web_share_read_cache.rs・web_share_download.rsも参照。実Driveの委譲経路の通し確認は通常テストの成功だけで代替しない。
 
 ### 要求3-3 散らからないでほしい
 - タグで整列 — arrange.rs（23件） — ●
 - タグで絞り込み／全部隠す・戻す — tray.rs、lib.rs に部分的に内包 — ◐
-- しまう・取り出す — storage.rs（restore_archived_note）、app/utils/archiveRestore.test.ts、ArchivedNotesRestoreDialog.test.tsx、e2e/archive-restore.spec.ts — ●
-- クイックランチャー格納 — favorite_storage.rs（12件）、QuickLauncher.storage／lifecycle.test、lib.rs — ●
+- フォルダーに保管・保管した付箋を画面に戻す — storage.rs（restore_archived_note）、app/utils/archiveRestore.test.ts、ArchivedNotesRestoreDialog.test.tsx、e2e/archive-restore.spec.ts — ●
+- ランチャーに登録・画面から隠す／画面に表示 — favorite_storage.rs（12件）、QuickLauncher.storage／lifecycle.test、lib.rs — ●
 
 ### 要求3-4 すぐ見つけたい
 - 全文検索 — lib.rs `test_search_logic`、SearchOverlay.test.tsx — ●
@@ -350,8 +350,8 @@
 
 - Markdown ファイル保存／アトミック保存と破損防止 — storage.rs（65件） — ●（全体で最も手厚い）
 - 手動バックアップ — storage.rs、BackupResultDialog.test.tsx — ●
-- 月次安全バックアップ — maintenance.rs（2件）、app/utils/monthlyBackupSettings.test.ts — ◐（lib.rs `fusen_run_monthly_backup` 実行本体の専用テストなし）
-- **バックアップからの復旧 — lib.rs `fusen_restore_backup` — ○ 専用テストなし**（失敗すると困る手順が無検証。アーカイブ復元とは別物）
+- 月次安全バックアップ — maintenance.rs、app/utils/monthlyBackupSettings.test.ts、lib.rsのmonthly_backup_tests（3件：世代更新・Trash指定・中断再開） — ●
+- **バックアップからの復旧 — lib.rs `fusen_restore_backup`、restore_backup_tests（5件：不存在・Markdownなし・件数不一致・原本保持・固定復旧先） — ●**。Trashを含むバックアップの件数不一致による拒否は既存動作の記録であり、正常復旧できる保証とは区別する。
 - 削除とごみ箱 — trash_history.rs（6件）、storage.rs、lib.rs — ●
 - ごみ箱の90日整理 — trash_cleanup.rs（15件）、e2e/trash-maintenance.spec.ts（CI外） — ●
 - インポート — import.rs（3件）、app/utils/importRefresh.test.ts — ◐
@@ -384,12 +384,12 @@
 ## 追加すべきテスト（重要度順）
 
 1. 安全系 E2E の段階的 CI 導入（data-safety、trash-maintenance、archive-restore、pwa-delete-persistence）
-2. Web共有 Rust 側スナップショットの通常テスト化（#[ignore] の fixture ローカル化、「競合時に自動上書きしない」ケース追加）
-3. fusen_restore_backup の専用テスト
+2. 【対応済み】Web共有 Rust 側スナップショットの通常テスト化（#[ignore] の fixture ローカル化、「競合時に自動上書きしない」ケース追加）
+3. 【対応済み】fusen_restore_backup の専用テスト
 4. capture.rs の分岐テスト（起動失敗・キャンセル・保存失敗時の後始末）
-5. FloatingFormatBar の単体テスト
-6. fusen_run_monthly_backup 本体と fusen_check_store_update の検証追加
-7. viewer テストの古い「スタブ／TODO」コメント除去と ViewerPage 本体のテスト再開
+5. 【対応済み】FloatingFormatBar の単体テスト
+6. 【対応済み】fusen_run_monthly_backup抽出処理とfusen_check_store_updateの件数判定を検証追加（OSのStore API自体は対象外）
+7. 【対応済み】viewer テストの古い「スタブ／TODO」コメントとダミー試験を整理（既存の本体試験は維持）
 
 ---
 
