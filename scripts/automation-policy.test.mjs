@@ -53,12 +53,29 @@ test('development REST deployment retains v1 and cannot inherit Gateway registra
 
 test('documentation uses its own guarded gate and one design build per Test run',()=>{
  const workflow=fs.readFileSync('.github/workflows/test.yml','utf8');
- assert.deepEqual(parse(workflow).jobs.gate.needs,['scope','usage-analysis','frontend','rust','msix','documentation','design-docs']);
- assert.equal((workflow.match(/if: needs\.scope\.outputs\.docs_only == 'false'/g)||[]).length,3);
+ assert.deepEqual(parse(workflow).jobs.gate.needs,['scope','usage-analysis','frontend','rust','msix','documentation','design-docs','e2e-safety']);
+ assert.equal((workflow.match(/if: needs\.scope\.outputs\.docs_only == 'false'/g)||[]).length,4);
  assert.match(workflow,/if: needs\.scope\.outputs\.docs_only == 'true'/);
  assert.match(workflow,/node scripts\/ci-scope\.mjs documents/);
  assert.match(workflow,/uses: \.\/\.github\/workflows\/docs\.yml/);
  const docs=fs.readFileSync('.github/workflows/docs.yml','utf8');
  assert.match(docs,/workflow_call:/);assert.doesNotMatch(docs,/^  push:/m);
  assert.match(docs,/github\.ref == 'refs\/heads\/main' &&/);
+});
+
+test('safety E2E is isolated, required by the gate and keeps failure evidence briefly',()=>{
+ const workflow=parse(fs.readFileSync('.github/workflows/test.yml','utf8'));
+ const job=workflow.jobs['e2e-safety'];
+ assert.deepEqual(job.needs,'scope');
+ assert.equal(job.if,"needs.scope.outputs.docs_only == 'false'");
+ assert.ok(workflow.jobs.gate.needs.includes('e2e-safety'));
+ const env=workflow.jobs.gate.steps.find(step=>step.name==='Require every applicable check').env;
+ assert.equal(env.E2E_SAFETY_RESULT,'$'+'{{ needs.e2e-safety.result }}');
+ const command=job.steps.find(step=>step.name==='Data preservation and restore regressions').run;
+ for(const file of ['data-safety','trash-maintenance','archive-restore','pwa-delete-persistence']) assert.ok(command.includes('e2e/'+file+'.spec.ts'));
+ assert.ok(command.startsWith('npm run test:e2e -- '));
+ assert.equal(job['continue-on-error'],undefined);
+ for(const step of job.steps) assert.equal(step['continue-on-error'],undefined);
+ const artifact=job.steps.find(step=>step.uses==='actions/upload-artifact@v4');
+ assert.equal(artifact.if,'failure()');assert.equal(artifact.with['retention-days'],1);
 });

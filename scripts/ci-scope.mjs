@@ -33,6 +33,7 @@ export function gatePasses(scope, results) {
     usage: scope.docsOnly ? 'skipped' : 'success',
     frontend: scope.docsOnly ? 'skipped' : 'success',
     rust: scope.docsOnly ? 'skipped' : 'success',
+    e2eSafety: scope.docsOnly ? 'skipped' : 'success',
     msix: scope.msix ? 'success' : 'skipped',
     documentation: scope.docsOnly ? 'success' : 'skipped',
     designDocs: scope.designDocs ? 'success' : 'skipped',
@@ -51,7 +52,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const inputs = { docsOnly: process.env.DOCS_ONLY, msix: process.env.SCOPE, designDocs: process.env.DESIGN_DOCS, publicGuide: process.env.PUBLIC_GUIDE };
     const valid = Object.values(inputs).every(value => ['true', 'false'].includes(value));
     const scope = valid ? Object.fromEntries(Object.entries(inputs).map(([name, value]) => [name, value === 'true'])) : null;
-    const results = Object.fromEntries(['scope', 'usage', 'frontend', 'rust', 'msix', 'documentation', 'designDocs'].map(name => [name, process.env[`${name === 'designDocs' ? 'DESIGN_DOCS' : name.toUpperCase()}_RESULT`]]));
+    const results = Object.fromEntries(['scope', 'usage', 'frontend', 'rust', 'e2eSafety', 'msix', 'documentation', 'designDocs'].map(name => [name, process.env[`${name === 'designDocs' ? 'DESIGN_DOCS' : name === 'e2eSafety' ? 'E2E_SAFETY' : name.toUpperCase()}_RESULT`]]));
     console.log(JSON.stringify({ scope, results }));
     process.exit(gatePasses(scope, results) ? 0 : 1);
   }
