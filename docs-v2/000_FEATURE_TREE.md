@@ -259,7 +259,7 @@
 > 凡例：●＝充実／◐＝あり・薄い／○＝なし〜ほぼなし。充足度は「テスト件数 × データ損失リスクに対する検証の深さ」で判定。
 
 初回監査時の記録：TS テスト179ファイル・実測983件パス／Rust 452件／E2E 21本／scripts系 16ファイル。現在の総数・成功は最新headのCI結果で確認する。
-初回監査で挙がったWeb共有・バックアップ復旧・書式バーの不足は、本改訂で通常テストを追加した。安全系4E2EのCI導入は別PR #134で扱う。capture.rsの分岐テストと実Drive・実機確認は残る。
+初回監査で挙がったWeb共有・バックアップ復旧・書式バーの不足は、本改訂で通常テストを追加した。安全系4E2Eの独立CIジョブはPR #134で導入した。capture.rsの分岐テストと実Drive・実機確認は残る。
 
 ## コンセプト1：すぐ書ける
 
@@ -353,7 +353,7 @@
 - 月次安全バックアップ — maintenance.rs、app/utils/monthlyBackupSettings.test.ts、lib.rsのmonthly_backup_tests（3件：世代更新・Trash指定・中断再開） — ●
 - **バックアップからの復旧 — lib.rs `fusen_restore_backup`、restore_backup_tests（5件：不存在・Markdownなし・件数不一致・原本保持・固定復旧先） — ●**。Trashを含むバックアップの件数不一致による拒否は既存動作の記録であり、正常復旧できる保証とは区別する。
 - 削除とごみ箱 — trash_history.rs（6件）、storage.rs、lib.rs — ●
-- ごみ箱の90日整理 — trash_cleanup.rs（15件）、e2e/trash-maintenance.spec.ts（CI外） — ●
+- ごみ箱の90日整理 — trash_cleanup.rs（15件）、e2e/trash-maintenance.spec.ts（独立安全系CI） — ●
 - インポート — import.rs（3件）、app/utils/importRefresh.test.ts — ◐
 - 保存先（Vault）の変更 — storage.rs — ●
 - プライバシー設計（トークン DPAPI 暗号化） — gdrive.rs — ●
@@ -377,13 +377,13 @@
 
 ## 横断：CI・テスト基盤
 
-- CI（.github/workflows/test.yml）：PR／push で vitest 全体・tsc・cargo test（windows-latest）・scripts 系を実行。ただし **E2E は e2e/public-guide-links.spec.ts の1本のみ CI 実行**。残り20本（data-safety、trash-maintenance、archive-restore、iphone-roundtrip、pwa-recovery 等の安全系含む）は手動実行依存。これが構造上の最大の弱点。
+- CI（.github/workflows/test.yml）：PR／main・develop push／merge_groupで全件Vitest・型・Rust・scriptsを検証。日英ガイドは既存frontend、データ保持・ごみ箱安全停止・保管復元・PWA削除維持の4ファイル7件は独立e2e-safetyで実行する。文書のみ以外ではgateが安全系E2E成功を必須とし、失敗・キャンセル・未実行・不明を拒否する。その他のアプリE2EはPC hookの対象。
 - 監査時の実行結果（TS のみ実測）：179ファイル中178ファイルパス、983件パス。唯一の失敗は mermaidSecurity.browser.test.ts で、監査環境に Playwright Chromium 未導入という環境要因。Rust は監査環境に toolchain がなく未実行（CI で担保）。
 - vitest の include 範囲は app／lib／worker のみで、トップレベル components/ は対象外。
 
 ## 追加すべきテスト（重要度順）
 
-1. 安全系 E2E の段階的 CI 導入（data-safety、trash-maintenance、archive-restore、pwa-delete-persistence）
+1. 【対応済み・PR134】安全系 E2E の段階的 CI 導入（data-safety、trash-maintenance、archive-restore、pwa-delete-persistence）
 2. 【対応済み】Web共有 Rust 側スナップショットの通常テスト化（#[ignore] の fixture ローカル化、「競合時に自動上書きしない」ケース追加）
 3. 【対応済み】fusen_restore_backup の専用テスト
 4. capture.rs の分岐テスト（起動失敗・キャンセル・保存失敗時の後始末）
