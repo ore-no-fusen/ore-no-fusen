@@ -1,15 +1,13 @@
 /**
- * app/viewer/page.tsx のテストスタブ
- * Wave 0 で先行作成 — Wave 1 (Plan 02) 実装後に GREEN になること
+ * app/viewer の単体テスト
+ * SimpleNoteBody の描画、utils（insertAtCursor / formatRelativeTime）、
+ * iPhone→PC送信と履歴・下書きのロジックを検証する
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { SimpleNoteBody } from './SimpleNoteBody';
 import { insertAtCursor, formatRelativeTime } from './utils';
-
-// Wave 1 で実装される — Plan 02 完了まで TODO
-// import ViewerPage from './page';
 
 // mermaid モック（jsdom は mermaid を描画できない）
 vi.mock('mermaid', () => ({
@@ -63,13 +61,6 @@ beforeEach(() => {
   HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mock');
 });
 
-
-
-// Placeholder: vitest が 0 failures で終わるための空テスト
-it('Wave 0 スタブが読み込める', () => {
-  expect(true).toBe(true);
-});
-
 describe('SimpleNoteBody', () => {
   it('テキストのみのbodyをそのままレンダリングする', () => {
     const { container } = render(<SimpleNoteBody body={'こんにちは\n付箋テスト'} />);
@@ -108,8 +99,7 @@ describe('SimpleNoteBody', () => {
 });
 
 // ============================================================
-// Phase 6: iPhone→PC送信 テストスタブ (Wave 0)
-// Wave 1〜3 の実装後に GREEN になること
+// Phase 6: iPhone→PC送信
 // ============================================================
 
 
