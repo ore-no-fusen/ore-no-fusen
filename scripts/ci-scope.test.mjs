@@ -19,7 +19,7 @@ test('GitHub does not build MSIX for app, dependencies, configuration or unknown
 });
 test('gate rejects failure, cancellation, missing and unexpectedly skipped tests', () => {
   const scope = classifyScope(['app/page.tsx']);
-  const green = { scope: 'success', usage: 'success', frontend: 'success', rust: 'success', msix: 'skipped', documentation: 'skipped', designDocs: 'skipped' };
+  const green = { scope: 'success', usage: 'success', frontend: 'success', rust: 'success', e2eSafety: 'success', msix: 'skipped', documentation: 'skipped', designDocs: 'skipped' };
   assert.equal(gatePasses(scope, green), true);
   assert.equal(gatePasses(classifyScope(['app/landing/page.tsx']), { ...green, msix: 'skipped' }), true);
   for (const name of Object.keys(green)) for (const result of ['failure', 'cancelled', 'skipped', 'success', 'pending', undefined]) {
@@ -48,7 +48,7 @@ test('only document content can omit application checks', () => {
 test('documentation gate requires the actual document builds and rejects arbitrary skips', () => {
   const scope = classifyScope(['docs-v2/002_PC.md', 'public-guide/faq.md']);
   assert.deepEqual(scope, { docsOnly: true, msix: false, designDocs: true, publicGuide: true });
-  const green = { scope: 'success', usage: 'skipped', frontend: 'skipped', rust: 'skipped', msix: 'skipped', documentation: 'success', designDocs: 'success' };
+  const green = { scope: 'success', usage: 'skipped', frontend: 'skipped', rust: 'skipped', e2eSafety: 'skipped', msix: 'skipped', documentation: 'success', designDocs: 'success' };
   assert.equal(gatePasses(scope, green), true);
   for (const name of Object.keys(green)) for (const result of ['failure', 'cancelled', 'skipped', 'success', 'pending', undefined]) {
     if (result === green[name]) continue;

@@ -126,6 +126,34 @@ jobs:
       source_run: ${{ steps.validation.outputs.source_run }}
       source_attempt: ${{ steps.validation.outputs.source_attempt }}
       source_pr: ${{ steps.validation.outputs.source_pr }}
+  e2e-safety:
+    needs: scope
+    if: needs.scope.outputs.docs_only == 'false'
+    name: Data safety E2E
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        timeout-minutes: 5
+      - run: npx playwright install chromium
+        timeout-minutes: 3
+      - name: Data preservation and restore regressions
+        run: >-
+          npm run test:e2e -- e2e/data-safety.spec.ts e2e/trash-maintenance.spec.ts
+          e2e/archive-restore.spec.ts e2e/pwa-delete-persistence.spec.ts
+      - name: Save failure screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-safety-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          retention-days: 1
+          if-no-files-found: ignore
   rust:
     needs: scope
     if: needs.scope.outputs.docs_only == 'false'
@@ -232,6 +260,7 @@ jobs:
       - msix
       - documentation
       - design-docs
+      - e2e-safety
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -247,6 +276,7 @@ jobs:
           SCOPE_RESULT: ${{ needs.scope.result }}
           USAGE_RESULT: ${{ needs.usage-analysis.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          E2E_SAFETY_RESULT: ${{ needs.e2e-safety.result }}
           RUST_RESULT: ${{ needs.rust.result }}
           MSIX_RESULT: ${{ needs.msix.result }}
           DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
