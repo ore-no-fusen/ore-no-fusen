@@ -134,4 +134,43 @@ describe('useNoteList', () => {
     })));
     unmount();
   });
+  it('一覧表示後に削除したメモを、遅いDrive完了で再表示しない', async () => {
+    const deleted: DraftRecord = { id: 'delete-during-sync', title: '削除対象', body: '本文', created_at: '', images: [], locked: true };
+    const keep: DraftRecord = { id: 'keep-during-sync', title: '残す', body: '本文', created_at: '', images: [] };
+    let completeDrive!: (value: { items: unknown[] }) => void;
+    const pendingDrive = new Promise<{ items: unknown[] }>(resolve => { completeDrive = resolve; });
+    mocks.loadAllDrafts.mockResolvedValue([deleted, keep]);
+    mocks.downloadWithAutoRefresh.mockReturnValue(pendingDrive);
+    const setHistoryNotes = vi.fn();
+    const { unmount } = renderHook(() => useNoteList({ step: 'list', accessToken: 'token', setHistoryNotes,
+      setIsHistoryLoading: vi.fn(), setThumbnailUrls: vi.fn(), initLockedNoteIds: vi.fn() }));
+    await waitFor(() => expect(setHistoryNotes).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({id: deleted.id})])));
+    // 一覧の削除処理がDBと削除済みIDを更新した後に、Drive応答が到着する。
+    mocks.loadAllDrafts.mockResolvedValue([keep]);
+    mocks.loadDeletedDraftIds.mockResolvedValue([deleted.id]);
+    setHistoryNotes.mockClear();
+    await act(async () => { completeDrive({ items: [] }); await pendingDrive; });
+    await waitFor(() => expect(setHistoryNotes).toHaveBeenLastCalledWith([expect.objectContaining({ id: keep.id })]));
+    expect(setHistoryNotes).not.toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: deleted.id })]));
+    unmount();
+  });
+
+  it('同期後の最新DBを読めない場合も削除前の一覧で上書きしない', async () => {
+    const draft: DraftRecord = { id: 'old-local', title: '以前の一覧', body: '', created_at: '', images: [] };
+    let completeDrive!: (value: { items: unknown[] }) => void;
+    const pendingDrive = new Promise<{ items: unknown[] }>(resolve => { completeDrive = resolve; });
+    mocks.loadAllDrafts.mockResolvedValueOnce([draft]).mockRejectedValue(new Error('DB unavailable'));
+    mocks.downloadWithAutoRefresh.mockReturnValue(pendingDrive);
+    const setHistoryNotes = vi.fn();
+    const setIsHistoryLoading = vi.fn();
+    const { unmount } = renderHook(() => useNoteList({ step: 'list', accessToken: 'token', setHistoryNotes,
+      setIsHistoryLoading, setThumbnailUrls: vi.fn(), initLockedNoteIds: vi.fn() }));
+    await waitFor(() => expect(setHistoryNotes).toHaveBeenCalled());
+    setHistoryNotes.mockClear();setIsHistoryLoading.mockClear();
+    await act(async () => { completeDrive({ items: [] }); await pendingDrive; });
+    await waitFor(() => expect(setIsHistoryLoading).toHaveBeenCalledWith(false));
+    expect(setHistoryNotes).not.toHaveBeenCalled();
+    unmount();
+  });
+
 });

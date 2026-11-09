@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.41 / 2026-10-08
+設計書 v1.42 / 2026-11-10
 </p>
 
 ---
@@ -1271,7 +1271,7 @@ graph LR
 
 | No | 機能 | 設計意図・工夫 |
 |:---|:---|:---|
-| 1 | Drive → IndexedDB 同期 | 一覧を開いたらIndexedDBの保存済み一覧を先に表示し、Drive通信を待たせない。その後 `notes_to_iphone.json` をバックグラウンドで取得し、ローカルにない新着ノートをIndexedDBへ取り込んで一覧を更新する。取り込み後はDriveファイルを削除（Drive = 未処理キュー）。Drive失敗時は先に表示したIndexedDBの一覧を維持する |
+| 1 | Drive → IndexedDB 同期 | 一覧を開いたらIndexedDBの保存済み一覧を先に表示し、Drive通信を待たせない。その後 `notes_to_iphone.json` をバックグラウンドで取得し、ローカルにない新着ノートをIndexedDBへ取り込んで一覧を更新する。取り込み後はDriveファイルを削除（Drive = 未処理キュー）。同期完了時は最新IndexedDBと削除済みIDを再取得して一覧を更新し、同期開始時の一覧コピーを後から再表示しない。最新DB一覧を読めない場合は現在の表示を維持する |
 | 2 | 画像サムネイル | 添付画像がある場合、IndexedDB の Blob から `URL.createObjectURL()` で URL を生成してサムネイルを表示。アンマウント時に `URL.revokeObjectURL()` で解放する |
 | 3 | ステータスバッジ | draft（下書き）/ sent（PC送信済み）/ PC受信 の3状態を `sent_at` フィールドの有無と `received_pc` フラグで判定して色分け表示する |
 | 4 | 相対時間表示 | `created_at` から「3分前」「1時間前」「昨日」の形式に変換（`formatRelativeTime()`）。 数字と絶対時刻を並べるより一目で新鮮度がわかる |
@@ -1280,6 +1280,29 @@ graph LR
 | 7 | ＋ 新規作成 | 新しい下書き ID を `crypto.randomUUID()` で生成し write 画面へ遷移 |
 | 8 | 🔔 デバイス再登録（フッター） | `silentReRegisterIfNeeded()` を呼び出し、`push_devices.json` に自デバイスが存在しない場合のみ静かに再登録する。既存デバイスがいれば何もしない |
 | 9 | 🌐 表示言語切替 | 既定は日本語。一覧右上の `🌐 EN` で英語へ、英語表示中の `🌐 日本` で日本語へ切り替える。選択は端末のlocalStorageへ保存し、次回起動後も保持する。PC側の言語設定やGoogle Driveとは連動させない |
+
+同期開始時のローカル一覧は先行表示だけに使う。Drive処理が後から完了しても、その古いコピーを再表示しない。
+
+```mermaid
+sequenceDiagram
+    participant UI as iPhone一覧
+    participant DB as IndexedDB
+    participant Drive as Google Drive
+    UI->>DB: 保存済み一覧と削除済みIDを取得
+    DB-->>UI: ローカル一覧を先行表示
+    UI->>Drive: 未処理キューを取得
+    UI->>DB: 操作されたメモの削除IDを記録・削除
+    DB-->>UI: 対象を一覧から除外
+    Drive-->>UI: 遅延して取得完了・失敗
+    UI->>DB: 最新一覧と削除済みIDを再取得
+    alt 最新状態を取得できた
+        DB-->>UI: 削除済みIDを除外した最新一覧
+    else 最新状態を取得できない
+        Note over UI,DB: 現在の表示を維持し古い一覧を再表示しない
+    end
+```
+
+<p class="mermaid-caption">図 6.1-1　同期開始時の一覧を後から再表示しない更新</p>
 
 ### 6.2 ロック画面常駐（🔔）
 
@@ -1495,5 +1518,7 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 | 40 | **1.39** | 26-09-29 | 遅延保存の拒否後、同じ本文が既に保存済みなら管理情報を再取得して誤った自動保存失敗表示を防ぎ、未保存の異なる本文は画面に残す。 |
 | 41 | **1.40** | 26-09-30 | 新規付箋のファイル名変更後もiPhone反映時の再読み込みを省略せず、保存済み本文を開いている画面へ反映する。 |
 | 42 | **1.41** | 26-10-08 | FileDropの汎用files[]、PDF選択、IndexedDBバイナリ復元、assets/files保存、連番・失敗時保持・ack・一時掃除と最初の実機受け入れ試験を追加。 |
+
+| 43 | **1.42** | 26-11-10 | 一覧の先行表示後に削除したメモが遅いDrive完了で再表示されないよう、同期完了時の最新DB・削除済みID再取得と読取失敗時の表示保持を定義。 |
 
 </div>

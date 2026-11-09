@@ -154,6 +154,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><th style="width:58px">No</th><th>タイトル</th><th>内容</th></tr>
   <tr><td><span class="doc-badge badge-000i">000-I</span></td><td><strong><a href="./000_INTENTION_LAYER">Intention Layer</a></strong></td><td>AIエージェント時代の上位思想・プロダクト定義</td></tr>
   <tr><td><span class="doc-badge badge-000">000</span></td><td><strong><a href="./000_REQUIREMENTS">要求仕様</a></strong></td><td>プロダクトが満たすべき機能・非機能要件</td></tr>
+  <tr><td><span class="doc-badge badge-000">000-T</span></td><td><strong><a href="./000_FEATURE_TREE">機能ツリー（マスターツリー）</a></strong></td><td>コンセプト→要求→実現案→実画面→モジュール→テストの正本ツリー</td></tr>
   <tr><td><span class="doc-badge badge-001">001</span></td><td><strong><a href="./001_OVERVIEW">システム全体像</a></strong></td><td>登場人物・技術スタック・データフロー等</td></tr>
   <tr><td><span class="doc-badge badge-002">002</span></td><td><strong><a href="./002_PC">PCローカル・UI設計</a></strong></td><td>画面構成・モジュール・データ構造・フロー</td></tr>
   <tr><td><span class="doc-badge badge-003">003</span></td><td><strong><a href="./003_IPHONE">クラウド同期・iPhone設計</a></strong></td><td>画面構成・Service Worker・データ構造等</td></tr>

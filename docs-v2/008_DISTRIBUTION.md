@@ -10,7 +10,7 @@ Microsoft Store向けMSIXを唯一の正式配布形式とし、既存MSI・NSIS
 </p>
 
 <p class="version-info">
-配布設計 v2.7 / 2026-10-28
+配布設計 v2.8 / 2026-11-09
 </p>
 
 ---
@@ -56,7 +56,7 @@ winget install --id 9N4MW0V2MVVG --source msstore
 | 1 | Microsoft Store | MSIXの一般配布、署名、自動更新 |
 | 2 | winget `msstore` | Store版をコマンドから導入・更新する補助経路 |
 | 3 | 公開ガイド専用サイト | マニュアル、漫画、FAQ、問い合わせ案内、規約、更新情報 |
-| 4 | GitHub Actions artifact | Partner Centerへ渡す未署名MSIXの一時保管。一般配布しない |
+| 4 | Store提出用MSIXの保管（このPC） | 実機確認に合格した実行ファイルからこのPCで作成した未署名MSIXを固定提出先へ保存し、Partner Centerへ手動提出する。一般配布しない |
 
 ---
 
@@ -68,7 +68,7 @@ winget install --id 9N4MW0V2MVVG --source msstore
 
 ## 4 署名とStore提出
 
-CIはStore提出用の未署名MSIXを生成します。提出前にIdentity Name、Publisher、Version、Architecture、未署名状態を検査します。
+Store提出用の未署名MSIXは、GitHub上では生成しません。このPCで実機確認（`docs/010_RELEASE.md` STEP 1）に合格した実行ファイルから作成します（同 STEP 2）。作成時に名前、発行者、バージョン、x64、未署名の5項目を確認します。
 
 Microsoft Storeは審査後に配布用MSIXへ正式署名します。開発時に実機へサイドロードする場合だけ、開発用自己署名証明書を使います。
 
@@ -165,7 +165,9 @@ Tauri updaterは5.0.0を既存NSIS利用者へ届けるためだけに維持し�
 
 ## 8 リリースフロー
 
-5.0.0では、既存版へ更新通知を送る前にStore版を利用可能にします。
+5.1.0以降の現行フローは図 8-2 のとおりとし、手順の正本は `docs/010_RELEASE.md` とします。図 8-1 は5.0.0移行時の旧フロー（廃止済み）の記録です。
+
+5.0.0では、既存版へ更新通知を送る前にStore版を利用可能にしていました。
 
 ```mermaid
 flowchart TD
@@ -179,25 +181,25 @@ flowchart TD
     H --> I["Do Non-App ReleaseでLPをStore主導へ切替"]
 ```
 
-<p class="mermaid-caption">図 8-1 5.0.0のStore先行公開フロー</p>
+<p class="mermaid-caption">図 8-1 5.0.0のStore先行公開フロー（旧フロー・廃止済み）</p>
 
-`Build Store Package`は入力版をActions runner内だけへ一時反映し、タグ、GitHub Release、NSIS、MSI、updater metadata、LP、リポジトリの版番号を変更しません。
+5.0.0当時の`Build Store Package`は入力版をActions runner内だけへ一時反映し、タグ、GitHub Release、NSIS、MSI、updater metadata、LP、リポジトリの版番号を変更しませんでした。このCI生成方式は廃止済みで、現行フローは図 8-2 のとおりこのPCでMSIXを作成します。
 
 ```mermaid
 flowchart TD
-    A["修正・自動テスト・実機確認"] --> B["developへコミット・プッシュ"]
-    B --> C["Do Releaseでmainへ反映・タグ作成"]
-    C --> D["Release workflowで未署名MSIX生成"]
-    D --> E["Actions artifactへ一時保存"]
-    E --> F["Store Submit workflowで同じartifactを取得・検査"]
-    F --> G["Partner Centerへ提出"]
+    A["STEP 0：修正・対象テスト・PRの全CI・develop統合"] --> B["このPCで候補を固定し、本番exeを1回ビルド"]
+    B --> C["STEP 1：開発署名MSIXを作成・導入し、実機確認"]
+    C -->|合格| D["STEP 2：同じexeからStore用未署名MSIXを作成・5項目確認"]
+    D --> E["固定提出先へ保存"]
+    E --> F["main PR・develop同期PR（全CI成功後にマージ、候補tree一致を確認）"]
+    F --> G["STEP 3：本人の承認後にPartner Centerへ手動提出"]
     G --> H["Microsoft Store審査・署名・公開"]
     H --> I["Store自動更新・winget msstore反映確認"]
 ```
 
 <p class="mermaid-caption">図 8-2 5.1.0以降のリリースフロー</p>
 
-Do Releaseは一般公開の完了ではなく、Store提出用MSIXを作る起点です。Microsoft Storeで公開された時点を一般公開完了とします。
+Store提出用MSIXは、このPCで実機確認に合格した実行ファイルから作り、GitHub上で同じ実行ファイルを再コンパイルしません。Gitタグ、GitHub Release、GitHub ActionsからのMicrosoft Store自動提出は行いません。Microsoft Storeで公開された時点を一般公開完了とします。各STEPの詳細は `docs/010_RELEASE.md` を正本とします。
 
 ### 8.1 AIが使えない場合のリリースマシン
 
@@ -235,7 +237,7 @@ sequenceDiagram
 
 ---
 
-通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。develop統合後のfrontend・rust・msixは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全検査へ戻す際はActionsのRe-run all jobs（全ジョブ再実行）を選び、成功済みの再利用jobも再実行する。通常CIは変更範囲を判定します。文書コンテンツだけの場合は文書の差分と必要な文書build/リンク検査を実施し、フロント・Rust・分析・MSIX検査は起動しません。文書内の設定/スクリプト/依存やアプリ変更が混在する場合は、全単体・型・Rustを検査し、対象変更ではWeb/API production buildとMSIXの梱包・署名・導入・起動も検証します。必要な検査の失敗や不明はgateで拒否し、docs-v2のbuildも同じTestに集約します。単独MSIX実行では前提テストを省略しません。工程ごとの期限とrun固有の状態・1日保持の診断成果物を使い、共有statusブランチへ書込みません。ローカル静的ビルドは隔離コピーを用い、元APIソースを移動せず、生成物切替えをtransactionで回復します。詳細は開発リポジトリの `docs/AUTOMATION_OPERATIONS.md`を参照します。
+通常開発の全件Vitest・型検査はGitHubのPR検査へ集約する。PC hookは差分検査と対象時のアプリE2E（--grep-invert @ci-guide）を担当し、ガイド日英2件はCIで検査する。修正中の対象テストと実機確認はPCに残す。develop統合後のfrontend・rustは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全検査へ戻す際はActionsのRe-run all jobs（全ジョブ再実行）を選び、成功済みの再利用jobも再実行する。通常CIは変更範囲を判定します。文書コンテンツだけの場合は文書の差分と必要な文書build/リンク検査を実施し、フロント・Rust・分析・MSIX検査は起動しません。文書内の設定/スクリプト/依存やアプリ変更が混在する場合は、全単体・型・Rustを検査し、コード変更ではWeb/API production buildとTauri向けフロントビルドを検証します。GitHubではMSIXを作成せず、梱包・署名・導入・起動はこのPCで正本 `docs/010_RELEASE.md` に従って検証します。必要な検査の失敗や不明はgateで拒否し、docs-v2のbuildも同じTestに集約します。このPCでMSIXを作成する場合も前提のCI・実機確認を省略しません。工程ごとの期限とrun固有の状態・1日保持の診断成果物を使い、共有statusブランチへ書込みません。ローカル静的ビルドは隔離コピーを用い、元APIソースを移動せず、生成物切替えをtransactionで回復します。詳細は開発リポジトリの `docs/AUTOMATION_OPERATIONS.md`を参照します。
 
 ## 9 制約と検証
 
@@ -265,6 +267,7 @@ sequenceDiagram
 | 7 | v2.5 | 26-10-26 | 隔離静的ビルド・生成物復旧・CI検査集約・工程期限と診断成果物を追記 |
 | 8 | v2.6 | 26-10-27 | 文書コンテンツだけのCIを分離し、設計書buildとgate判定をTestへ集約 |
 | 9 | v2.7 | 26-10-28 | PC/CIの検査分担とPR成功証跡による統合後検証を追加 |
+| 10 | v2.8 | 26-11-09 | §3・§4・§8を正本 `docs/010_RELEASE.md` の現行フローへ整合。CI生成MSIX・Store自動提出・タグ作成の旧フロー記述を現行手順から外し、図 8-1 を廃止済みの旧フローとして明示 |
 
 </div>
 
