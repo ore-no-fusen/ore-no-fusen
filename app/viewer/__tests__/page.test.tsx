@@ -1,6 +1,6 @@
 /**
- * Phase 09 — IPHONE-MGT-01〜04 テストスタブ
- * 実装完了後に TODO を実際のアサーションに置き換える
+ * Phase 09 — IPHONE-MGT-01〜04
+ * editor-helpers（hydrateEditor / serializeEditor / タグ管理 / タイトル・本文抽出）の検証
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hydrateEditor, serializeEditor, loadKnownTags, mergeKnownTags, extractTitleBody } from '../editor-helpers';

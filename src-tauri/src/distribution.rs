@@ -33,6 +33,11 @@ pub fn get_distribution_kind() -> &'static str {
     }
 }
 
+/// Store 更新の有無は、取得できたパッケージ更新の件数だけで決まる。
+pub fn store_update_available(package_update_count: u32) -> bool {
+    package_update_count > 0
+}
+
 /// MSIX版はStartupTaskを使うため、旧デスクトップ版が共有設定を読んでも
 /// レジストリ自動起動を再登録しない状態へ移行する。
 pub fn migrate_legacy_autostart_setting(auto_start: &mut bool) -> bool {
@@ -45,6 +50,13 @@ pub fn migrate_legacy_autostart_setting(auto_start: &mut bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn store_update_requires_at_least_one_package_update() {
+        assert!(!super::store_update_available(0));
+        assert!(super::store_update_available(1));
+        assert!(super::store_update_available(3));
+    }
+
     #[test]
     fn legacy_autostart_setting_is_disabled_once() {
         let mut auto_start = true;

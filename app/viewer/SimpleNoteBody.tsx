@@ -29,6 +29,29 @@ function MermaidBlock({ code, index }: { code: string; index: number }) {
 }
 
 /**
+ * テキスト中の **強調** を、PC表示と同じ「朱の太字」に描画する。
+ * 対応するのは太字のみ（iPhoneビューアの本文描画はプレーンテキスト基調のため）。
+ */
+function renderTextWithBold(text: string, keyBase: number): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const boldRe = /\*\*([^*]+)\*\*/g;
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boldRe.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    nodes.push(
+      <strong key={`${keyBase}-${k++}`} style={{ color: 'red', fontWeight: 'bold' }}>
+        {m[1]}
+      </strong>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+/**
  * 責務: ノート一覧の各行に表示するノート本文プレビューを描画する（Mermaid ブロックを視覚化）
  * 入力: { body: string }
  * 出力: JSX.Element
@@ -80,7 +103,7 @@ export function SimpleNoteBody({ body }: { body: string }) {
     if (seg.start > lastIndex) {
       parts.push(
         <span key={key++} style={{ whiteSpace: 'pre-wrap' }}>
-          {body.slice(lastIndex, seg.start)}
+          {renderTextWithBold(body.slice(lastIndex, seg.start), key)}
         </span>
       );
     }
@@ -103,7 +126,7 @@ export function SimpleNoteBody({ body }: { body: string }) {
   if (lastIndex < body.length) {
     parts.push(
       <span key={key++} style={{ whiteSpace: 'pre-wrap' }}>
-        {body.slice(lastIndex)}
+        {renderTextWithBold(body.slice(lastIndex), key)}
       </span>
     );
   }
