@@ -15,6 +15,8 @@ struct Registry {
 #[derive(Default, Serialize, Deserialize)]
 struct Catalog {
     tags: BTreeSet<String>,
+    #[serde(default)]
+    created_order: BTreeMap<String, u64>,
     pending: Option<Pending>,
     #[serde(default)]
     interrupted: Vec<Pending>,
@@ -28,8 +30,9 @@ pub(crate) struct Pending {
 }
 #[derive(Serialize)]
 pub(crate) struct CatalogView {
-    tags: Vec<String>,
-    counts: BTreeMap<String, usize>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) counts: BTreeMap<String, usize>,
+    pub(crate) created_order: BTreeMap<String, u64>,
     pending: Option<Pending>,
 }
 #[derive(Serialize)]
@@ -144,9 +147,10 @@ fn remember_at(
     let mut registry = read_registry(file)?;
     let catalog = registry.vaults.entry(vault_key(base)).or_default();
     let before = catalog.tags.clone();
-    catalog
-        .tags
-        .extend(tags.into_iter().filter(|t| !logic::is_reserved_tag(t)));
+    let order = catalog.created_order.values().copied().max().unwrap_or(0).saturating_add(1);
+    for tag in tags.into_iter().filter(|t| !logic::is_reserved_tag(t)) {
+        if catalog.tags.insert(tag.clone()) { catalog.created_order.insert(tag, order); }
+    }
     let result = catalog.tags.iter().cloned().collect();
     if before != catalog.tags {
         write_registry(file, &registry)?;
@@ -160,15 +164,20 @@ fn catalog_at(file: &Path, base: &Path) -> Result<CatalogView, String> {
     let catalog = registry.vaults.remove(&vault_key(base)).unwrap_or_default();
     let mut counts = BTreeMap::new();
     for (_, tags) in notes {
-        for tag in tags {
+        for tag in tags.into_iter().collect::<BTreeSet<_>>() {
             *counts.entry(tag).or_default() += 1;
         }
     }
     Ok(CatalogView {
         tags: catalog.tags.into_iter().collect(),
         counts,
+        created_order: catalog.created_order,
         pending: catalog.pending,
     })
+}
+pub(crate) fn catalog_for_launcher(base: &str) -> Result<CatalogView, String> {
+    let _guard = lock().lock().unwrap_or_else(|p| p.into_inner());
+    catalog_at(&registry_path()?, Path::new(base))
 }
 fn create_at(file: &Path, base: &Path, tag: &str) -> Result<(), String> {
     let tag = validate(tag)?;
@@ -291,8 +300,11 @@ fn change_at(file: &Path, base: &Path, old: &str, new: Option<&str>) -> Result<T
     if failed.is_empty() {
         let catalog = registry.vaults.get_mut(&key).unwrap();
         catalog.tags.remove(&old);
+        let order = catalog.created_order.remove(&old);
         if let Some(new) = new {
-            catalog.tags.insert(new);
+            catalog.tags.insert(new.clone());
+            catalog.created_order.remove(&new);
+            if let Some(order) = order { catalog.created_order.insert(new, order); }
         }
         catalog.pending = None;
         write_registry(file, &registry)?;
@@ -366,6 +378,40 @@ pub(crate) fn fusen_rename_user_tag(
 pub(crate) fn fusen_delete_user_tag(app: AppHandle, tag: String) -> Result<TagResult, String> {
     change(&app, &tag, None)
 }
+
+// Unused-tag cleanup only edits the catalog. It must never strip tags from
+// notes that started using a selected tag after the management screen opened.
+fn delete_unused_at(file: &Path, base: &Path, tags: &[String]) -> Result<TagResult, String> {
+    let selected = tags.iter().map(|tag| validate(tag)).collect::<Result<BTreeSet<_>, _>>()?;
+    let used = observed(&scan(base)?);
+    let mut registry = read_registry(file)?;
+    let catalog = registry.vaults.entry(vault_key(base)).or_default();
+    if catalog.pending.is_some() {
+        return Err("変更途中のタグがあります。タグ変更の再試行を完了してから整理してください".into());
+    }
+    let mut result = TagResult { changed: 0, failed: Vec::new() };
+    for tag in selected {
+        if used.contains(&tag) {
+            result.failed.push(format!("{tag}: 使用中のため削除しませんでした"));
+        } else if catalog.tags.remove(&tag) {
+            catalog.created_order.remove(&tag);
+            result.changed += 1;
+        }
+    }
+    if result.changed > 0 { write_registry(file, &registry)?; }
+    Ok(result)
+}
+
+#[tauri::command]
+pub(crate) async fn fusen_delete_unused_user_tags(app: AppHandle, tags: Vec<String>) -> Result<TagResult, String> {
+    let base = base(&app)?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock().lock().unwrap_or_else(|p| p.into_inner());
+        delete_unused_at(&registry_path()?, Path::new(&base), &tags)
+    }).await.map_err(|error| error.to_string())??;
+    launcher::emit_launcher_shelf_changed(&app);
+    Ok(result)
+}
 // Keep the unresolved paths and progress in the registry; never pretend that
 // missing/moved originals were successfully changed, and never roll back edits.
 #[tauri::command]
@@ -414,6 +460,43 @@ mod tests {
             .failed
             .is_empty());
         assert!(catalog_at(&registry, &a).unwrap().tags.is_empty());
+    }
+    #[test]
+    fn unused_cleanup_rechecks_archived_usage_without_editing_any_notes() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("vault");
+        std::fs::create_dir_all(&base).unwrap();
+        let registry = dir.path().join("catalog.json");
+        create_at(&registry, &base, "未使用").unwrap();
+        create_at(&registry, &base, "仕事").unwrap();
+        // It became used after the UI displayed it as unused.
+        let archived = fixture(&base, "tags/仕事/saved.md");
+        let before = std::fs::read(&archived).unwrap();
+        let result = delete_unused_at(&registry, &base, &vec!["未使用".into(), "仕事".into()]).unwrap();
+        assert_eq!(result.changed, 1);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(std::fs::read(archived).unwrap(), before);
+        let view = catalog_at(&registry, &base).unwrap();
+        assert_eq!(view.tags, vec!["仕事"]);
+        assert_eq!(view.counts["仕事"], 1);
+    }
+    #[test]
+    fn new_tags_keep_creation_order_across_reload_and_rename() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = dir.path().join("catalog.json");
+        let base = dir.path().join("vault");
+        std::fs::create_dir_all(&base).unwrap();
+        create_at(&registry, &base, "先").unwrap();
+        create_at(&registry, &base, "後").unwrap();
+        let before = catalog_at(&registry, &base).unwrap();
+        assert!(before.created_order["後"] > before.created_order["先"]);
+        change_at(&registry, &base, "先", Some("改名")).unwrap();
+        let after = catalog_at(&registry, &base).unwrap();
+        assert_eq!(after.created_order["改名"], before.created_order["先"]);
+        assert!(!after.created_order.contains_key("先"));
+        // Old catalogs do not contain creation metadata; reading must stay compatible.
+        let legacy: Catalog = serde_json::from_str(r#"{"tags":["旧"],"pending":null}"#).unwrap();
+        assert!(legacy.created_order.is_empty());
     }
     #[test]
     fn rename_updates_all_kinds_without_touching_trash_body_or_registration() {
@@ -470,6 +553,7 @@ mod tests {
             vault_key(&base),
             Catalog {
                 tags: BTreeSet::from(["仕事".into()]),
+                created_order: BTreeMap::new(),
                 pending: Some(pending),
                 interrupted: Vec::new(),
             },

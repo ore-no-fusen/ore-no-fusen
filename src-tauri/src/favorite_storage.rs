@@ -1,7 +1,7 @@
 //! PC-local shelf state. Note contents and paths remain unchanged; this file is never Drive-synced.
 use crate::{launcher, logic, state::AppState, storage};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::{Mutex, OnceLock},
 };
@@ -481,6 +481,7 @@ pub(crate) struct StorageSnapshot {
     paths: Vec<String>,
     items: Vec<launcher::QuickOpenItem>,
     tags: Vec<String>,
+    tag_counts: BTreeMap<String, usize>,
 }
 #[tauri::command]
 pub(crate) async fn fusen_storage_snapshot(app: AppHandle) -> Result<StorageSnapshot, String> {
@@ -490,18 +491,44 @@ pub(crate) async fn fusen_storage_snapshot(app: AppHandle) -> Result<StorageSnap
 }
 fn storage_snapshot(app: &AppHandle) -> Result<StorageSnapshot, String> {
     let stored = stored_paths()?;
-    let notes = accessible_notes(&base(app));
+    let mut snapshot = snapshot_for_notes(accessible_notes(&base(app)), &stored);
+    let catalog = crate::user_tags::catalog_for_launcher(&base(app))?;
+    add_unused_tags_and_sort(&mut snapshot, &catalog.tags, &catalog.counts, &catalog.created_order);
+    Ok(snapshot)
+}
+
+fn add_unused_tags_and_sort(snapshot: &mut StorageSnapshot, catalog: &[String], counts: &BTreeMap<String, usize>, created: &BTreeMap<String, u64>) {
+    for tag in catalog {
+        if counts.get(tag).copied().unwrap_or(0) == 0 && !snapshot.tags.contains(tag) {
+            snapshot.tags.push(tag.clone());
+        }
+    }
+    snapshot.tags.sort_by(|a, b| {
+        let a_count = snapshot.tag_counts.get(a).copied().unwrap_or(0);
+        let b_count = snapshot.tag_counts.get(b).copied().unwrap_or(0);
+        b_count.cmp(&a_count)
+            .then_with(|| if a_count == 0 { created.get(b).copied().unwrap_or(0).cmp(&created.get(a).copied().unwrap_or(0)) } else { std::cmp::Ordering::Equal })
+            .then_with(|| a.cmp(b))
+    });
+}
+
+fn snapshot_for_notes(notes: Vec<crate::state::NoteMeta>, stored: &BTreeSet<String>) -> StorageSnapshot {
     let mut tags = BTreeSet::new();
+    let mut tag_counts = BTreeMap::new();
     let mut items = Vec::new();
     let mut paths = Vec::new();
     for n in notes.into_iter().filter(eligible) {
-        for tag in &n.tags {
-            if !matches!(
-                logic::normalize_reserved_tag(tag).as_str(),
-                "shortcut" | "recipe" | "qa" | "term"
-            ) {
+        let mut classified = false;
+        for tag in n.tags.iter().collect::<BTreeSet<_>>() {
+            if !logic::is_reserved_tag(tag) {
                 tags.insert(tag.clone());
+                *tag_counts.entry(tag.clone()).or_default() += 1;
+                classified = true;
             }
+        }
+        if !classified {
+            tags.insert("__unclassified__".into());
+            *tag_counts.entry("__unclassified__".into()).or_default() += 1;
         }
         if stored.contains(&key(&n.path)) {
             paths.push(n.path.clone());
@@ -515,11 +542,12 @@ fn storage_snapshot(app: &AppHandle) -> Result<StorageSnapshot, String> {
             });
         }
     }
-    Ok(StorageSnapshot {
+    StorageSnapshot {
         paths,
         items,
-        tags: crate::user_tags::remember(&base(app), tags)?,
-    })
+        tags: tags.into_iter().collect(),
+        tag_counts,
+    }
 }
 #[tauri::command]
 pub(crate) fn fusen_complete_store(request_id: String, error: Option<String>) {
@@ -714,6 +742,26 @@ pub(crate) fn fusen_stored_window_labels(app: AppHandle) -> Result<Vec<String>, 
 #[cfg(test)]
 mod tag_storage_tests {
     use super::*;
+    #[test]
+    fn launcher_tag_order_counts_notes_once_and_keeps_new_unused_tags_at_the_right() {
+        let notes = vec![
+            note("visible", &["shortcut", "多数", "多数"]),
+            note("hidden", &["多数"]),
+            note("plain", &["少数"]),
+            note("unclassified", &["shortcut", "link"]),
+            note("qa", &["qa", "QA専用"]),
+        ];
+        let mut snapshot = snapshot_for_notes(notes, &BTreeSet::from([key("hidden")]));
+        assert_eq!(snapshot.tag_counts["多数"], 2);
+        assert_eq!(snapshot.tag_counts["少数"], 1);
+        assert_eq!(snapshot.paths, vec!["hidden"]);
+        let catalog = ["多数", "少数", "保管専用", "QA専用", "古い未使用", "新しい未使用", "旧形式未使用"]
+            .map(str::to_owned);
+        let counts = BTreeMap::from([("多数".into(), 2), ("少数".into(), 1), ("保管専用".into(), 1), ("QA専用".into(), 1)]);
+        let created = BTreeMap::from([("古い未使用".into(), 1), ("新しい未使用".into(), 2)]);
+        add_unused_tags_and_sort(&mut snapshot, &catalog, &counts, &created);
+        assert_eq!(snapshot.tags, vec!["多数", "__unclassified__", "少数", "新しい未使用", "古い未使用", "旧形式未使用"]);
+    }
     #[test]
     fn bulk_registration_preserves_body_and_tags_and_is_repeatable() {
         let original =

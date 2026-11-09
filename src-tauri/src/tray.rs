@@ -128,15 +128,15 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     // Labels
     let label_hide = menu_label(
-        if is_en { "Hide All" } else { "全部隠す" },
+        if is_en { "Hide all temporarily" } else { "一時的にすべて隠す" },
         &toggle_shortcut,
         is_en,
     );
     let label_show = menu_label(
         if is_en {
-            "Show All"
+            "Show temporarily hidden notes"
         } else {
-            "全部戻す (Show All)"
+            "一時的に隠した付箋を表示"
         },
         &toggle_shortcut,
         is_en,
@@ -178,9 +178,9 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         is_en,
     );
     let label_archive_restore = if is_en {
-        "📤 Restore Archived Notes"
+        "📤 Show filed notes on desktop"
     } else {
-        "📤 しまった付箋を取り出す"
+        "📤 保管した付箋を画面に戻す"
     };
     let label_arrange_by_tag = menu_label(
         if is_en {
@@ -201,7 +201,7 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     } else {
         "タグで絞り込む (Filter by Tags)"
     };
-    let label_quit = if is_en { "Quit" } else { "終了 (Quit)" };
+    let label_quit = if is_en { "Quit" } else { "アプリを終了" };
 
     let hide_i = MenuItem::with_id(app, "hide_all", label_hide, true, None::<&str>)?;
     let show_i = MenuItem::with_id(app, "show_all", label_show, true, None::<&str>)?;

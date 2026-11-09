@@ -3,19 +3,22 @@
 import React, { useState } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { getTranslation } from '@/lib/i18n';
 
 export default function LauncherAppActions({ english, disabled, onBusy, onError }: {
     english: boolean; disabled: boolean; onBusy: (busy: boolean) => void; onError: (error: string) => void;
 }) {
     const [open, setOpen] = useState(false);
+    const ja = getTranslation('ja');
+    const en = getTranslation('en');
     const actions: Array<{ ja: string; en: string; run: () => Promise<unknown> }> = [
         { ja: '新規メモ', en: 'New note', run: () => emit('fusen:create_note_from_tray') },
         { ja: '全文検索', en: 'Full-text search', run: () => emit('fusen:open_search') },
-        { ja: '保管した付箋を戻す', en: 'Restore filed notes', run: () => emit('fusen:open_archive_restore') },
+        { ja: ja('menu.restoreFiled'), en: en('menu.restoreFiled'), run: () => emit('fusen:open_archive_restore') },
         { ja: 'タグで整列', en: 'Arrange by tag', run: () => invoke('fusen_arrange_by_tag') },
         { ja: '整列を元に戻す', en: 'Undo arrangement', run: () => invoke('fusen_arrange_undo') },
-        { ja: '一時的に全部隠す', en: 'Hide all temporarily', run: () => emit('fusen:set_all_notes_visible', false) },
-        { ja: '一時非表示を戻す', en: 'Show temporarily hidden notes', run: () => emit('fusen:set_all_notes_visible', true) },
+        { ja: ja('menu.hideAllTemporarily'), en: en('menu.hideAllTemporarily'), run: () => emit('fusen:set_all_notes_visible', false) },
+        { ja: ja('menu.showTemporarilyHidden'), en: en('menu.showTemporarilyHidden'), run: () => emit('fusen:set_all_notes_visible', true) },
         { ja: '設定', en: 'Settings', run: () => emit('fusen:open_settings', {}) },
     ];
     const run = async (action: () => Promise<unknown>) => {

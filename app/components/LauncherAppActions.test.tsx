@@ -10,9 +10,9 @@ describe('launcher application actions', () => {
     it.each([
         ['新規メモ', 'fusen:create_note_from_tray', undefined],
         ['全文検索', 'fusen:open_search', undefined],
-        ['保管した付箋を戻す', 'fusen:open_archive_restore', undefined],
-        ['一時的に全部隠す', 'fusen:set_all_notes_visible', false],
-        ['一時非表示を戻す', 'fusen:set_all_notes_visible', true],
+        ['保管した付箋を画面に戻す', 'fusen:open_archive_restore', undefined],
+        ['一時的にすべて隠す', 'fusen:set_all_notes_visible', false],
+        ['一時的に隠した付箋を表示', 'fusen:set_all_notes_visible', true],
     ] as const)('dispatches %s through its existing route', async (label, event, payload) => {
         const busy = vi.fn();
         render(<LauncherAppActions english={false} disabled={false} onBusy={busy} onError={vi.fn()} />);
