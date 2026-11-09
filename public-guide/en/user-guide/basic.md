@@ -16,7 +16,7 @@ Start with **New Note** and write. Different creation shortcuts make the same ki
 
 | When will you need it? | How to clear the screen and bring it back |
 |---|---|
-| In a moment; it is only in the way for now | **Hide temporarily** using **Hide All**, then **Show All** in the tray menu. Notes already stored in the launcher stay stored. |
+| In a moment; it is only in the way for now | **Hide temporarily** using **Hide all temporarily**, then **Show temporarily hidden notes** in the tray menu. Notes already stored in the launcher stay stored. |
 | Often; keep the desktop clear between uses | **Store in Launcher**. Register the note, then use **Hide from desktop** on its row. The same button becomes **Show on desktop**. Showing it does not remove its registration. |
 | Rarely, but keep it for reference | **File in a folder** using the current **File in folder** command. Later, use **Show filed notes on desktop** to find and return it. |
 | No longer needed | **Move to trash** with Delete. Before permanent deletion, a mistaken deletion can be recovered manually by returning the note and referenced images from the trash folder. There is no dedicated in-app trash restore button. |
@@ -74,6 +74,8 @@ Store in Launcher hides a note without moving its file. File in folder moves it 
 
 
 ### Manage tags
+
+![QLタグの並びと未使用タグの整理](/screens/launcher-unused-tags.svg)
 
 **＋ → Manage existing tags**: rename or delete tags. **Clean up unused tags → select → Delete selected unused tags → confirm** removes unused tags without changing notes. Filed notes count as usage.
 
