@@ -328,6 +328,7 @@
 - マルチモニター救済 — lib.rs — ◐（実モニター構成依存部は検証不能領域）
 
 ### 要求3-2 家の外でも見たい
+- 遅い同期完了による古い一覧の再表示防止 — useNoteList.ts、useNoteList.test.tsx（遅い通信完了・最新DB読取失敗）、e2e/data-safety.spec.ts — ●（通信を保留した回帰試験で確認）
 - iPhone に送る（PC→iPhone） — lib.rs（push ペイロード系）、webpush.rs（3件）、gdrive.rs（8件：トークン暗号化・OAuth state 検証は●） — ●
 - 通知常駐（ロックだぜ） — e2e/lock-notification.spec.ts — ◐（CI で回らない）
 - iPhone から PC へ送る — IphoneReturnDialog.test.tsx、app/utils/receiveIphoneNote.test.ts、file_drop.rs（5件）、lib.rs — ●
