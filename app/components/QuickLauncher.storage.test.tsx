@@ -88,20 +88,20 @@ describe('launcher tag row', () => {
     });
     it('resets a removed filter only after a successful new snapshot', async () => {
         render(<QuickLauncher/>);
-        fireEvent.click(await screen.findByRole('button', { name: '仕事', exact: true }));
+        fireEvent.click(await screen.findByRole('button', { name: '仕事' }));
         mocks.filter.mockClear();
         mocks.snapshot.mockResolvedValue({ paths: [], items: [], tags: ['生活'] });
         mocks.listeners.get('fusen:storage_changed')?.();
         await waitFor(() => expect(mocks.filter).toHaveBeenCalledWith('shortcut', '__all__'));
-        expect(screen.queryByRole('button', { name: '仕事', exact: true })).toBeNull();
+        expect(screen.queryByRole('button', { name: '仕事' })).toBeNull();
     });
     it('keeps a valid tag selected when text search has no results', async () => {
         render(<QuickLauncher/>);
-        fireEvent.click(await screen.findByRole('button', { name: '仕事', exact: true }));
+        fireEvent.click(await screen.findByRole('button', { name: '仕事' }));
         mocks.filter.mockClear(); mocks.list.mockResolvedValue([]);
         fireEvent.change(screen.getByRole('textbox'), { target: { value: '見つからない本文' } });
         await waitFor(() => expect(mocks.list).toHaveBeenCalledWith('shortcut', '見つからない本文'));
-        expect(screen.getByRole('button', { name: '仕事', exact: true }).className).toContain('bg-sky-500');
+        expect(screen.getByRole('button', { name: '仕事' }).className).toContain('bg-sky-500');
         expect(mocks.filter).not.toHaveBeenCalled();
     });
 });
