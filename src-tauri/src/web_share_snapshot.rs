@@ -60,6 +60,14 @@ fn digest(value: &Value) -> String {
 fn same_snapshot(left: &Snapshot, right: &Snapshot) -> bool {
     serde_json::to_value(left).unwrap() == serde_json::to_value(right).unwrap()
 }
+/// Cleanup may delete an old record only when the copy re-read during this
+/// sync still carries the scope and digest captured into the snapshot. A
+/// record changed after capture (by any writer) fails this check and stays
+/// in the cleanup list for the next sync to re-examine; content that was
+/// never re-confirmed is never deleted.
+fn cleanup_confirmed(item: &Cleanup, value: &Value, scope: &contract::ShareScope) -> bool {
+    value["scope"] == serde_json::to_value(scope).unwrap() && digest(value) == item.digest
+}
 fn frozen_digest(snapshot: &Snapshot) -> String {
     let mut content = snapshot.clone();
     content.superseded_by = None;
@@ -762,10 +770,7 @@ impl Store {
                 }
                 let result = gdrive::read_web_share_cas(client, token, &item.id, folder).await;
                 if let Ok((value, etag)) = result {
-                    let scope_matches = value["scope"]
-                        == serde_json::to_value(&saved.snapshot.operation.scope).unwrap();
-                    if scope_matches
-                        && digest(&value) == item.digest
+                    if cleanup_confirmed(item, &value, &saved.snapshot.operation.scope)
                         && gdrive::delete_web_share_cas(client, token, &item.id, &etag)
                             .await
                             .is_ok()
@@ -1098,6 +1103,40 @@ mod tests {
         .unwrap();
         cursor.into_inner()
     }
+    const ACCOUNT: &str = "snapshot-test@example.test";
+    fn valid_snapshot(note: &str, bytes: &[u8]) -> Snapshot {
+        let op = operation(note, bytes);
+        let hash = op.payload.images[0].sha256.clone();
+        Snapshot {
+            schema_version: 2,
+            operation: op,
+            paused: false,
+            revoked: false,
+            sharing_id: "sharing".into(),
+            images: BTreeMap::from([(
+                hash.clone(),
+                PreviewAsset {
+                    file_id: "file".into(),
+                    source_sha256: hash.clone(),
+                    sha256: hash,
+                    mime_type: "image/png".into(),
+                    size_bytes: bytes.len() as u32,
+                    width: 32,
+                    height: 16,
+                    legacy: true,
+                },
+            )]),
+            published: true,
+            pending: None,
+            mutation_id: "mutation".into(),
+            gc_nonce: String::new(),
+            managed_image_owners: vec!["owner".into()],
+            superseded_by: None,
+            absorbed_snapshots: BTreeMap::new(),
+            conflicts: vec![],
+            cleanup: vec![],
+        }
+    }
     #[test]
     fn reservation_readback_must_match_all_control_and_content_fields() {
         let bytes = png(1);
@@ -1141,6 +1180,79 @@ mod tests {
             };
             assert!(!same_snapshot(&original, &changed));
         }
+    }
+    #[test]
+    fn validate_accepts_a_complete_snapshot_and_rejects_account_mismatch() {
+        let snapshot = valid_snapshot("note", &png(11));
+        assert!(snapshot.validate(ACCOUNT).is_ok());
+        assert!(snapshot.validate("other@example.test").is_err());
+    }
+    #[test]
+    fn validate_rejects_snapshot_whose_referenced_image_is_missing() {
+        // A state whose referenced image is absent is never adopted as the
+        // base for a later write; the sync stops instead of overwriting.
+        let mut snapshot = valid_snapshot("note", &png(12));
+        snapshot.images.clear();
+        assert!(snapshot.validate(ACCOUNT).is_err());
+    }
+    #[test]
+    fn validate_rejects_snapshot_with_an_unreferenced_image() {
+        let mut snapshot = valid_snapshot("note", &png(13));
+        let other = format!("{:x}", Sha256::digest(b"unreferenced"));
+        let mut asset = snapshot.images.values().next().unwrap().clone();
+        asset.source_sha256 = other.clone();
+        asset.sha256 = other.clone();
+        snapshot.images.insert(other, asset);
+        assert!(snapshot.validate(ACCOUNT).is_err());
+    }
+    #[test]
+    fn validate_rejects_pending_reservation_of_legacy_assets() {
+        let mut snapshot = valid_snapshot("note", &png(14));
+        let hash = snapshot.operation.payload.images[0].sha256.clone();
+        let asset = snapshot.images[&hash].clone();
+        snapshot.pending = Some(ImageReservation {
+            mutation_id: uuid::Uuid::new_v4().to_string(),
+            owner_pc: "windows".into(),
+            expires_at: 0,
+            assets: BTreeMap::from([(hash, asset)]),
+        });
+        assert!(snapshot.validate(ACCOUNT).is_err());
+    }
+    #[test]
+    fn frozen_digest_ignores_superseded_by_but_tracks_content() {
+        // Absorption receipts compare frozen digests: the reconciliation
+        // marker itself must not change the digest, while any content
+        // change must. A mismatch marks the copies as colliding and the
+        // loader blocks instead of merging or overwriting either body.
+        let snapshot = valid_snapshot("note", &png(15));
+        let mut frozen = snapshot.clone();
+        frozen.superseded_by = Some("canonical".into());
+        assert_eq!(frozen_digest(&snapshot), frozen_digest(&frozen));
+        let mut edited = snapshot.clone();
+        edited.operation.payload.title = "別端末の編集".into();
+        assert_ne!(frozen_digest(&snapshot), frozen_digest(&edited));
+    }
+    #[test]
+    fn cleanup_confirmed_only_for_the_captured_scope_and_digest() {
+        // Mirrors the cleanup gate in load_versioned: an old record is
+        // deleted only when the copy re-read in this sync still matches
+        // what was captured. Unconfirmed later changes are never deleted.
+        let op = operation("note", &png(16));
+        let captured = serde_json::json!({
+            "scope": serde_json::to_value(&op.scope).unwrap(),
+            "operationId": "old-operation",
+            "payload": {"markdown": "本文"}
+        });
+        let item = Cleanup {
+            id: "record".into(),
+            digest: digest(&captured),
+        };
+        assert!(cleanup_confirmed(&item, &captured, &op.scope));
+        let mut changed = captured.clone();
+        changed["payload"]["markdown"] = "別端末の新しい本文".into();
+        assert!(!cleanup_confirmed(&item, &changed, &op.scope));
+        let other = operation("other", &png(17));
+        assert!(!cleanup_confirmed(&item, &captured, &other.scope));
     }
     #[test]
     #[ignore = "requires explicitly authorized temporary Google Drive fixtures"]
