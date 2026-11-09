@@ -21,7 +21,7 @@ npm run tauri build  # Tauriビルド
 ## アーキテクチャ
 
 **デスクトップアプリ（Tauri v2）**
-- Frontend: Next.js 14 / React 18（`app/`）
+- Frontend: Next.js 15.5 / React 19.1（`app/`）
 - Backend: Rust（`src-tauri/src/`）
 - 通信: `invoke()` で frontend → Rust、`emit()` で Rust → frontend
 
