@@ -8,7 +8,7 @@
  */
 
 use raw_window_handle::HasWindowHandle;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, State};
 
@@ -147,7 +147,7 @@ fn fusen_check_store_update(window: tauri::Window) -> Result<bool, String> {
             .map_err(|e| e.to_string())?;
         return updates
             .Size()
-            .map(|size| size > 0)
+            .map(distribution::store_update_available)
             .map_err(|e| e.to_string());
     }
     #[cfg(not(windows))]
@@ -462,39 +462,31 @@ fn fusen_snooze_monthly_backup(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, String> {
-    let _heavy = maintenance::HEAVY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let settings = storage::load_settings()?;
-    let source_path = settings
-        .base_path
-        .clone()
-        .ok_or("データ保存場所が未設定です")?;
-    let user_profile =
-        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not found".to_string())?;
-    let root = Path::new(&user_profile)
-        .join("Documents")
-        .join("OreNoFusen_Backup");
+/// 月次バックアップの世代ローテーションを実行し、作成した世代に含まれるファイル数を返す。
+/// 完了後に残るのは Monthly の1世代だけ。Monthly_pending / Monthly_previous は
+/// 作業用で、検証に失敗した世代は Monthly へ昇格させない。
+fn rotate_monthly_backup(
+    source_path: &str,
+    root: &Path,
+    include_trash: bool,
+) -> Result<usize, String> {
     let current = root.join("Monthly");
     let pending = root.join("Monthly_pending");
     let previous = root.join("Monthly_previous");
-    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
     if pending.exists() {
         std::fs::remove_dir_all(&pending).map_err(|e| e.to_string())?;
     }
     std::fs::create_dir(&pending).map_err(|e| e.to_string())?;
     let pending_str = pending.to_string_lossy().to_string();
-    let count = match storage::backup_notes_with_options(
-        &source_path,
-        &pending_str,
-        settings.backup_include_trash,
-    ) {
-        Ok(count) => count,
-        Err(error) => {
-            let _ = std::fs::remove_dir_all(&pending);
-            return Err(error);
-        }
-    };
+    let count =
+        match storage::backup_notes_with_options(source_path, &pending_str, include_trash) {
+            Ok(count) => count,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&pending);
+                return Err(error);
+            }
+        };
     let copied_count = walkdir::WalkDir::new(&pending)
         .into_iter()
         .filter_map(Result::ok)
@@ -519,6 +511,24 @@ fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, Strin
     if previous.exists() {
         let _ = std::fs::remove_dir_all(&previous);
     }
+    Ok(count)
+}
+
+#[tauri::command]
+fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, String> {
+    let _heavy = maintenance::HEAVY_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let settings = storage::load_settings()?;
+    let source_path = settings
+        .base_path
+        .clone()
+        .ok_or("データ保存場所が未設定です")?;
+    let user_profile =
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not found".to_string())?;
+    let root = Path::new(&user_profile)
+        .join("Documents")
+        .join("OreNoFusen_Backup");
+    let current = root.join("Monthly");
+    let count = rotate_monthly_backup(&source_path, &root, settings.backup_include_trash)?;
     let record = state::BackupRecord {
         path: current.to_string_lossy().to_string(),
         created_at: chrono::Local::now().to_rfc3339(),
@@ -539,6 +549,134 @@ fn fusen_run_monthly_backup(app: AppHandle) -> Result<state::BackupRecord, Strin
     Ok(record)
 }
 
+#[cfg(test)]
+mod monthly_backup_tests {
+    use super::rotate_monthly_backup;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn monthly_backup_keeps_exactly_one_generation() {
+        let source = tempdir().unwrap();
+        let backup_root = tempdir().unwrap();
+        let root = backup_root.path().join("OreNoFusen_Backup");
+        fs::write(source.path().join("a.md"), "A").unwrap();
+        fs::write(source.path().join("b.md"), "B").unwrap();
+        let source_str = source.path().to_string_lossy().to_string();
+
+        let count = rotate_monthly_backup(&source_str, &root, false).unwrap();
+        assert_eq!(count, 2);
+        let monthly = root.join("Monthly");
+        assert!(monthly.join("a.md").is_file());
+        assert!(monthly.join("b.md").is_file());
+        assert!(!root.join("Monthly_pending").exists());
+        assert!(!root.join("Monthly_previous").exists());
+
+        // 2回目は新しい内容で置き換わり、古い世代は残らない。
+        fs::remove_file(source.path().join("b.md")).unwrap();
+        fs::write(source.path().join("c.md"), "C").unwrap();
+        let count = rotate_monthly_backup(&source_str, &root, false).unwrap();
+        assert_eq!(count, 2);
+        assert!(monthly.join("a.md").is_file());
+        assert!(monthly.join("c.md").is_file());
+        assert!(!monthly.join("b.md").exists());
+        assert!(!root.join("Monthly_pending").exists());
+        assert!(!root.join("Monthly_previous").exists());
+    }
+
+    #[test]
+    fn monthly_backup_excludes_trash_unless_requested() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("note.md"), "note").unwrap();
+        fs::create_dir(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("trashed.md"), "trash").unwrap();
+        let source_str = source.path().to_string_lossy().to_string();
+
+        // 設定の既定 (backup_include_trash = false) では、ごみ箱は含めない。
+        let default_root = tempdir().unwrap();
+        let root = default_root.path().join("backup");
+        let count = rotate_monthly_backup(&source_str, &root, false).unwrap();
+        assert_eq!(count, 1);
+        assert!(root.join("Monthly").join("note.md").is_file());
+        assert!(!root.join("Monthly").join("Trash").join("trashed.md").exists());
+
+        // 含める指定をしたときだけ、ごみ箱もコピーされる。
+        let include_root = tempdir().unwrap();
+        let root = include_root.path().join("backup");
+        let count = rotate_monthly_backup(&source_str, &root, true).unwrap();
+        assert_eq!(count, 2);
+        assert!(root
+            .join("Monthly")
+            .join("Trash")
+            .join("trashed.md")
+            .is_file());
+    }
+
+    #[test]
+    fn monthly_backup_discards_stale_pending_folder() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("note.md"), "note").unwrap();
+        let source_str = source.path().to_string_lossy().to_string();
+        let backup_root = tempdir().unwrap();
+        let root = backup_root.path().join("backup");
+        let pending = root.join("Monthly_pending");
+        fs::create_dir_all(&pending).unwrap();
+        fs::write(pending.join("stale.md"), "stale").unwrap();
+
+        let count = rotate_monthly_backup(&source_str, &root, false).unwrap();
+        assert_eq!(count, 1);
+        assert!(root.join("Monthly").join("note.md").is_file());
+        assert!(!root.join("Monthly").join("stale.md").exists());
+        assert!(!pending.exists());
+    }
+}
+
+/// 復旧先ルートはユーザープロファイル配下の固定場所。
+fn recovery_root_path(user_profile: &str) -> PathBuf {
+    Path::new(user_profile)
+        .join("Documents")
+        .join("OreNoFusen_Recovery")
+}
+
+fn count_markdown_files(root: &Path) -> usize {
+    walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md")
+        })
+        .count()
+}
+
+/// バックアップフォルダを復旧先ルート配下の新しいフォルダへコピーし、Markdown の
+/// 件数が一致することを検証する。原本フォルダ自体は変更せず、復旧先として直接使うこともない。
+/// 戻り値: 作成した復旧先フォルダのパス
+fn copy_backup_to_recovery(source: &Path, recovery_root: &Path) -> Result<PathBuf, String> {
+    if !source.is_dir() {
+        return Err("バックアップ先が見つかりません".to_string());
+    }
+    let markdown_count = count_markdown_files(source);
+    if markdown_count == 0 {
+        return Err("復旧できるMarkdownファイルがありません".to_string());
+    }
+    std::fs::create_dir_all(recovery_root).map_err(|e| e.to_string())?;
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let recovery = recovery_root.join(format!("OreNoFusen_recovered_{}", timestamp));
+    std::fs::create_dir(&recovery).map_err(|e| e.to_string())?;
+    let recovery_str = recovery.to_string_lossy().to_string();
+    // 復旧対象に削除済みのTrashは含めない。本文・現行データだけを復旧する。
+    let source_str = source.to_string_lossy().to_string();
+    if let Err(e) = storage::backup_notes_with_options(&source_str, &recovery_str, false) {
+        let _ = std::fs::remove_dir_all(&recovery);
+        return Err(e);
+    }
+    if count_markdown_files(&recovery) != markdown_count {
+        let _ = std::fs::remove_dir_all(&recovery);
+        return Err("復旧コピーの検証に失敗しました".to_string());
+    }
+    Ok(recovery)
+}
+
 #[tauri::command]
 fn fusen_restore_backup(
     app: AppHandle,
@@ -549,42 +687,11 @@ fn fusen_restore_backup(
     if !source.is_dir() {
         return Err("バックアップ先が見つかりません".to_string());
     }
-    let markdown_count = walkdir::WalkDir::new(source)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md")
-        })
-        .count();
-    if markdown_count == 0 {
-        return Err("復旧できるMarkdownファイルがありません".to_string());
-    }
     let user_profile =
         std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not found".to_string())?;
-    let recovery_root = Path::new(&user_profile)
-        .join("Documents")
-        .join("OreNoFusen_Recovery");
-    std::fs::create_dir_all(&recovery_root).map_err(|e| e.to_string())?;
-    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    let recovery = recovery_root.join(format!("OreNoFusen_recovered_{}", timestamp));
-    std::fs::create_dir(&recovery).map_err(|e| e.to_string())?;
+    let recovery_root = recovery_root_path(&user_profile);
+    let recovery = copy_backup_to_recovery(source, &recovery_root)?;
     let recovery_str = recovery.to_string_lossy().to_string();
-    // 復旧対象に削除済みのTrashは含めない。本文・現行データだけを復旧する。
-    if let Err(e) = storage::backup_notes_with_options(&backup_path, &recovery_str, false) {
-        let _ = std::fs::remove_dir_all(&recovery);
-        return Err(e);
-    }
-    let recovered_markdown_count = walkdir::WalkDir::new(&recovery)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry.file_type().is_file() && entry.path().extension().is_some_and(|ext| ext == "md")
-        })
-        .count();
-    if recovered_markdown_count != markdown_count {
-        let _ = std::fs::remove_dir_all(&recovery);
-        return Err("復旧コピーの検証に失敗しました".to_string());
-    }
     let mut settings = storage::load_settings()?;
     settings.base_path = Some(recovery_str.clone());
     storage::save_settings(&settings)?;
@@ -596,6 +703,111 @@ fn fusen_restore_backup(
     }
     let _ = app.emit("settings_updated", &settings);
     Ok(recovery_str)
+}
+
+#[cfg(test)]
+mod restore_backup_tests {
+    use super::{copy_backup_to_recovery, recovery_root_path};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use tempfile::tempdir;
+
+    fn recovered_folders(recovery_root: &Path) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(recovery_root) else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("OreNoFusen_recovered_"))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn restore_rejects_missing_source() {
+        let root = tempdir().unwrap();
+        let missing = root.path().join("no-such-backup");
+        let recovery_root = root.path().join("recovery");
+        let error = copy_backup_to_recovery(&missing, &recovery_root).unwrap_err();
+        assert_eq!(error, "バックアップ先が見つかりません");
+    }
+
+    #[test]
+    fn restore_rejects_backup_without_markdown() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("memo.txt"), "text only").unwrap();
+        let root = tempdir().unwrap();
+        let recovery_root = root.path().join("recovery");
+        let error = copy_backup_to_recovery(source.path(), &recovery_root).unwrap_err();
+        assert_eq!(error, "復旧できるMarkdownファイルがありません");
+        assert!(recovered_folders(&recovery_root).is_empty());
+    }
+
+    #[test]
+    fn restore_rejects_when_markdown_count_differs_after_copy() {
+        // ごみ箱内の Markdown は件数検証の対象に数えるが、復旧コピーには含めないため、
+        // 検証で不一致となり復旧は拒否される (現行の安全側の振る舞い)。
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("note.md"), "note").unwrap();
+        fs::create_dir(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("trashed.md"), "trash").unwrap();
+        let root = tempdir().unwrap();
+        let recovery_root = root.path().join("recovery");
+        let error = copy_backup_to_recovery(source.path(), &recovery_root).unwrap_err();
+        assert_eq!(error, "復旧コピーの検証に失敗しました");
+        // 検証に失敗した中途半端な復旧フォルダは残さない。
+        assert!(recovered_folders(&recovery_root).is_empty());
+    }
+
+    #[test]
+    fn restore_copies_into_new_folder_under_recovery_root() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("note.md"), "note").unwrap();
+        fs::create_dir(source.path().join("sub")).unwrap();
+        fs::write(source.path().join("sub").join("inner.md"), "inner").unwrap();
+        fs::create_dir(source.path().join("Trash")).unwrap();
+        fs::write(source.path().join("Trash").join("deleted.txt"), "deleted").unwrap();
+        let root = tempdir().unwrap();
+        let recovery_root = root.path().join("recovery");
+
+        let recovery = copy_backup_to_recovery(source.path(), &recovery_root).unwrap();
+
+        // 復旧先は原本ではなく、復旧先ルート直下の新規フォルダ。
+        assert_ne!(recovery.as_path(), source.path());
+        assert_eq!(recovery.parent(), Some(recovery_root.as_path()));
+        assert!(recovery
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with("OreNoFusen_recovered_")));
+        // 本文はコピーされ、ごみ箱の中身は復旧対象に含めない。
+        assert_eq!(
+            fs::read_to_string(recovery.join("note.md")).unwrap(),
+            "note"
+        );
+        assert_eq!(
+            fs::read_to_string(recovery.join("sub").join("inner.md")).unwrap(),
+            "inner"
+        );
+        assert!(!recovery.join("Trash").join("deleted.txt").exists());
+        // 原本は変更されない。
+        assert_eq!(
+            fs::read_to_string(source.path().join("note.md")).unwrap(),
+            "note"
+        );
+    }
+
+    #[test]
+    fn recovery_root_is_fixed_under_documents() {
+        let root = recovery_root_path("C:/Users/test");
+        assert_eq!(
+            root,
+            Path::new("C:/Users/test")
+                .join("Documents")
+                .join("OreNoFusen_Recovery")
+        );
+    }
 }
 
 #[tauri::command]
