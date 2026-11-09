@@ -61,6 +61,8 @@ PC/GitHub、自動/手動、実施時期・条件は分類に混ぜず別列で�
 |T03-10|結果の判定|MSIX処理の失敗・未実施を成功扱いしないか|修正中・CIの回帰試験|対象時|—|◎ 通常|◎ 通常|失敗や未実施を成功扱いしない確認|
 |T03-11|成果物の保全|必要な成果物を残し、削除対象だけを整理できるか|修正中・CIの回帰試験|対象時|—|◎ 通常|◎ 通常|削除対象/対象外の確認。結果なしで省略しない|
 
+安全系の4ファイル（`data-safety.spec.ts`、`trash-maintenance.spec.ts`、`archive-restore.spec.ts`、`pwa-delete-persistence.spec.ts`）は、文書のみ以外のPR・develop/main push・merge_groupで独立した `e2e-safety` ジョブが実行する。CI gateで成功を必須とし、既存のPC hookと日英ガイド検査は維持する。
+
 ## T04 連携・全体動作のテスト
 
 表5：連携・全体動作のテストの実施条件

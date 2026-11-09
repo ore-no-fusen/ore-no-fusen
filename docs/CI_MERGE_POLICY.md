@@ -39,6 +39,8 @@ PR、main、merge_group、手動実行、強制push、親が2個でない統合�
 - docs-v2に変更があれば、Testから再利用workflowのdesign-docsを一度呼び出し、build/リンク検査の成功もgateへ含める。独立したpush workflowとの二重起動はしない。mainへのpush時だけPagesへ配信し、PR/developではbuildのみ行う。手動の文書検証も可能だが、main以外から配信しない。
 - 他の起動済みCI（docs、PowerShell検査、Rust Windows Test等）の失敗も最終確認で見落とさない。
 
+安全系E2Eは独立ジョブ `e2e-safety` でデータ保持・ごみ箱安全停止・保管からの復元・PWA削除後の再出現防止の4ファイルを実行する。文書だけの変更では省略し、その他ではCI gateが成功を必須とする。失敗・キャンセル・未実行・不明は拒否する。失敗時の画面・traceは1日だけ保管する。
+
 ## GitHub保護設定（管理者による設定が必要）
 
 2026-10-25、管理者の本人確認後にRuleset `main-develop-required-ci`（ID 25801862）をActiveで作成済み。main/developの両方にPR必須・GitHub ActionsのCI gate必須・strict更新・削除/force push禁止を適用し、bypass一覧は空。APIで保存結果と両PRのBLOCKEDを確認した。以下は再設定時の手順と、設定前の調査記録である。
