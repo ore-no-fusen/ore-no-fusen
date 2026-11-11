@@ -1687,7 +1687,7 @@ fn launcher_background_color(content: &str) -> Option<String> {
     None
 }
 
-fn launcher_window_geometry(content: &str) -> (Option<f64>, Option<f64>, Option<u32>, Option<u32>) {
+fn launcher_window_geometry(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
     let Some(window) = content
         .lines()
         .find_map(|line| line.trim().strip_prefix("window:"))
@@ -1702,12 +1702,12 @@ fn launcher_window_geometry(content: &str) -> (Option<f64>, Option<f64>, Option<
         let Some((key, value)) = field.split_once(':') else {
             continue;
         };
-        let parsed = value.trim().parse::<u32>().ok();
+        let parsed = value.trim().parse::<f64>().ok().filter(|v| v.is_finite());
         match key.trim() {
             "x" => x = value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= i32::MIN as f64 && *v <= i32::MAX as f64),
             "y" => y = value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= i32::MIN as f64 && *v <= i32::MAX as f64),
-            "width" => width = parsed.filter(|value| (200..=2000).contains(value)),
-            "height" => height = parsed.filter(|value| (120..=2000).contains(value)),
+            "width" => width = parsed.filter(|value| (200.0..=2000.0).contains(value)),
+            "height" => height = parsed.filter(|value| (120.0..=2000.0).contains(value)),
             _ => {}
         }
     }
@@ -2395,15 +2395,15 @@ mod tests {
         );
         assert_eq!(
             launcher_window_geometry(content),
-            (Some(10.0), Some(20.0), Some(640), Some(520))
+            (Some(10.0), Some(20.0), Some(640.0), Some(520.0))
         );
     }
 
     #[test]
     fn quick_open_geometry_preserves_fractional_and_negative_logical_positions() {
         assert_eq!(
-            launcher_window_geometry("---\nwindow: { x: -745.5, y: 50.666666666666664, width: 640, height: 520 }\n---\nbody"),
-            (Some(-745.5), Some(50.666666666666664), Some(640), Some(520))
+            launcher_window_geometry("---\nwindow: { x: -745.5, y: 50.666666666666664, width: 640.8, height: 520.4 }\n---\nbody"),
+            (Some(-745.5), Some(50.666666666666664), Some(640.8), Some(520.4))
         );
     }
 
@@ -2416,6 +2416,10 @@ mod tests {
                 (None, None, None, None)
             );
         }
+        assert_eq!(
+            launcher_window_geometry("---\nwindow: { x: 0, y: 0, width: NaN, height: inf }\n---\nbody"),
+            (Some(0.0), Some(0.0), None, None)
+        );
     }
 
     #[test]
