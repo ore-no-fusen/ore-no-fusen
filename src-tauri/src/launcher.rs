@@ -1687,7 +1687,7 @@ fn launcher_background_color(content: &str) -> Option<String> {
     None
 }
 
-fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<u32>, Option<u32>) {
+fn launcher_window_geometry(content: &str) -> (Option<f64>, Option<f64>, Option<u32>, Option<u32>) {
     let Some(window) = content
         .lines()
         .find_map(|line| line.trim().strip_prefix("window:"))
@@ -1704,8 +1704,8 @@ fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<
         };
         let parsed = value.trim().parse::<u32>().ok();
         match key.trim() {
-            "x" => x = value.trim().parse::<i32>().ok(),
-            "y" => y = value.trim().parse::<i32>().ok(),
+            "x" => x = value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= i32::MIN as f64 && *v <= i32::MAX as f64),
+            "y" => y = value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= i32::MIN as f64 && *v <= i32::MAX as f64),
             "width" => width = parsed.filter(|value| (200..=2000).contains(value)),
             "height" => height = parsed.filter(|value| (120..=2000).contains(value)),
             _ => {}
@@ -2395,8 +2395,27 @@ mod tests {
         );
         assert_eq!(
             launcher_window_geometry(content),
-            (Some(10), Some(20), Some(640), Some(520))
+            (Some(10.0), Some(20.0), Some(640), Some(520))
         );
+    }
+
+    #[test]
+    fn quick_open_geometry_preserves_fractional_and_negative_logical_positions() {
+        assert_eq!(
+            launcher_window_geometry("---\nwindow: { x: -745.5, y: 50.666666666666664, width: 640, height: 520 }\n---\nbody"),
+            (Some(-745.5), Some(50.666666666666664), Some(640), Some(520))
+        );
+    }
+
+    #[test]
+    fn quick_open_geometry_ignores_missing_or_unsafe_bounds() {
+        assert_eq!(launcher_window_geometry("---\ntags: [shortcut]\n---\nbody"), (None, None, None, None));
+        for position in ["NaN", "inf", "-inf", "2147483648", "-2147483649"] {
+            assert_eq!(
+                launcher_window_geometry(&format!("---\nwindow: {{ x: {position}, y: {position}, width: 199, height: 2001 }}\n---\nbody")),
+                (None, None, None, None)
+            );
+        }
     }
 
     #[test]
