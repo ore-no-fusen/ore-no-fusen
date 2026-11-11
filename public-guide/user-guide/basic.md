@@ -6,10 +6,6 @@ pageClass: user-guide-page
 
 [English](/en/user-guide/basic)
 
-::: info 改訂案
-対応する修正版の公開までは、現在のアプリと動作が異なる場合があります。この原稿はまだ公開版へ反映していません。
-:::
-
 ## 作る
 
 ![新規メモを作る：CtrlとN](/screens/guide-create.svg)

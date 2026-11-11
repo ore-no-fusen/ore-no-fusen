@@ -6,10 +6,6 @@ pageClass: user-guide-page
 
 [日本語](/user-guide/basic)
 
-::: info Revision draft
-Behavior may differ from the current app until the corresponding fix is released. This draft has not been published.
-:::
-
 ## One way to create a note, several ways to clear the screen
 
 Start with **New Note** and write. Different creation shortcuts make the same kind of note. There are **four ways to remove a note from the screen, depending on how often you expect to use it next**.
