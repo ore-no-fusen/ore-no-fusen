@@ -72,4 +72,16 @@ describe('launcher compact and expanded tag choices', () => {
         expect(change).toHaveBeenCalledWith('all');
         expect(screen.getByRole('button', { name: 'All tags ▾' })).toBeTruthy();
     });
+    it('still shows the first tag when a single name is wider than the compact space', () => {
+        width = 35; render(<Filter />);
+        expect(screen.getByRole('button', { name: '仕事をまとめる' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '生活' })).toBeNull();
+    });
+    it('does not advertise tag actions for a choice without a context action', () => {
+        render(<LauncherTagFilter options={options} value="未分類" allValue="all" english={false}
+            onChange={change} onContextMenu={context} actionTitle={value => value === '未分類' ? undefined : '右クリック'} />);
+        expect(screen.getByRole('button', { name: '未分類' }).title).toBe('未分類');
+        fireEvent.click(screen.getByRole('button', { name: 'すべてのタグ ▾' }));
+        expect(screen.getByRole('button', { name: '生活' }).title).toContain('右クリック');
+    });
 });

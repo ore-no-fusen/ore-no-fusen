@@ -542,7 +542,7 @@ export default function QuickLauncher() {
                     options={displayTagOptions.map(tag => ({ value: tag, label: tag === UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Unclassified' : '未分類') : tag }))}
                     onChange={selectTagFilter}
                     onCollapse={() => setTagMenu(null)}
-                    actionTitle={activeTab === 'shortcut' ? (isEnglish ? 'Right-click for tag actions' : '右クリックでランチャーに登録・画面から隠す・タグ名変更・削除') : undefined}
+                    actionTitle={tag => activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックでランチャーに登録・画面から隠す・タグ名変更・削除') : undefined}
                     onContextMenu={(tag, event) => {
                         if (activeTab !== 'shortcut' || tag === UNCLASSIFIED_TAG_FILTER || busy) return;
                         event.preventDefault(); setTagMenu({ tag, x: event.clientX, y: event.clientY });

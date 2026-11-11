@@ -11,7 +11,7 @@ type Props = {
     onChange: (value: string) => void;
     onCollapse?: () => void;
     onContextMenu: (value: string, event: React.MouseEvent<HTMLButtonElement>) => void;
-    actionTitle?: string;
+    actionTitle?: (value: string) => string | undefined;
     children?: React.ReactNode;
 };
 
@@ -37,7 +37,7 @@ export default function LauncherTagFilter({ options, value, allValue, english, o
             let used = 0;
             for (const option of ordered) {
                 const measured = widths.get(option.value) ?? 0;
-                const size = option.value === value ? Math.min(measured, width) : measured;
+                const size = next.length === 0 ? Math.min(measured, width) : measured;
                 if (used + (next.length ? 4 : 0) + size > width) break;
                 next.push(option.value);
                 used += (next.length > 1 ? 4 : 0) + size;
@@ -76,7 +76,7 @@ export default function LauncherTagFilter({ options, value, allValue, english, o
                 className={`flex gap-1 ${expanded ? 'max-h-[min(40vh,14rem)] flex-wrap overflow-y-auto' : 'overflow-hidden'}`}>
                 {shown.map(option => <button key={option.value} type="button" aria-pressed={value === option.value}
                     onClick={() => select(option.value)} onContextMenu={event => onContextMenu(option.value, event)}
-                    title={`${option.label}${actionTitle ? ` — ${actionTitle}` : ''}`}
+                    title={`${option.label}${actionTitle?.(option.value) ? ` — ${actionTitle(option.value)}` : ''}`}
                     className={`${chip} max-w-full ${expanded ? 'h-auto min-h-7 whitespace-normal break-all py-1 text-left' : 'h-7 truncate'} ${color(option.value)}`}>
                     {option.label}
                 </button>)}
