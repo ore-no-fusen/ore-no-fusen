@@ -73,6 +73,10 @@ Store in Launcher hides a note without moving its file. File in folder moves it 
 :::
 
 
+### See all tags
+
+**All tags ▾ → choose a tag**. The tags wrap without widening the window. Choosing a tag returns to one row and keeps the selection visible. Scroll the expanded area vertically if there are many tags. **Collapse ▴** folds the row without changing the filter.
+
 ### Manage tags
 
 ![QLタグの並びと未使用タグの整理](/screens/launcher-unused-tags.svg)

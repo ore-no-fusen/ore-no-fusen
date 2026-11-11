@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SharedWebQr from './SharedWebQr';
 import LauncherTagActions, { type LauncherTagMenu } from './LauncherTagActions';
+import LauncherTagFilter from './LauncherTagFilter';
 import LauncherAppActions from './LauncherAppActions';
 import { formatWebSyncProgress } from '../utils/webSyncProgress';
 import { listen } from '@tauri-apps/api/event';
@@ -537,38 +538,15 @@ export default function QuickLauncher() {
                     ))}
                 </div>
 
-                <div className="flex min-h-7 gap-1 overflow-x-auto pb-0.5" aria-label={isEnglish ? 'Tag filter' : 'タグ区分'}>
-                    <button
-                        type="button"
-                        onClick={() => selectTagFilter(ALL_TAGS_FILTER)}
-                        className={`sticky left-0 z-10 shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
-                            activeTagFilter === ALL_TAGS_FILTER
-                                ? 'bg-sky-500 text-white'
-                                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                        }`}
-                    >
-                        {isEnglish ? 'All' : 'すべて'}
-                    </button>
-                    {displayTagOptions.map((tag) => (
-                        <button
-                            key={tag}
-                            type="button"
-                            onClick={() => selectTagFilter(tag)}
-                            onContextMenu={e => {
-                                if (activeTab !== 'shortcut' || tag === UNCLASSIFIED_TAG_FILTER || busy) return;
-                                e.preventDefault();
-                                setTagMenu({ tag, x: e.clientX, y: e.clientY });
-                            }}
-                            title={activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックでランチャーに登録・画面から隠す・タグ名変更・削除') : undefined}
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
-                                activeTagFilter === tag
-                                    ? 'bg-sky-500 text-white'
-                                    : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                            }`}
-                        >
-                            {tag === UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Unclassified' : '未分類') : tag}
-                        </button>
-                    ))}
+                <LauncherTagFilter key={activeTab} english={isEnglish} value={activeTagFilter} allValue={ALL_TAGS_FILTER}
+                    options={displayTagOptions.map(tag => ({ value: tag, label: tag === UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Unclassified' : '未分類') : tag }))}
+                    onChange={selectTagFilter}
+                    onCollapse={() => setTagMenu(null)}
+                    actionTitle={tag => activeTab === 'shortcut' && tag !== UNCLASSIFIED_TAG_FILTER ? (isEnglish ? 'Right-click for tag actions' : '右クリックでランチャーに登録・画面から隠す・タグ名変更・削除') : undefined}
+                    onContextMenu={(tag, event) => {
+                        if (activeTab !== 'shortcut' || tag === UNCLASSIFIED_TAG_FILTER || busy) return;
+                        event.preventDefault(); setTagMenu({ tag, x: event.clientX, y: event.clientY });
+                    }}>
                     {activeTab === 'shortcut' && <LauncherTagActions english={isEnglish} disabled={busy} menu={tagMenu}
                         closeMenu={() => setTagMenu(null)} onBusy={value => { operationRef.current = value; setBusy(value); }} onError={setError}
                         onChanged={async (old, name) => {
@@ -579,7 +557,7 @@ export default function QuickLauncher() {
                             }
                             await reloadItems(activeTab, debouncedQuery);
                         }} />}
-                </div>
+                </LauncherTagFilter>
 
                 {activeTab === 'shortcut' && <div className="flex flex-wrap gap-2 text-xs">
                     <button type="button" onClick={() => setShowStored(false)} className={showStored ? 'text-zinc-400' : 'text-sky-300'}>{t('launcher.registeredNotes')}</button>
