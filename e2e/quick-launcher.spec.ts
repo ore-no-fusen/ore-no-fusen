@@ -91,3 +91,56 @@ for (const mode of ['individual', 'bulk'] as const) {
         await page.screenshot({ path: info.outputPath(`${mode}-registrations-remain.png`) });
     });
 }
+
+test('compact tags expand within a narrow launcher and keep the chosen long tag visible', async ({ page }, info) => {
+    await page.setViewportSize({ width: 420, height: 520 });
+    await mockTauriAPI(page);
+    await page.addInitScript(() => {
+        const tags = Array.from({ length: 25 }, (_, i) => i === 24 ? '長いタグ名'.repeat(14) : `仕事タグ${String(i).padStart(2, '0')}`);
+        const original = Reflect.get(window, '__TAURI_INTERNALS__');
+        Reflect.set(window, '__TAG_FILTER_CALLS__', []);
+        Reflect.set(window, '__TAURI_INTERNALS__', new Proxy(original, {
+            get(target, prop) {
+                if (prop !== 'invoke') return Reflect.get(target, prop);
+                return async (cmd: string, args: { tag?: string } = {}) => {
+                    if (cmd === 'fusen_get_launcher_state') return { last_tab: 'shortcut', orders: {}, selected_tags: {} };
+                    if (cmd === 'fusen_quick_open_notes') return [];
+                    if (cmd === 'fusen_storage_snapshot') return { paths: [], items: [], tags };
+                    if (cmd === 'fusen_set_launcher_tag_filter') { Reflect.get(window, '__TAG_FILTER_CALLS__').push(args.tag); return; }
+                    return original.invoke(cmd, args);
+                };
+            },
+        }));
+    });
+    await page.goto('/launcher');
+    const group = page.getByRole('group', { name: 'タグ区分', exact: true });
+    const lastName = '長いタグ名'.repeat(14);
+    const expand = group.getByRole('button', { name: 'すべてのタグ ▾', exact: true });
+    await expect(expand).toBeVisible();
+    await expect(group.getByRole('button', { name: lastName, exact: true })).toHaveCount(0);
+    await expand.click();
+    await expect(group.getByRole('button', { name: '折りたたむ ▴' })).toHaveAttribute('aria-expanded', 'true');
+    await expect(group.getByRole('button', { name: '仕事タグ00', exact: true })).toBeVisible();
+    await page.screenshot({ path: info.outputPath('tags-expanded-420.png') });
+    await group.getByRole('button', { name: lastName, exact: true }).click();
+    await expect(expand).toHaveAttribute('aria-expanded', 'false');
+    await expect(group.getByRole('button', { name: lastName, exact: true })).toBeVisible();
+    await expect(group.getByRole('button', { name: lastName, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    for (const width of [320, 800, 420]) {
+        await page.setViewportSize({ width, height: 520 });
+        await expect(group.getByRole('button', { name: lastName, exact: true })).toBeVisible();
+        const all = await group.getByRole('button', { name: 'すべて', exact: true }).boundingBox();
+        expect(all!.x).toBeGreaterThanOrEqual(0);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+    await page.screenshot({ path: info.outputPath('tags-selected-420.png') });
+    await expand.click();
+    await group.getByRole('button', { name: '仕事タグ00', exact: true }).click({ button: 'right' });
+    await expect(page.getByRole('menu', { name: 'タグ操作', exact: true })).toBeVisible();
+    await expect(group.getByRole('button', { name: lastName, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu', { name: 'タグ操作', exact: true })).toHaveCount(0);
+    await expect(expand).toHaveAttribute('aria-expanded', 'false');
+    const calls: string[] = await page.evaluate(() => Reflect.get(window, '__TAG_FILTER_CALLS__'));
+    expect(calls).toEqual([lastName]);
+});

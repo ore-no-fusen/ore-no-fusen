@@ -82,9 +82,10 @@ describe('launcher tag row', () => {
     it('keeps server usage order and All at the far left, including zero-use tags', async () => {
         mocks.snapshot.mockResolvedValue({ paths: [], items: [], tags: ['多数', '少数', '新しい未使用', '古い未使用'] });
         render(<QuickLauncher/>);
-        await screen.findByRole('button', { name: '新しい未使用' });
+        await screen.findByRole('button', { name: '多数' });
+        fireEvent.click(screen.getByRole('button', { name: 'すべてのタグ ▾' }));
         const group = screen.getByLabelText('タグ区分');
-        expect([...group.querySelectorAll('button')].map(x => x.textContent)).toEqual(['すべて', '多数', '少数', '新しい未使用', '古い未使用', '＋']);
+        expect([...group.querySelectorAll('button')].map(x => x.textContent)).toEqual(['すべて', '多数', '少数', '新しい未使用', '古い未使用', '折りたたむ ▴', '＋']);
     });
     it('resets a removed filter only after a successful new snapshot', async () => {
         render(<QuickLauncher/>);
