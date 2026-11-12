@@ -10,12 +10,17 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.42 / 2026-11-10
+設計書 v1.43 / 2026-11-13
 </p>
 
 ---
 
 ## 1 画面構成
+
+**本文の強調**: 一覧はNoteListStep、編集本文はWriteStepとeditor-helpersが実際の表示経路。両方で同じ強調分割を使い、二重アスタリスクの強調を赤い太字で表示する。保存時は強調記号へ戻し、チェック項目・URL・本文を保持する。未使用の表示部品は残さず、実画面の試験で確認する。
+
+**PWAの版番号**: lib/pwa-version.mjsを正本とし、PWAの配信更新ごとに必ず番号を上げる。画面とService Workerで同じ定数を参照する。通常画面にはPWAアプリの版を表示し、SWの実際の稼働版は診断表示として区別する。Preview反映後もiPhoneの表示番号を照合する。
+
 
 iPhone PWA は <code>step</code> state で切り替わる5画面の単一ページアプリです。
 
@@ -281,7 +286,8 @@ graph LR
         PushStep["PushStep.tsx"]:::comp
         Crop["CropModal.tsx"]:::comp
         Mermaid["MermaidModal.tsx"]:::comp
-        SimpleNote["SimpleNoteBody.tsx"]:::comp
+        Bold["inline-bold.ts<br>強調の分割"]:::lib
+        EditorHelpers["editor-helpers.ts<br>本文の表示と保存"]:::lib
     end
 
     subgraph Hooks ["viewer/hooks/"]
@@ -326,7 +332,9 @@ graph LR
 
     WriteStep --> Crop
     WriteStep --> Mermaid
-    NoteListStep --> SimpleNote
+    NoteListStep --> Bold
+    WriteStep --> EditorHelpers
+    EditorHelpers --> Bold
 
     Init --> IDB
     Init --> Auth
@@ -1521,4 +1529,5 @@ iOS の PWA 環境では、バックグラウンドでの通知タップ時（<c
 
 | 43 | **1.42** | 26-11-10 | 一覧の先行表示後に削除したメモが遅いDrive完了で再表示されないよう、同期完了時の最新DB・削除済みID再取得と読取失敗時の表示保持を定義。 |
 
+| 44 | **1.43** | 26-11-13 | 太字の実表示・保存経路へ修正、未使用部品を削除。PWA更新ごとの版上げと画面/SW共通版を定義。 |
 </div>

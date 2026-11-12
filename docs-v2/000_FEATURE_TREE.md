@@ -107,6 +107,8 @@
   - 実画面：付箋の編集モード（選択時）
 - **編集用ホットキー**：太字 Ctrl+B／見出し Ctrl+H／箇条書き Ctrl+L／チェックボックス Ctrl+Shift+C（各キーとも変更・無効化が可能）〔仕様：002_PC §10.1〕
   - 実画面：付箋の編集モード／設定画面「ホットキー」タブ
+- **PWAの強調表示**：実際の一覧と編集本文で赤い太字を表示し、保存後も強調記号を保持〔仕様：003_IPHONE §1／コード：NoteListStep.tsx・editor-helpers.ts・inline-bold.ts〕
+
 ### 要求2-2　画像に、そのまま書き込みたい
 
 - **画像への描き込み**：ペン・蛍光ペン・矢印・四角・吹き出しの道具、色・太さ・濃さの調整、元に戻す／やり直す（保存までは道具をまたいで履歴保持）〔仕様：002_PC §6.2／ガイド：advanced／コード：ImageAnnotationModal.tsx〕
@@ -227,6 +229,8 @@
 - **ログと診断**〔要確認〕：ログフォルダを開く、iPhone 接続の診断、保存先の健全性チェックのコマンドが存在する〔コード：lib.rs `fusen_open_log_folder`・`fusen_diagnose_iphone_connection`・`fusen_check_storage_health`〕。画面上の配置（設定内の診断・管理者ツール相当）は要確認
 
 ---
+
+- **PWAの版表示**：画面とSWはlib/pwa-version.mjsを共用。PWAの配信更新ごとに必ず番号を上げる〔仕様：003_IPHONE §1／手順：010_RELEASE〕
 
 ## 補助ブランチB：発展
 

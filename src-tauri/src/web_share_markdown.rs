@@ -92,18 +92,9 @@ fn extract_share_frontmatter_tags(frontmatter: &str) -> Result<Vec<String>, Stri
         return Err("note frontmatter is not closed while reading tags".into());
     }
     let Some(value) = raw_tags else { return Ok(Vec::new()) };
-    if value.contains(['\"', '\'', '#']) {
-        return Err("quoted tags and YAML comments are unsupported for web sharing".into());
-    }
-    let list = if value == "[]" { return Ok(Vec::new()) }
-    else if value.starts_with('[') && value.ends_with(']') { &value[1..value.len() - 1] }
-    else if value.starts_with('[') || value.ends_with(']') { return Err("ambiguous tags syntax is unsupported".into()) }
-    else { value };
-    if list.trim().is_empty() { return Ok(Vec::new()) }
-
     let mut tags = Vec::new();
     let mut seen = HashSet::new();
-    for tag in list.split(',') {
+    for tag in parse_share_tag_values(value)? {
         let tag = tag.trim();
         if tag.is_empty() || tag.len() > 256 || tag.chars().any(char::is_control) {
             return Err("invalid tag in note frontmatter".into());
@@ -119,6 +110,21 @@ fn extract_share_frontmatter_tags(frontmatter: &str) -> Result<Vec<String>, Stri
         return Err("too many tags to share".into());
     }
     Ok(tags)
+}
+
+// PCに保存済みの引用符なし形式と、JSON文字列配列形式の両方を読む。
+// 引用符内のカンマを区切りと誤認し、登録を捏造しない。
+fn parse_share_tag_values(value: &str) -> Result<Vec<String>, String> {
+    if !value.contains('"') && value.contains(['\'', '#']) {
+        return Err("unsupported tag syntax in note frontmatter".into());
+    }
+    let values = crate::logic::parse_tag_values(value)?;
+    values.into_iter().map(|tag| {
+        if tag.trim().is_empty() || tag.len() > 256 || tag.chars().any(char::is_control) {
+            return Err("invalid tag in note frontmatter".to_string());
+        }
+        Ok(tag.trim().to_string())
+    }).collect()
 }
 
 /// Returns only image destinations that the same Markdown scanner treats as live
@@ -194,24 +200,7 @@ pub fn local_note_has_frontmatter_tag(note_file: &str, expected: &str) -> Result
     let Some(value) = tags_value else {
         return Ok(false);
     };
-    if value.contains(['"', '\'']) {
-        return Err("quoted tag syntax is unsupported for share registration checks".to_string());
-    }
-    if value.contains('#') {
-        return Err("YAML comments are unsupported in share registration tags".to_string());
-    }
-    let list = if value.starts_with('[') && value.ends_with(']') {
-        &value[1..value.len() - 1]
-    } else if value.starts_with('[') || value.ends_with(']') {
-        return Err("ambiguous tags syntax is unsupported".to_string());
-    } else {
-        value
-    };
-    Ok(list.split(',').any(|tag| {
-        tag.trim()
-            .trim_matches(['"', '\''])
-            .eq_ignore_ascii_case(expected)
-    }))
+    Ok(parse_share_tag_values(value)?.iter().any(|tag| tag.eq_ignore_ascii_case(expected)))
 }
 
 fn parse_share_title(raw: &str) -> Result<String, String> {
@@ -732,11 +721,11 @@ mod tests {
             "shortcut"
         )
         .is_err());
-        assert!(local_note_has_frontmatter_tag(
+        assert!(!local_note_has_frontmatter_tag(
             "---\ntags: [\"private,shortcut\"]\n---\nBody",
             "shortcut"
         )
-        .is_err());
+        .unwrap());
         assert!(
             local_note_has_frontmatter_tag("---\ntags: 'shortcut\n---\nBody", "shortcut").is_err()
         );
@@ -745,6 +734,21 @@ mod tests {
             "shortcut"
         )
         .is_err());
+    }
+
+    #[test]
+    fn quoted_launcher_tags_share_the_original_bold_body_without_rewriting_the_note() {
+        let body = "実装のワークフロー\n①機能の壁打ち **アイデアを膨らます**";
+        let note = format!("---\ntitle: Untitled\ntags: [\"俺の付箋\",\"shortcut\"]\n---\n{body}");
+        assert!(local_note_has_frontmatter_tag(&note, "shortcut").unwrap());
+        let payload = local_note_to_share_payload(&note, &HashMap::new()).unwrap();
+        assert_eq!(payload.tags, vec!["俺の付箋"]);
+        assert_eq!(payload.markdown, body);
+        for tags in ["[\"shortcut\",]", "[\"shortcut\",7]", "[\"shortcut\" \"other\"]"] {
+            let invalid = format!("---\ntitle: Note\ntags: {tags}\n---\nBody");
+            assert!(local_note_has_frontmatter_tag(&invalid, "shortcut").is_err());
+            assert!(local_note_to_share_payload(&invalid, &HashMap::new()).is_err());
+        }
     }
 
     #[test]

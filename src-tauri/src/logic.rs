@@ -146,7 +146,7 @@ pub fn generate_frontmatter(
     };
 
     let tags_line = if !tags.is_empty() {
-        format!("\ntags: [{}]", tags.join(", "))
+        format!("\ntags: {}", format_tag_values(tags))
     } else {
         "".to_string()
     };
@@ -242,8 +242,8 @@ pub fn generate_recipe_frontmatter(
     tags: &[String],
 ) -> String {
     format!(
-        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: {}\nbackgroundColor: \"#cfd8dc\"\ntags: [{}]\nlaunches: 0\nrecipeImprovements: 0\nrecipeLastUsed:\nwindow: {{ x: 120, y: 80, width: 460, height: 560 }}\n---\n",
-        seq, created, updated, title, tags.join(", ")
+        "---\ntype: sticky\nseq: {}\ncreated: {}\nupdated: {}\ntitle: {}\nbackgroundColor: \"#cfd8dc\"\ntags: {}\nlaunches: 0\nrecipeImprovements: 0\nrecipeLastUsed:\nwindow: {{ x: 120, y: 80, width: 460, height: 560 }}\n---\n",
+        seq, created, updated, title, format_tag_values(tags)
     )
 }
 
@@ -362,6 +362,27 @@ pub fn extract_font_size(content: &str) -> Option<f64> {
         .filter(|value| *value >= 8.0 && *value <= 64.0)
 }
 
+/// JSON形式のタグは文字列の境界を保つ。引用符なしの既存形式も扱う。
+pub fn format_tag_values(tags: &[String]) -> String {
+    if tags.iter().any(|tag| tag.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-')) {
+        serde_json::to_string(tags).expect("string tags serialize to JSON")
+    } else { format!("[{}]", tags.join(", ")) }
+}
+
+pub fn parse_tag_values(value: &str) -> Result<Vec<String>, String> {
+    if value.contains('"') {
+        return serde_json::from_str::<Vec<String>>(value)
+            .map_err(|_| "invalid quoted tag array in note frontmatter".to_string());
+    }
+    let list = if value.starts_with('[') && value.ends_with(']') {
+        &value[1..value.len() - 1]
+    } else if value.starts_with('[') || value.ends_with(']') {
+        return Err("ambiguous tags syntax is unsupported".into());
+    } else { value };
+    if list.trim().is_empty() { return Ok(Vec::new()); }
+    Ok(list.split(',').map(|tag| tag.trim().trim_matches('\'').to_string()).collect())
+}
+
 pub fn extract_meta_from_content(
     content: &str,
 ) -> (
@@ -415,7 +436,9 @@ pub fn extract_meta_from_content(
         .captures(content)
         .map(|c| c[1].trim().to_string())
         .unwrap_or_default();
-    let tags = if tags_val.starts_with('[') && tags_val.ends_with(']') {
+    let tags = if let Ok(tags) = parse_tag_values(&tags_val) {
+        tags.into_iter().filter(|tag| !tag.is_empty()).collect()
+    } else if tags_val.starts_with('[') && tags_val.ends_with(']') {
         tags_val[1..tags_val.len() - 1]
             .split(',')
             .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
@@ -901,7 +924,7 @@ pub fn set_web_share_note_id(content: &str, id: &str) -> Result<String, String> 
 
 /// Web共有IDだけは独立した `---` 行で frontmatter を判定し、部分文字列の
 /// `---` を閉じ区切りと誤認しない。壊れた区切りは fail closed にする。
-fn strict_web_share_frontmatter(content: &str) -> Result<Option<(usize, usize, usize)>, String> {
+pub(crate) fn strict_web_share_frontmatter(content: &str) -> Result<Option<(usize, usize, usize)>, String> {
     if !content.starts_with("---") {
         return Ok(None);
     }
@@ -1027,7 +1050,7 @@ pub fn handle_add_tag(
     }
 
     let new_content =
-        update_frontmatter_value(current_content, "tags", format!("[{}]", tags.join(", ")));
+        update_frontmatter_value_for_web_share(current_content, "tags", &format_tag_values(&tags));
 
     // State update
     if let Some(index) = state.notes.iter().position(|n| n.path == path) {
@@ -1050,7 +1073,7 @@ pub fn handle_remove_tag(
     tags.retain(|t| t != tag);
 
     let new_content =
-        update_frontmatter_value(current_content, "tags", format!("[{}]", tags.join(", ")));
+        update_frontmatter_value_for_web_share(current_content, "tags", &format_tag_values(&tags));
 
     // State update
     if let Some(index) = state.notes.iter().position(|n| n.path == path) {

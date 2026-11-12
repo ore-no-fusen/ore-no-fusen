@@ -63,7 +63,6 @@ describe('Video attachment semantics', () => {
         isLockPermissionPending={false}
         t={t}
         language="ja"
-        swVersion="test"
         runtimeOrigin="https://example.com"
         runtimeKind="Vercel"
         onNew={vi.fn()}
