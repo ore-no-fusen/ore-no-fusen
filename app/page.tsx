@@ -954,7 +954,14 @@ function OrchestratorContent() {
           return;
         }
       }
-      await openNoteWindow(notePath, { background_color: bg, launcher_open: event.payload.launcherOpen }, event.payload.isNew);
+      await openNoteWindow(notePath, {
+        background_color: bg,
+        launcher_open: event.payload.launcherOpen,
+        x: event.payload.x,
+        y: event.payload.y,
+        width: event.payload.width,
+        height: event.payload.height,
+      }, event.payload.isNew);
       if (event.payload.isCrystal) {
         await invoke('fusen_register_crystal_arrange_window', {
           label: getWindowLabel(notePath),
