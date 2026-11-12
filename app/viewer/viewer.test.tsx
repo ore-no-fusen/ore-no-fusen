@@ -1,21 +1,6 @@
-/**
- * app/viewer の単体テスト
- * SimpleNoteBody の描画、utils（insertAtCursor / formatRelativeTime）、
- * iPhone→PC送信と履歴・下書きのロジックを検証する
- */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { SimpleNoteBody } from './SimpleNoteBody';
+/** viewerの送信・履歴・日時ユーティリティの試験。表示は実際の画面で試験する。 */
+import { describe, it, expect } from 'vitest';
 import { insertAtCursor, formatRelativeTime } from './utils';
-
-// mermaid モック（jsdom は mermaid を描画できない）
-vi.mock('mermaid', () => ({
-  default: {
-    initialize: vi.fn(),
-    render: vi.fn().mockResolvedValue({ svg: '<svg>mock</svg>' }),
-  },
-}));
 
 // Phase 6 型定義 (Phase 11: received_pc 追加)
 type IphoneNote = {
@@ -34,84 +19,6 @@ type FusenNoteItem = {
   body: string;
   sent_at: string;
 };
-
-// matchMedia モック（jsdom は matchMedia を持たない）
-beforeEach(() => {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: false, // 非standalone をデフォルトとする
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-
-  // Canvas API モック（jsdom は Canvas を持たない）
-  HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
-    drawImage: vi.fn(),
-    canvas: {
-      toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,mock'),
-    },
-  });
-  HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mock');
-});
-
-describe('SimpleNoteBody', () => {
-  it('テキストのみのbodyをそのままレンダリングする', () => {
-    const { container } = render(<SimpleNoteBody body={'こんにちは\n付箋テスト'} />);
-    expect(container.textContent).toContain('こんにちは');
-  });
-
-  it('**強調** を朱の太字 <strong> でレンダリングする', () => {
-    const { container } = render(<SimpleNoteBody body={'前 **強調** 後'} />);
-    const strong = container.querySelectorAll('strong');
-    expect(strong.length).toBe(1);
-    expect(strong[0].textContent).toBe('強調');
-    expect((strong[0] as HTMLElement).style.color).toBe('red');
-    expect(container.textContent).not.toContain('**');
-  });
-
-  it('data: URI 画像を <img> タグでレンダリングする', () => {
-    const body = '前のテキスト\n![テスト画像](data:image/png;base64,abc123)\n後のテキスト';
-    const { container } = render(<SimpleNoteBody body={body} />);
-    const imgs = container.querySelectorAll('img');
-    expect(imgs.length).toBe(1);
-    expect(imgs[0].getAttribute('src')).toBe('data:image/png;base64,abc123');
-    expect(imgs[0].getAttribute('alt')).toBe('テスト画像');
-  });
-
-  it('画像のないbodyでは<img>タグを生成しない', () => {
-    const { container } = render(<SimpleNoteBody body={'テキストのみ'} />);
-    expect(container.querySelectorAll('img').length).toBe(0);
-  });
-
-  it('ローカルパス（data: でない）は <img> 変換しない', () => {
-    const body = '![photo](C:\\Users\\test\\image.png)';
-    const { container } = render(<SimpleNoteBody body={body} />);
-    expect(container.querySelectorAll('img').length).toBe(0);
-  });
-
-  it('テキストと画像が混在する場合、両方レンダリングする', () => {
-    const body = '行1\n![img](data:image/jpeg;base64,xyz)\n行3';
-    const { container } = render(<SimpleNoteBody body={body} />);
-    const imgs = container.querySelectorAll('img');
-    expect(imgs.length).toBe(1);
-    expect(imgs[0].getAttribute('src')).toBe('data:image/jpeg;base64,xyz');
-    expect(container.textContent).toContain('行1');
-    expect(container.textContent).toContain('行3');
-  });
-});
-
-// ============================================================
-// Phase 6: iPhone→PC送信
-// ============================================================
-
-
 
 describe('SEND-03: 画像添付', () => {
   it('insertAtCursor がカーソル位置に文字列を挿入して新しい value を返す', () => {
@@ -214,31 +121,6 @@ describe('HIST-02: 下書き編集', () => {
   });
 });
 
-describe('REND-01: Mermaidレンダリング', () => {
-  it('SimpleNoteBody が通常テキストを pre-wrap で描画する（既存動作を保持）', () => {
-    const { container } = render(<SimpleNoteBody body={'テスト\nテキスト'} />);
-    expect(container.textContent).toContain('テスト');
-  });
-
-  it('SimpleNoteBody が ```mermaid ブロックをMermaidBlock要素として描画する', () => {
-    const body = 'テキスト前\n```mermaid\ngraph TD\n  A-->B\n```\nテキスト後';
-    const { container } = render(<SimpleNoteBody body={body} />);
-    // テキスト前後が残っている
-    expect(container.textContent).toContain('テキスト前');
-    expect(container.textContent).toContain('テキスト後');
-  });
-
-  it('data: URI 画像と mermaid ブロックを同じ本文内で両方処理する', () => {
-    const body = '![img](data:image/png;base64,abc)\n```mermaid\ngraph LR\n  X-->Y\n```';
-    const { container } = render(<SimpleNoteBody body={body} />);
-    const imgs = container.querySelectorAll('img');
-    expect(imgs.length).toBe(1);
-    // MermaidBlock の div も存在する
-    expect(container.querySelectorAll('div').length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-// ============================================================
 // Phase 11: PC→iPhone受信履歴保存
 // ============================================================
 

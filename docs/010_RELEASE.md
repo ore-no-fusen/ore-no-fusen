@@ -33,6 +33,8 @@ flowchart LR
 3-1の保存先：`D:\Users\uck\Documents\俺の付箋-Store提出\<バージョン>\ore-no-fusen.msix`。Store手続きは[Partner Center](https://partner.microsoft.com/ja-jp/dashboard/products/9N4MW0V2MVVG/overview)。公開マニュアルは[更新手順](PUBLIC_GUIDE_MAINTENANCE.md)に従います。
 
 基本フォルダーの「リリースマシン.bat」から①でSTEP 1を実施し、本人の実機合格後に②でSTEP 2・3-1を実施します。リリースマシンは2-3のPR確認に先立って3-1の固定先保存を行います。PR待ちではマージ後に②を押して再開します。PRは最新headの全適用CI・競合なしを確認し、Create a merge commitで統合します。PWAのSW版・送受信・通知、提出物の名前・発行者・版・x64・未署名、Storeの価格・画像・プライバシー・公開設定など、変更対象と既存設定も確認します。
+
+PWAの実装を配信更新するときは、必ず `lib/pwa-version.mjs` の `PWA_VERSION` を上げる。画面とService Workerは同じ定数を参照する。Preview反映後、iPhoneのPWA表示番号が修正版と一致することを確認してから対象動作を試験する。SW版だけでアプリの新旧を判定しない。
 表1-1のSTEP 1に合格した実行ファイルをSTEP 2で再利用します。Store側の認定や公開にかかる時間は保証できません。
 
 ```mermaid

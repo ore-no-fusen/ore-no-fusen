@@ -4,6 +4,8 @@
  * 出力: string（末尾改行除去済み Markdown）
  * 副作用: なし
  */
+import { splitInlineBold } from './inline-bold';
+
 export function serializeEditor(el: HTMLDivElement): string {
   function walk(node: Node, isRoot: boolean): string {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
@@ -12,8 +14,8 @@ export function serializeEditor(el: HTMLDivElement): string {
     if (node instanceof Element && node.hasAttribute('data-checkbox-line')) {
       const cb = node.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
       const text = Array.from(node.childNodes)
-        .filter((c) => c.nodeType === Node.TEXT_NODE)
-        .map((c) => c.textContent ?? '')
+        .filter((c) => !(c instanceof Element && c.tagName === 'INPUT'))
+        .map((c) => walk(c, false))
         .join('');
       return `- [${cb?.checked ? 'x' : ' '}] ${text}`;
     }
@@ -30,6 +32,10 @@ export function serializeEditor(el: HTMLDivElement): string {
     // 通常行のインライン要素間には改行を追加しない。
     if (node.tagName === 'SPAN') {
       return Array.from(node.childNodes).map((c) => walk(c, false)).join('');
+    }
+    if (node.tagName === 'STRONG' || node.tagName === 'B') {
+      const text = Array.from(node.childNodes).map(c => walk(c, false)).join('');
+      return text ? `**${text}**` : '';
     }
     // br → 改行
     if (node.tagName === 'BR') return '\n';
@@ -74,6 +80,16 @@ function appendLinkedText(parent: HTMLElement, text: string): void {
 
   if (lastIndex < text.length) {
     parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
+function appendFormattedText(parent: HTMLElement, text: string): void {
+  for (const part of splitInlineBold(text)) {
+    if (!part.bold) { appendLinkedText(parent, part.text); continue; }
+    const strong = document.createElement('strong');
+    strong.style.cssText = 'color:red;font-weight:bold;';
+    appendLinkedText(strong, part.text);
+    parent.appendChild(strong);
   }
 }
 
@@ -125,7 +141,7 @@ export function hydrateEditor(
         el.appendChild(img);
         if (trailingText) {
           const span = document.createElement('span');
-          span.textContent = trailingText;
+          appendFormattedText(span, trailingText);
           el.appendChild(span);
         }
         el.appendChild(document.createElement('br'));
@@ -152,9 +168,8 @@ export function hydrateEditor(
       cb.style.cssText = 'margin-right:4px;pointer-events:auto;vertical-align:middle;';
       cb.addEventListener('mousedown', (e) => e.preventDefault());
       cb.addEventListener('click', (e) => e.stopPropagation());
-      const textNode = document.createTextNode(text);
       wrapper.appendChild(cb);
-      wrapper.appendChild(textNode);
+      appendFormattedText(wrapper, text);
       el.appendChild(wrapper);
       el.appendChild(document.createElement('br'));
       i++;
@@ -162,7 +177,7 @@ export function hydrateEditor(
     }
     // 通常テキスト行
     const span = document.createElement('span');
-    appendLinkedText(span, line);
+    appendFormattedText(span, line);
     el.appendChild(span);
     el.appendChild(document.createElement('br'));
     i++;

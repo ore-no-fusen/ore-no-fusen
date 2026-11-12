@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { PWA_VERSION } from '@/lib/pwa-version.mjs';
 import { isSharedLoginAttempt, markSharedLoginReturn } from '@/app/shared/lib/login-return';
 import MessageSurface from '../components/MessageSurface';
 import { formatRelativeTime, insertAtCursor, buildImageFileName, insertTextAtCursor, insertNodeAtCursor, nowJST } from './utils';
@@ -500,7 +501,7 @@ export default function ViewerPage() {
           </div>
         </div>
         <div className="text-center text-gray-300 text-[10px] mt-4">
-          v{swVersion ?? '---'}
+          PWA {PWA_VERSION}
         </div>
       </div>
     );
@@ -667,7 +668,6 @@ export default function ViewerPage() {
               setStep('write');
 
             }}
-            swVersion={swVersion}
             runtimeOrigin={runtimeOrigin}
             runtimeKind={runtimeKind}
             onDelete={handleDeleteNote}
