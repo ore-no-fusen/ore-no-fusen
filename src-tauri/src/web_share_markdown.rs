@@ -115,21 +115,10 @@ fn extract_share_frontmatter_tags(frontmatter: &str) -> Result<Vec<String>, Stri
 // PCに保存済みの引用符なし形式と、JSON文字列配列形式の両方を読む。
 // 引用符内のカンマを区切りと誤認し、登録を捏造しない。
 fn parse_share_tag_values(value: &str) -> Result<Vec<String>, String> {
-    let values = if value.contains('"') {
-        serde_json::from_str::<Vec<String>>(value)
-            .map_err(|_| "invalid quoted tag array in note frontmatter".to_string())?
-    } else {
-        if value.contains(['\'', '#']) {
-            return Err("unsupported tag syntax in note frontmatter".into());
-        }
-        let list = if value.starts_with('[') && value.ends_with(']') {
-            &value[1..value.len() - 1]
-        } else if value.starts_with('[') || value.ends_with(']') {
-            return Err("ambiguous tags syntax is unsupported".into());
-        } else { value };
-        if list.trim().is_empty() { return Ok(Vec::new()); }
-        list.split(',').map(str::to_string).collect()
-    };
+    if !value.contains('"') && value.contains(['\'', '#']) {
+        return Err("unsupported tag syntax in note frontmatter".into());
+    }
+    let values = crate::logic::parse_tag_values(value)?;
     values.into_iter().map(|tag| {
         if tag.trim().is_empty() || tag.len() > 256 || tag.chars().any(char::is_control) {
             return Err("invalid tag in note frontmatter".to_string());

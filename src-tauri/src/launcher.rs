@@ -287,6 +287,9 @@ fn parse_launcher_tags(content: &str) -> Vec<String> {
         .find_map(|line| line.trim().strip_prefix("tags:"))
         .map(str::trim)
         .unwrap_or_default();
+    if let Ok(tags) = logic::parse_tag_values(value) {
+        return tags.into_iter().filter(|tag| !tag.is_empty()).collect();
+    }
     let value = value
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
@@ -1368,11 +1371,13 @@ fn move_path_in_order(
 fn remove_tag_from_content(content: &str, tag: &str) -> String {
     let (_, _, _, _, _, _, mut tags, _) = logic::extract_meta_from_content(content);
     tags.retain(|value| logic::normalize_reserved_tag(value) != tag);
-    logic::update_frontmatter_value(content, "tags", format!("[{}]", tags.join(", ")))
+    let value = logic::format_tag_values(&tags);
+    logic::update_frontmatter_value_for_web_share(content, "tags", &value)
 }
 
 fn web_unshare_content(source: &str, id: &str) -> Option<String> {
-    let (front,_) = logic::split_frontmatter(source);
+    let (open_end, close_start, _) = logic::strict_web_share_frontmatter(source).ok()??;
+    let front = &source[open_end..close_start];
     if front.lines().any(|line|line.trim()==format!("webRevokedId: {}",id)) {return None;}
     let unregistered=remove_tag_from_content(source,"shortcut");
     Some(logic::update_frontmatter_value_for_web_share(&unregistered,"webRevokedId",id))
@@ -1381,6 +1386,27 @@ fn web_unshare_content(source: &str, id: &str) -> Option<String> {
 #[cfg(test)]
 mod web_unshare_tests {
     use super::*;
+    #[test]
+    fn quoted_tag_boundaries_survive_listing_and_web_unshare() {
+        let source = "---\ntitle: Example\ntags: [\"案件,至急\",\"shortcut\"]\n---\n**本文**";
+        assert_eq!(parse_launcher_tags(source), vec!["案件,至急", "shortcut"]);
+        let updated = web_unshare_content(source, "test-id").unwrap();
+        assert_eq!(parse_launcher_tags(&updated), vec!["案件,至急"]);
+        assert_eq!(logic::extract_meta_from_content(&updated).6, vec!["案件,至急"]);
+        assert_eq!(logic::split_frontmatter(source).1, logic::split_frontmatter(&updated).1);
+        assert!(!note_has_tag(&parse_launcher_tags("---\ntags: [\"private,shortcut\"]\n---\nbody"), "shortcut"));
+    }
+    #[test]
+    fn web_unshare_preserves_literal_tag_names_and_real_frontmatter_boundaries() {
+        for tag in ["$budget", "a---b", "案件,至急", "quote\"and\\slash"] {
+            let tags = serde_json::to_string(&vec![tag, "shortcut"]).unwrap();
+            let source = format!("---\ntitle: Example\ntags: {tags}\n---\n\n**本文**\n- [x] 保持");
+            let updated = web_unshare_content(&source, "test-id").unwrap();
+            assert_eq!(parse_launcher_tags(&updated), vec![tag]);
+            assert!(updated.ends_with("\n---\n\n**本文**\n- [x] 保持"));
+            assert!(web_unshare_content(&updated, "test-id").is_none());
+        }
+    }
     #[test]
     fn web_unshare_preserves_body_and_other_tags_and_marks_the_same_write() {
         let source="---\ntype: sticky\ntags: [shortcut, work]\n---\n\n本文\n- [x] 項目";
