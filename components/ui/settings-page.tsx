@@ -2753,6 +2753,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const [sending, setSending] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [imageSendNotice, setImageSendNotice] = useState<string | null>(null)
     const [newDeveloperReply, setNewDeveloperReply] = useState(false)
     const timeline = useMemo(() => buildConversationTimeline(announcements, messages), [announcements, messages])
     const historyRef = useRef<HTMLDivElement>(null)
@@ -2865,12 +2866,22 @@ function DeveloperConversationSection({ language }: { language: Language }) {
 
         setSending(true)
         setError(null)
+        setImageSendNotice(null)
         const uploadedAttachmentIds: string[] = []
+        let imageUploadFailed = false
         try {
             await linkFeedbackMember(conversationIdentity);
             const appVersion = await getFeedbackAppVersion()
-            for (const file of target ? [] : selectedImages) {
-                uploadedAttachmentIds.push(await uploadFeedbackAttachment(conversationIdentity, file))
+            try {
+                for (const file of target ? [] : selectedImages) {
+                    uploadedAttachmentIds.push(await uploadFeedbackAttachment(conversationIdentity, file))
+                }
+            } catch {
+                imageUploadFailed = true
+                await Promise.all(uploadedAttachmentIds.map((fileId) =>
+                    deleteFeedbackUploadedAttachment(conversationIdentity, fileId).catch(() => false)
+                ))
+                uploadedAttachmentIds.length = 0
             }
             const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
                 method: 'POST',
@@ -2880,6 +2891,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                     type: 'message',
                     content,
                     fileIds: uploadedAttachmentIds,
+                    allowTextOnlyOnImageFailure: true,
                     contact: '',
                     systemInfo: 'User opened settings board',
                     version: appVersion,
@@ -2887,6 +2899,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             })
             if (!response.ok) throw new Error(`Server error: ${response.status}`)
             const result = await response.json().catch(() => null)
+            if (result?.imagesOmitted === true) {
+                imageUploadFailed = true
+                await Promise.all(uploadedAttachmentIds.map((fileId) =>
+                    deleteFeedbackUploadedAttachment(conversationIdentity, fileId).catch(() => false)
+                ))
+            }
             if (result?.conversationId && result?.secretToken) {
                 saveFeedbackConversationIdentity({
                     conversationId: result.conversationId,
@@ -2897,7 +2915,10 @@ function DeveloperConversationSection({ language }: { language: Language }) {
             setDraft('')
             setReplyDraft('')
             setReplyTarget(null)
-            setSelectedImages([])
+            if (!imageUploadFailed) setSelectedImages([])
+            if (imageUploadFailed) setImageSendNotice(isEnglish
+                ? 'Your message was sent, but the images could not be sent. The images remain selected so you can try again.'
+                : '本文は送信しましたが、画像は送信できませんでした。画像は選択したまま残っています。')
             scrollToLatestRef.current = true
             setSending(false)
             const refreshed = await loadMessages(true)
@@ -3011,6 +3032,9 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                         <div role="status" className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-950">
                             {isEnglish ? 'A new reply from the developer has arrived.' : '開発者から新しい返信が届きました。'}
                         </div>
+                    )}
+                    {imageSendNotice && (
+                        <div role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{imageSendNotice}</div>
                     )}
                     {error && (
                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
