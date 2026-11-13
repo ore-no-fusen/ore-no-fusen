@@ -104,9 +104,9 @@ describe('conversation messages attachments', () => {
       conversationId: 'conversation-a', secretTokenHash: hashSecretToken('secret-a'), appwriteUserId: 'fb_user-a',
       deliveryEnabled: true, shadowOnly: false, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
     });
-    mocks.getPrivateImageFileMetadata.mockRejectedValue(new FeedbackImageStorageError('unavailable', 503));
+    mocks.getPrivateImageFileMetadata.mockRejectedValue(new FeedbackImageStorageError('unavailable', 403));
     const input = { conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: ['upload-a'] };
-    expect((await POST(request(input))).status).toBe(503);
+    expect((await POST(request(input))).status).toBe(404);
     expect(fetch).not.toHaveBeenCalled();
     const response = await POST(request({ ...input, allowTextOnlyOnImageFailure: true }));
     expect(response.status).toBe(200);

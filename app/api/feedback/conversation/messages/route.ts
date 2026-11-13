@@ -103,8 +103,7 @@ export async function POST(req: Request) {
       discordImageUrls = await Promise.all(verifiedFileIds.map((fileId) => createPrivateImageViewUrl(fileId)));
     } catch (error) {
       // Only opt-in clients can explain a partial delivery. Never suppress ownership or validation errors.
-      if (body.allowTextOnlyOnImageFailure !== true || error instanceof FeedbackRequestError
-        || (error instanceof FeedbackImageStorageError && error.status < 500)) throw error;
+      if (body.allowTextOnlyOnImageFailure !== true || error instanceof FeedbackRequestError) throw error;
       imagesOmitted = true;
       discordImageUrls = [];
     }
