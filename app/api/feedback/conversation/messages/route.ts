@@ -83,19 +83,30 @@ export async function POST(req: Request) {
     });
     const conversation = await store.getConversation(conversationId);
     const verifiedFileIds: string[] = [];
-    for (const fileId of providedFileIds) {
-      if (!conversation?.appwriteUserId) throw new FeedbackRequestError('Image not found', 404);
-      const metadata = await getPrivateImageFileMetadata(fileId);
-      const expectedRead = `read("user:${conversation.appwriteUserId}")`;
-      const expectedDelete = `delete("user:${conversation.appwriteUserId}")`;
-      if (!ALLOWED_IMAGE_TYPES.has(metadata.mimeType)
-        || metadata.byteSize < 1
-        || metadata.byteSize > MAX_IMAGE_BYTES
-        || !metadata.permissions.includes(expectedRead)
-        || !metadata.permissions.includes(expectedDelete)) {
-        throw new FeedbackRequestError('Invalid image file', 400);
+    let discordImageUrls: string[] = [];
+    let imagesOmitted = false;
+    try {
+      for (const fileId of providedFileIds) {
+        if (!conversation?.appwriteUserId) throw new FeedbackRequestError('Image not found', 404);
+        const metadata = await getPrivateImageFileMetadata(fileId);
+        const expectedRead = `read("user:${conversation.appwriteUserId}")`;
+        const expectedDelete = `delete("user:${conversation.appwriteUserId}")`;
+        if (!ALLOWED_IMAGE_TYPES.has(metadata.mimeType)
+          || metadata.byteSize < 1
+          || metadata.byteSize > MAX_IMAGE_BYTES
+          || !metadata.permissions.includes(expectedRead)
+          || !metadata.permissions.includes(expectedDelete)) {
+          throw new FeedbackRequestError('Invalid image file', 400);
+        }
+        verifiedFileIds.push(metadata.fileId);
       }
-      verifiedFileIds.push(metadata.fileId);
+      discordImageUrls = await Promise.all(verifiedFileIds.map((fileId) => createPrivateImageViewUrl(fileId)));
+    } catch (error) {
+      // Only opt-in clients can explain a partial delivery. Never suppress ownership or validation errors.
+      if (body.allowTextOnlyOnImageFailure !== true || error instanceof FeedbackRequestError
+        || (error instanceof FeedbackImageStorageError && error.status < 500)) throw error;
+      imagesOmitted = true;
+      discordImageUrls = [];
     }
     const recentMessages = await store.listLatestMessages(conversationId, 5);
     const memberNumber = await conversationMemberNumber(conversationId).catch(() => null);
@@ -122,10 +133,6 @@ export async function POST(req: Request) {
       },
       timestamp: now,
     };
-    const discordImageUrls = await Promise.all(
-      verifiedFileIds.map((fileId) => createPrivateImageViewUrl(fileId)),
-    );
-
     const discordUrl = new URL(webhookUrl);
     discordUrl.searchParams.set('wait', 'true');
     const discordResponse = await fetchWithDeadline(discordUrl.toString(), {
@@ -167,7 +174,7 @@ export async function POST(req: Request) {
       shadowOnly: false,
     });
 
-    return NextResponse.json({ success: true, conversationId, secretToken }, { headers: corsHeaders() });
+    return NextResponse.json({ success: true, conversationId, secretToken, ...(imagesOmitted ? { imagesOmitted: true } : {}) }, { headers: corsHeaders() });
   } catch (error) {
     if (error instanceof FeedbackRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });

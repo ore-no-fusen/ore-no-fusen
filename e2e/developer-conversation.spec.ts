@@ -1,6 +1,43 @@
 import { expect, test } from '@playwright/test';
 import { mockTauriAPI } from './mock-tauri';
 
+test('画像の準備が失敗しても本文を送信し画像未送信を知らせる', async ({ page }) => {
+  await mockTauriAPI(page);
+  await page.route('**/conversation/poll', route => route.fulfill({ json: { messages: [] } }));
+  await page.route('**/conversation/session', route => route.fulfill({ status: 503, json: { error: 'unavailable' } }));
+  let sent: any;
+  await page.route('**/conversation/messages', route => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ json: { success: true } });
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));
+  await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' }));
+  await page.getByPlaceholder('開発者に伝えたいことを書いてください').fill('本文を届ける');
+  await page.getByLabel('画像を添付').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=', 'base64') });
+  await page.getByRole('button', { name: '送信', exact: true }).click();
+  await expect(page.getByText('本文は送信しましたが、画像は送信できませんでした。画像は選択したまま残っています。')).toBeVisible();
+  expect(sent.content).toBe('本文を届ける');
+  expect(sent.fileIds).toEqual([]);
+  await expect(page.getByText('test.png', { exact: false })).toBeVisible();
+});
+
+test('本文送信の結果が不明なときは再送せず入力を保持する', async ({ page }) => {
+  await mockTauriAPI(page);
+  await page.route('**/conversation/poll', route => route.fulfill({ json: { messages: [] } }));
+  let attempts = 0;
+  await page.route('**/conversation/messages', route => { attempts++; return route.abort('failed'); });
+  await page.goto('/');
+  await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));
+  await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' }));
+  const draft = page.getByPlaceholder('開発者に伝えたいことを書いてください');
+  await draft.fill('結果を確認できない本文');
+  await page.getByRole('button', { name: '送信', exact: true }).click();
+  await expect(page.getByText('通信に失敗しました。時間をおいて再試行してください。')).toBeVisible();
+  await expect(draft).toHaveValue('結果を確認できない本文');
+  expect(attempts).toBe(1);
+});
+
 test('作者の開発版から本番へ手動取り込みでき、切替時にsecretと自動設定を解除する', async ({ page }) => {
   await mockTauriAPI(page, { language: 'en' });
   const requests: string[] = [];

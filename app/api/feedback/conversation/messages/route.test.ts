@@ -23,6 +23,7 @@ vi.mock('../../lib/appwrite-storage', async (original) => {
 });
 
 import { POST } from './route';
+import { FeedbackImageStorageError } from '../../lib/appwrite-storage';
 
 function request(body: Record<string, unknown>) {
   return new Request('http://localhost/api/feedback/conversation/messages', {
@@ -96,5 +97,23 @@ describe('conversation messages attachments', () => {
     const response = await POST(request({ content: '本文', fileIds: ['a', 'b', 'c', 'd'] }));
     expect(response.status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends only text on image storage failure when the client can report it', async () => {
+    await mocks.store!.createConversation({
+      conversationId: 'conversation-a', secretTokenHash: hashSecretToken('secret-a'), appwriteUserId: 'fb_user-a',
+      deliveryEnabled: true, shadowOnly: false, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
+    });
+    mocks.getPrivateImageFileMetadata.mockRejectedValue(new FeedbackImageStorageError('unavailable', 503));
+    const input = { conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: ['upload-a'] };
+    expect((await POST(request(input))).status).toBe(503);
+    expect(fetch).not.toHaveBeenCalled();
+    const response = await POST(request({ ...input, allowTextOnlyOnImageFailure: true }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ imagesOmitted: true });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(payload.embeds).toHaveLength(1);
+    expect(payload.embeds[0].fields).toContainEqual({ name: '内容', value: '本文' });
   });
 });
