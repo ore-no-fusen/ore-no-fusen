@@ -15,3 +15,22 @@ VitePress 1.6.4の宣言はVite 5系なので、Vite 6のoverrideは互換性検
 確認するものは、解決後の依存ツリー・対象Vite監査、Store/desktop/不明の更新分岐、Windows配布判定、文書ビルド/リンク/図、全適用PR CI、新Dev MSIXの起動/保存/再起動/トレイ/ショートカット/QLである。既存exeの合格を更新後exeへ転用しない。
 
 一次資料：[Tauri updater 2.14.1](https://github.com/tauri-apps/plugins-workspace/releases/tag/updater-v2.14.1)、[updater依存](https://crates.io/api/v1/crates/tauri-plugin-updater/2.14.1/dependencies)、[VitePress 1.6.4公開メタデータ](https://registry.npmjs.org/vitepress/1.6.4)、[npm overrides](https://docs.npmjs.com/cli/v11/configuring-npm/package-json#overrides)。
+
+## 6.2.1反映後に判明した追加の更新
+
+main反映後の自動更新はglob・minimatch・serialize-javascript・rustlsで更新不能となった。次の経路に限定して修正する。既存glob7を新majorへ一括置換しない。
+
+表2：追加の依存更新範囲。
+
+| 対象 | 更新方針 |
+|---|---|
+| Sentryのglob | bundler-plugin-coreが使うglobを14.0.6へ限定override。ソースファイル検索とSentryを含むproduction buildを確認する。 |
+| minimatch | 3系は3.1.5、5系は5.1.9、7〜10系は11.0.8へrange限定override。旧callable exportと新named exportの両方、対象/対象外のパターンを確認する。 |
+| PWAの直列化 | rollup-plugin-terser配下のserialize-javascriptを7.1.4へ限定override。関数とRegExpを含むオプションをworkerへ渡してminifyし、production Service Worker生成を確認する。 |
+| HTTPS/TLS | rustls0.23.46と必須のrustls-webpkiを更新。lock解決時のtempfile依存は宣言範囲内でgetrandom0.3.4へ再解決される。親HTTPクライアントのmajorは変えず、新候補で実Drive HTTPS通信を確認する。 |
+
+glob14・minimatch11・serialize7へのoverrideは上流の宣言範囲外であり、インストール成功だけでは互換性を保証しない。minimatch3/5のpatch更新は宣言範囲内である。全適用CIと更新後exeの実機確認を行う。古い提出MSIXへ更新後exeの合格を転用しない。
+
+ESLintはこのリポジトリを設定のrootとし、作業ワークツリーから上位の同一設定を重複して読み込まない。検査対象や規則は無効化しない。
+
+一次資料：[glob](https://registry.npmjs.org/glob/latest)、[minimatch](https://registry.npmjs.org/minimatch)、[serialize-javascript](https://github.com/yahoo/serialize-javascript/blob/v7.1.4/index.js)、[rustls依存](https://crates.io/api/v1/crates/rustls/0.23.46/dependencies)。
