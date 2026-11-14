@@ -270,6 +270,7 @@ function OrchestratorContent() {
   const [setupRequired, setSetupRequired] = useState(isMainWindow);
   const [isCheckingSetup, setIsCheckingSetup] = useState(isMainWindow);
   const [loadingStatus, setLoadingStatus] = useState("STARTING..."); // [NEW] Visual Debug Log
+  const [startupFailed, setStartupFailed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
@@ -1829,6 +1830,7 @@ function OrchestratorContent() {
             } catch (setupErr) {
               log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
               setLoadingStatus(startupIsEnglish ? 'Failed to prepare the data location' : '保存先の準備に失敗しました');
+              setStartupFailed(true);
               return;
             }
           }
@@ -1860,6 +1862,7 @@ function OrchestratorContent() {
               logStartupStep('4/6', `状態同期が完了しました: ${state ? '成功' : '失敗'}`);
 
               if (!state) {
+                setStartupFailed(true);
                 setLoadingStatus(startupIsEnglish ? 'Synchronization failed' : '同期に失敗しました');
                 log('[起動処理] エラー: 状態オブジェクトが空です');
                 return;
@@ -1976,6 +1979,7 @@ function OrchestratorContent() {
                       .map((win) => win.destroy().catch(() => {})),
                   );
                   if (startupResult.ready.length === 0) {
+                    setStartupFailed(true);
                     logStartupStep('6/6', '準備完了0件のため空の付箋は表示せず、起動中画面に再起動案内を表示します');
                     return;
                   }
@@ -1988,6 +1992,7 @@ function OrchestratorContent() {
                   startPoolReplenishInBackground();
                 } catch (e) {
                   log(`[起動処理] 一括表示エラー: ${e}`);
+                  setStartupFailed(true);
                   setLoadingStatus(startupIsEnglish
                     ? 'Failed to show notes. Please restart the app.'
                     : '付箋の表示に失敗しました: ' + String(e));
@@ -2041,6 +2046,7 @@ function OrchestratorContent() {
               }
             } catch (e) {
               log(`[起動処理] 内部エラー: ${e}`);
+              setStartupFailed(true);
               setLoadingStatus(startupIsEnglish
                 ? 'An error occurred during startup. Please restart the app.'
                 : 'エラー: ' + String(e));
@@ -2049,6 +2055,7 @@ function OrchestratorContent() {
           })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
+          setStartupFailed(true);
           setLoadingStatus(startupIsEnglish
             ? 'A critical startup error occurred. Please restart the app.'
             : '重大なエラー: ' + String(e));
@@ -2057,6 +2064,7 @@ function OrchestratorContent() {
       };
 
       checkAndRestore().catch(e => {
+        setStartupFailed(true);
         invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
         const fallbackEnglish = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en');
         setLoadingStatus(fallbackEnglish
@@ -2452,7 +2460,7 @@ function OrchestratorContent() {
     );
   }
 
-  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} language={language} />;
+  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} language={language} forceVisible={startupFailed} />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {

@@ -11,7 +11,7 @@ import React, { useEffect } from 'react';
 import Image from 'next/image';
 import type { Language } from '@/lib/i18n';
 
-export default function LoadingScreen({ message = "Loading...", language = 'ja' }: { message?: string; language?: Language }) {
+export default function LoadingScreen({ message = "Loading...", language = 'ja', forceVisible = false }: { message?: string; language?: Language; forceVisible?: boolean }) {
     useEffect(() => {
         let cancelled = false;
         let showTimer: ReturnType<typeof setTimeout> | undefined;
@@ -19,6 +19,13 @@ export default function LoadingScreen({ message = "Loading...", language = 'ja' 
             try {
                 // クライアントサイドでのみ実行
                 if (typeof window === 'undefined') return;
+                let enabled = true;
+                try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const settings = await invoke<{show_startup_screen?:boolean}>('get_settings');
+                    enabled = settings?.show_startup_screen !== false;
+                } catch { /* Keep the previous visible behavior if settings cannot be read. */ }
+                if (cancelled || (!enabled && !forceVisible)) return;
 
                 // Tauri環境かどうかの簡易チェック（あるいはtry-catchで握りつぶす）
                 const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -44,7 +51,7 @@ export default function LoadingScreen({ message = "Loading...", language = 'ja' 
             cancelled = true;
             if (showTimer) clearTimeout(showTimer);
         };
-    }, []);
+    }, [forceVisible]);
 
     return (
         <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900 select-none cursor-wait overflow-hidden"
