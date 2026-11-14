@@ -122,7 +122,7 @@ pub(crate) struct GdriveShareDrive {
 }
 
 impl GdriveShareDrive {
-    fn new(client: &reqwest::Client, token: &str) -> Self {
+    pub(crate) fn new(client: &reqwest::Client, token: &str) -> Self {
         Self {
             client: client.clone(),
             token: token.to_owned(),
