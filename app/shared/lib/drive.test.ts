@@ -23,6 +23,27 @@ function jsonResponse(data: unknown) {
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('shared Drive storage', () => {
+  it('rereads mutable PC order, validates its folder/ETag and rejects duplicates without replacing the old list',async()=>{
+    const pc='11111111-1111-4111-8111-111111111111';
+    let entries=[{noteId:'z',generation:1},{noteId:'a',generation:1}],duplicate=false,wrongFolder=false,changing=false,metaCalls=0;
+    vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
+      const url=String(input);
+      if(url.includes('/about?'))return jsonResponse({user:{emailAddress:scope.accountSubject}});
+      if(url.includes('/drive/v2/files/order?')){metaCalls++;return jsonResponse({etag:changing?String(metaCalls):'etag',parents:[{id:wrongFolder?'other':'share'}],fileSize:'1000'});}
+      if(url.includes('/files/order?alt=media'))return jsonResponse({schemaVersion:1,accountSubject:scope.accountSubject,pcId:pc,name:'PC',entries});
+      if(url.includes('/files?')){const q=new URL(url).searchParams.get('q')??'';
+        if(q.includes("name='ore-no-fusen'"))return jsonResponse({files:[{id:'root'}]});
+        if(q.includes("name='web-share-temp'"))return jsonResponse({files:[{id:'share'}]});
+        return jsonResponse({files:[{id:'order',name:`web-order-${pc}.json`,version:'1'},...(duplicate?[{id:'dupe',name:`web-order-${pc}.json`}]:[])]});
+      }throw Error('Unexpected '+url);
+    }));
+    const {loadSharedNotes}=await import('./drive');
+    expect((await loadSharedNotes('token')).orders?.[0].entries[0].noteId).toBe('z');entries=[...entries].reverse();
+    expect((await loadSharedNotes('token')).orders?.[0].entries[0].noteId).toBe('a');
+    duplicate=true;expect((await loadSharedNotes('token')).orderProblems?.[0].message).toContain('複数');duplicate=false;
+    wrongFolder=true;expect((await loadSharedNotes('token')).orderProblems?.[0].message).toContain('保存場所');wrongFolder=false;
+    changing=true;expect((await loadSharedNotes('token')).orderProblems?.[0].message).toContain('取得中');
+  });
   it('loads a saved creation before Windows import and replaces it without duplication after publication', async () => {
     const request = { schemaVersion: 1, accountSubject: scope.accountSubject, targetPcId: '11111111-1111-4111-8111-111111111111', noteId: '22222222-2222-4222-8222-222222222222', markdown: '新規の表示\n本文\n- [ ] 確認' };
     let published = false;

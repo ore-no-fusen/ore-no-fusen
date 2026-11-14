@@ -2,6 +2,7 @@
 
 import { refreshAccessToken } from '@/app/viewer/lib/drive';
 import { ensureDriveCachePolicy } from './cache-policy';
+import { parseLauncherOrder, type LauncherOrder } from '@/lib/web-launcher-order';
 import { verifyPreviewDimensions } from '@/lib/web-preview-image';
 import {
   validateShareLogJson,
@@ -293,7 +294,7 @@ async function downloadJson<T>(token: string, fileId: string, expectedAccount?: 
   return await response.json() as T;
 }
 
-export async function loadSharedNotes(token: string, expectedAccount?: string): Promise<{ notes: SharedNote[]; stoppedNotes: SharedNote[]; files: SharedFile[] }> {
+export async function loadSharedNotes(token: string, expectedAccount?: string): Promise<{ account?:string; notes: SharedNote[]; stoppedNotes: SharedNote[]; files: SharedFile[]; orders?: LauncherOrder[]; orderProblems?: {pcId:string;message:string}[] }> {
   const startedGeneration=cacheGeneration;
   latestAccessToken = token;
   const account = await connectedAccount(token, expectedAccount);
@@ -302,7 +303,7 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
   const generation=cacheGeneration;
   if (expectedAccount && account !== expectedAccount.trim().toLowerCase()) throw new Error('Googleアカウントが切り替わりました。別のアカウントへの保存を防ぐため中止しました。');
   const folder = await shareFolder(token, false, expectedAccount);
-  if (!folder) return { notes: [], stoppedNotes: [], files: [] };
+  if (!folder) return { account, notes: [], stoppedNotes: [], files: [] };
   const files = await listAll(token, folder, expectedAccount);
   const recordFiles = files.filter((file) => file.name.startsWith('op-') && file.name.endsWith('.json'));
   const rawRecords: {file:typeof recordFiles[number];value:unknown}[] = [];
@@ -377,8 +378,40 @@ export async function loadSharedNotes(token: string, expectedAccount?: string): 
   }
   for (const request of waiting.values()) if (!publishedIds.has(request.noteId)) notes.push(pendingCreatedNote(request));
   const byTitle = (a: SharedNote, b: SharedNote) => a.operation.payload.title.localeCompare(b.operation.payload.title, 'ja');
+  const orderFiles = files.filter(file => file.name.startsWith('web-order-') && file.name.endsWith('.json'));
+  const orderProblems: {pcId:string;message:string}[]=[];
+  const orders:LauncherOrder[]=[];
+  for(const name of new Set(orderFiles.map(file=>file.name))) {
+    const matches=orderFiles.filter(file=>file.name===name);
+    const pcId=name.slice('web-order-'.length,-'.json'.length);
+    try {
+      if(matches.length!==1)throw new Error('同じPCの表示順が複数あります。');
+      const value=await readSnapshotOrder(token,matches[0].id,folder,account);
+      orders.push(parseLauncherOrder(value,name,account));
+    } catch(error) {orderProblems.push({pcId,message:error instanceof Error?error.message:'PCの表示順を読み取れません。'});}
+  }
   if(generation!==cacheGeneration) throw new Error('画面またはGoogleアカウントが変わったため取得を中止しました。');
-  return { notes: notes.sort(byTitle), stoppedNotes: stoppedNotes.sort(byTitle), files: [...previewFiles,...files] };
+  return { account, notes: notes.sort(byTitle), stoppedNotes: stoppedNotes.sort(byTitle), files: [...previewFiles,...files], orders, orderProblems };
+}
+
+// Mutable order metadata uses the same folder/size/ETag read guard as snapshots,
+// without interpreting it as note content or retaining an immutable-record cache.
+async function readSnapshotOrder(token: string, id: string, folder: string, account: string): Promise<unknown> {
+  const meta = async () => {
+    const r = await authorizedFetch(token, `https://www.googleapis.com/drive/v2/files/${encodeURIComponent(id)}?fields=etag,parents(id),fileSize`, undefined, account);
+    const v = await r.json() as {etag?:string;parents?:{id:string}[];fileSize?:string};
+    if (!v.etag || !v.parents?.some(p=>p.id===folder) || !Number.isSafeInteger(Number(v.fileSize)) || Number(v.fileSize)<0 || Number(v.fileSize)>MAX_SNAPSHOT_BYTES) throw new Error('表示順の保存場所または容量を確認できません。');
+    return v.etag;
+  };
+  const before = await meta();
+  const r = await authorizedFetch(token, `${API}/files/${encodeURIComponent(id)}?alt=media`, undefined, account);
+  if (!r.body) throw new Error('表示順を読み取れません。');
+  const reader = r.body.getReader(); const chunks:Uint8Array[]=[];let size=0;
+  try {for (;;) {const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>MAX_SNAPSHOT_BYTES)throw new Error('表示順の容量上限を超えています。');chunks.push(value);}}
+  finally {await reader.cancel().catch(()=>undefined);}
+  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+  if(before!==await meta())throw new Error('取得中にPCの表示順が変わりました。Webを更新してください。');
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 async function uploadCreateOnly(token: string, folderId: string, name: string, data: Blob, expectedAccount: string): Promise<void> {

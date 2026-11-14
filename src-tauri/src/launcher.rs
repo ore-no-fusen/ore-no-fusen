@@ -686,6 +686,8 @@ struct WebShareSyncState {
     revoked_ids: HashSet<String>,
     #[serde(default)]
     snapshot_ids: HashMap<String, String>,
+    #[serde(default)]
+    order_file_ids: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -965,6 +967,10 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         sync_state.revoked_ids.insert(note_id);
         summary.revoked += 1;
     }
+    let order_entries = items.iter().map(|item| {
+        let relative = Path::new(&item.path).canonicalize().ok()?.strip_prefix(&base).ok()?.to_string_lossy().replace('\\', "/");
+        note_ids_by_path.get(&relative).map(|id| crate::web_launcher_order::Entry { note_id: id.clone(), generation: 1 })
+    }).collect::<Option<Vec<_>>>();
     let sync_total=items.len();
     for (index,item) in items.into_iter().enumerate() {
         progress("apply",index,sync_total);
@@ -1033,6 +1039,21 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
     }
     if let Err(error)=crate::web_create::cleanup_published(&client,&token,&share_folder,&account_subject,&snapshots,&request_files).await {
         crate::logger::log_info(&format!("[Web同期] 作成済み要求の整理を保留: {error}"));
+    }
+    if summary.held.is_empty() {
+        let result = async {
+            let entries = order_entries.ok_or("表示順の付箋IDを確認できません")?;
+            let pc = crate::gdrive::load_or_create_pc_device()?;
+            let order = crate::web_launcher_order::LauncherOrder { schema_version: 1,
+                account_subject: account_subject.clone(), pc_id: pc.pc_id.clone(), name: pc.pc_name, entries };
+            let reserved = sync_state.order_file_ids.get(&pc.pc_id).cloned();
+            crate::web_launcher_order::publish(crate::web_share_snapshot::GdriveShareDrive::new(&client, &token),
+                &share_folder, &order, reserved.as_deref(), |id| {
+                    sync_state.order_file_ids.insert(pc.pc_id.clone(), id.to_owned());
+                    persist_web_share_sync_state(&state_path, &sync_state)
+                }).await
+        }.await;
+        if let Err(error) = result { summary.held.push(format!("ランチャーの表示順: {error}")); }
     }
     crate::logger::log_info(&format!("[Web同期] 完了: {}ms / 送信{} 受信{} 変更なし{} 保留{}", sync_started.elapsed().as_millis(), summary.uploaded, summary.applied, summary.unchanged, summary.held.len()));
     Ok(summary)
