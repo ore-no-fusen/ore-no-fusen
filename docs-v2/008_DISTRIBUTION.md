@@ -160,7 +160,13 @@ sequenceDiagram
     alt MSIX
         Main->>Rust: Store更新確認
         Rust->>Update: Windows StoreContext
-        Update-->>Main: 更新案内の有無
+        Update-->>Rust: 更新結果・失敗
+        Rust-->>Main: 更新結果・失敗
+        alt Store確認に失敗
+            Main->>Main: 確認を停止
+        else 確認成功
+            Main->>Main: 更新があれば案内
+        end
     else desktop
         Main->>Update: Tauri updaterで確認
         Update-->>Main: 更新案内の有無
