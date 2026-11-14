@@ -10,7 +10,7 @@ Microsoft Store向けMSIXを唯一の正式配布形式とし、既存MSI・NSIS
 </p>
 
 <p class="version-info">
-配布設計 v2.8 / 2026-11-09
+配布設計 v2.9 / 2026-11-14
 </p>
 
 ---
@@ -149,6 +149,34 @@ MSIX版のショートカット名は「俺の付箋（Store版）」とし、5.
 
 Store MSIXの更新はMicrosoft Storeが管理します。Store版では起動時にStoreが返す更新の有無だけを確認し、更新があればStoreを開く案内を表示します。アプリ自身によるダウンロード・インストールは行いません。
 
+更新確認はメインウィンドウだけが起動後に行います。配布形式の取得失敗・未知の形式では確認を止め、旧デスクトップ用の更新へ進みません。Store確認の失敗もデスクトップ用更新への切替理由にはしません。非MSIXと正常判定した場合だけ、互換経路としてTauri updaterを使用します。
+
+```mermaid
+sequenceDiagram
+    participant Main as メイン画面
+    participant Rust as Rust配布判定
+    participant Update as 更新サービス
+    Main->>Rust: 配布形式を取得
+    alt MSIX
+        Main->>Rust: Store更新確認
+        Rust->>Update: Windows StoreContext
+        Update-->>Rust: 更新結果・失敗
+        Rust-->>Main: 更新結果・失敗
+        alt Store確認に失敗
+            Main->>Main: 確認を停止
+        else 確認成功
+            Main->>Main: 更新があれば案内
+        end
+    else desktop
+        Main->>Update: Tauri updaterで確認
+        Update-->>Main: 更新案内の有無
+    else 判定失敗・不明
+        Main->>Main: 確認を停止
+    end
+```
+
+<p class="mermaid-caption">図 7-1 配布形式別の更新確認と失敗時の停止</p>
+
 更新案内は付箋の復元完了後も表示を維持し、利用者が「あとで」「Storeを開く」またはウィンドウを閉じる操作をするまで、自動では非表示・最小化しません。更新がない場合は従来どおり起動画面を最小化します。
 
 Tauri updaterは5.0.0を既存NSIS利用者へ届けるためだけに維持し、5.1.0で新規成果物の生成を終了します。
@@ -268,6 +296,7 @@ sequenceDiagram
 | 8 | v2.6 | 26-10-27 | 文書コンテンツだけのCIを分離し、設計書buildとgate判定をTestへ集約 |
 | 9 | v2.7 | 26-10-28 | PC/CIの検査分担とPR成功証跡による統合後検証を追加 |
 | 10 | v2.8 | 26-11-09 | §3・§4・§8を正本 `docs/010_RELEASE.md` の現行フローへ整合。CI生成MSIX・Store自動提出・タグ作成の旧フロー記述を現行手順から外し、図 8-1 を廃止済みの旧フローとして明示 |
+| 11 | v2.9 | 26-11-14 | 配布形式の判定失敗・不明時に旧更新へ進まない停止条件と更新確認シーケンスを追加 |
 
 </div>
 
