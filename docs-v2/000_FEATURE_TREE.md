@@ -252,6 +252,7 @@
 - **開発を支援する**：寄付による開発支援と、支援者名・コメントを掲げる奉納帳（支援者エンドロール）〔コード：app/about-donation・EndrollMatsuri.tsx／仕様：002_PC §6.5〕
   - 実画面：設定画面「開発を支援する」／Web の奉納帳ページ
 - **アップデート確認**：起動後に更新を確認し、更新があればダイアログで知らせる。配布は Microsoft Store（MSIX）が標準経路〔仕様：002_PC §1.3・008_DISTRIBUTION §7／コード：lib.rs `fusen_check_store_update`〕
+  - StoreはStoreContext、desktopと正常判定した場合だけTauri updaterを使用。配布判定の失敗・不明、Store確認失敗では旧更新へ切り替えない〔コード：useUpdateCheck.ts／対象試験8件〕
   - 実画面：アップデート確認ダイアログ
 
 ---
