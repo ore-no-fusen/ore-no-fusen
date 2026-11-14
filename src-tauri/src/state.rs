@@ -122,6 +122,8 @@ pub struct Settings {
     #[serde(alias = "autoStart")]
     #[serde(default = "default_auto_start")]
     pub auto_start: bool,
+    #[serde(default = "default_show_startup_screen")]
+    pub show_startup_screen: bool,
     /// MSIX版でデスクトップショートカットの初回確認を表示済みか。
     #[serde(default)]
     pub desktop_shortcut_prompted: bool,
@@ -236,6 +238,9 @@ fn default_settings_theme() -> String {
 fn default_auto_start() -> bool {
     true
 }
+fn default_show_startup_screen() -> bool {
+    true
+}
 fn default_monthly_backup_enabled() -> bool {
     true
 }
@@ -249,6 +254,7 @@ impl Default for Settings {
             base_path: None,
             language: default_language(),
             auto_start: default_auto_start(),
+            show_startup_screen: true,
             desktop_shortcut_prompted: false,
             analytics_consent: None,
             analytics_consent_reconfirmation_version: None,
@@ -285,5 +291,18 @@ impl Default for Settings {
             monthly_backup_interval_days: default_monthly_backup_interval_days(),
             backup_include_trash: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod startup_screen_tests {
+    use super::Settings;
+    #[test]
+    fn startup_screen_defaults_visible_and_persists_an_explicit_off() {
+        let mut value=serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("show_startup_screen");
+        let legacy:Settings=serde_json::from_value(value).unwrap();assert!(legacy.show_startup_screen);
+        let mut disabled=legacy;disabled.show_startup_screen=false;
+        let loaded:Settings=serde_json::from_str(&serde_json::to_string(&disabled).unwrap()).unwrap();assert!(!loaded.show_startup_screen);assert_eq!(loaded.auto_start,disabled.auto_start);
     }
 }

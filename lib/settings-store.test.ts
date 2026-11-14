@@ -47,6 +47,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.settings.language).toBe('ja');
+        expect(result.current.settings.show_startup_screen).toBe(true);
         expect(result.current.settings.font_size).toBe(16);
         expect(result.current.settings.settings_theme).toBe('system');
         expect(result.current.settings.iphone_send_enabled).toBe(false);
@@ -62,6 +63,7 @@ describe('useSettings Hook (Browser Mode)', () => {
             base_path: '/test/path',
             language: 'en',
             auto_start: true,
+            show_startup_screen: false,
             font_size: 20,
             sound_enabled: false,
             iphone_send_enabled: true,
@@ -75,6 +77,7 @@ describe('useSettings Hook (Browser Mode)', () => {
         expect(result.current.settings.language).toBe('en');
         expect(result.current.settings.font_size).toBe(20);
         expect(result.current.settings.auto_start).toBe(true);
+        expect(result.current.settings.show_startup_screen).toBe(false);
         expect(result.current.settings.iphone_send_enabled).toBe(true);
         expect(result.current.settings.settings_theme).toBe('system');
     });

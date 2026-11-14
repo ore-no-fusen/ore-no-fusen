@@ -9,7 +9,7 @@ import type { AppSettings } from '../lib/settings-store';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; editorHotkeyFail?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
+export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; editorHotkeyFail?: boolean; startupStateFailure?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
@@ -18,8 +18,12 @@ export async function mockTauriAPI(page: Page, options: { settings?: Partial<App
         if (persisted) mockOptions.settings = { ...mockOptions.settings, ...JSON.parse(persisted) };
         const iphoneCalls: Array<{ cmd: string; args: any }> = [];
         (window as any).__MOCK_IPHONE_CALLS__ = iphoneCalls;
+        const ipcCalls: string[] = [];
+        (window as any).__MOCK_IPC_CALLS__ = ipcCalls;
         // --- Windowsアプリ側コマンドの処理定義 ---
         const handleIpc = (cmd: string, args: any) => {
+            ipcCalls.push(cmd);
+            if (mockOptions.startupStateFailure && cmd === 'fusen_get_state') return null;
             if (mockOptions.trashBroken) {
                 if (cmd === 'fusen_trash_cleanup_status') return true;
                 if (cmd === 'fusen_trash_cleanup_health' || cmd === 'fusen_trash_cleanup_preview') throw new Error('invalid history');
@@ -134,6 +138,11 @@ updated: 2026-01-31
                     return null;
                 }
                 // 設定保存
+                case 'save_settings':
+                    mockOptions.settings = { ...mockOptions.settings, ...args.settings };
+                    localStorage.setItem('mock-hotkeys', JSON.stringify(mockOptions.settings));
+                    (window as any).__MOCK_EMIT__?.('settings_updated', handleIpc('get_settings', {}));
+                    return null;
                 case 'fusen_save_config':
                     return null;
 

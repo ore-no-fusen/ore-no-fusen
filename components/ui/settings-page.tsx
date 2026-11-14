@@ -1543,6 +1543,13 @@ function GeneralSection({ settings, onUpdate, t }: SectionProps) {
                 </div>
             </section>
                 </SettingsItemCard>
+                <SettingsItemCard number={8} title={isEnglish ? 'Show startup screen' : '起動中の画面を表示する'} description={isEnglish ? 'Show the logo and progress while starting. Changes apply on the next launch.' : '起動中のロゴと進み具合を表示します。変更は次回起動から反映されます。'} current={settings.show_startup_screen !== false ? (isEnglish ? 'On' : 'オン') : (isEnglish ? 'Off' : 'オフ')}>
+                  <div className="flex items-center justify-between gap-4">
+                    <Label htmlFor="show-startup-screen">{isEnglish ? 'Show startup screen' : '起動中の画面を表示する'}</Label>
+                    <Switch id="show-startup-screen" checked={settings.show_startup_screen !== false} onCheckedChange={value=>onUpdate('show_startup_screen',value)} />
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">{isEnglish ? 'Notes are restored normally when off. Errors and required setup are still shown.' : 'オフでも付箋は通常どおり復元します。エラーや必要な設定は表示します。'}</p>
+                </SettingsItemCard>
             </div>
         </div>
     )
