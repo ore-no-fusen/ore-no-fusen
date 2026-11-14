@@ -62,6 +62,25 @@ flowchart LR
 
 ## 4 機能要件・処理シーケンス
 
+### Web入口の環境判定
+
+QLの「PC」リンクと「スマホ」のQRは同じURLを使用する。Dev MSIXはdevelopの固定Preview `/shared`、Store版は本番 `/shared` を開く。TauriではRustの `member_get.environment` によるパッケージ判定を使用し、productionビルドであることをStore版の判定に使わない。判定中は入口を無効にし、判定不能・取得失敗時は案内を表示して本番へフォールバックしない。同期処理とDrive上の付箋は変更しない。
+
+```mermaid
+sequenceDiagram
+    participant User as 利用者
+    participant QL as QL画面
+    participant App as Rust環境判定
+    QL->>App: member_get
+    App-->>QL: development / production
+    User->>QL: PCリンク / スマホQR
+    QL-->>User: 同一環境のWeb入口
+```
+
+図4-0：パッケージ環境に対応するWeb入口。
+
+Windowsの共有対象読取はcanonicalパスを使う。QLの順序照合用パスは既存依存 `dunce::simplified` で通常表記へ統一し、保存済み順序のパスも同期内で `dunce::canonicalize` して短縮名の違いを解消する。`\\?\` の有無や8.3短縮名だけで同じ付箋を未登録の順序項目と扱わない。保存済み順序自体は書き換えない。同期の安全確認では引き続きcanonical化して原本フォルダー配下を検証する。
+
 本章の保存シーケンスは従来方式（追記型ログ）を示す。閲覧・編集・同期などの機能を維持しつつ、改修方式では第6章に従い固定状態の条件付き更新へ置き換える。従来方式と改修方式を同時に採用する意味ではない。
 
 ### 4.0 PCランチャーと同じ表示順

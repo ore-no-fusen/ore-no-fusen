@@ -562,8 +562,7 @@ export default function QuickLauncher() {
                 {activeTab === 'shortcut' && <div className="flex flex-wrap gap-2 text-xs">
                     <button type="button" onClick={() => setShowStored(false)} className={showStored ? 'text-zinc-400' : 'text-sky-300'}>{t('launcher.registeredNotes')}</button>
                     <button type="button" onClick={() => setShowStored(true)} className={showStored ? 'text-sky-300' : 'text-zinc-400'}>{t('launcher.hiddenNotes')} ({storedItems.length})</button>
-                    <SharedWebQr isEnglish={isEnglish} webSyncBusy={webSyncBusy} onSync={() => void syncLauncherToWeb()} onOpen={async () => {
-                        const url = process.env.NODE_ENV === 'development' ? 'http://localhost:3002/shared' : 'https://ore-no-fusen.vercel.app/shared';
+                    <SharedWebQr isEnglish={isEnglish} webSyncBusy={webSyncBusy} onSync={() => void syncLauncherToWeb()} onOpen={async (url) => {
                         try {
                             if ('__TAURI_INTERNALS__' in window) {
                                 const { open } = await import('@tauri-apps/plugin-shell');
