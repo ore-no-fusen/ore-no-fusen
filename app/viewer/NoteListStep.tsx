@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { PWA_VERSION } from '@/lib/pwa-version.mjs';
+import { splitInlineBold } from './inline-bold';
 import PinTackIcon from '@/app/components/PinTackIcon';
 import { formatRelativeTime } from './utils';
 import type { NoteListStepProps } from './types';
@@ -38,7 +40,6 @@ export function NoteListStep({
   isLockPermissionPending,
   t,
   language,
-  swVersion,
   runtimeOrigin,
   runtimeKind,
   onNew,
@@ -94,6 +95,8 @@ export function NoteListStep({
                 .replace(/\n\n+/g, '\n')
                 .trim()
                 .slice(0, 120);
+              const renderedPreview = splitInlineBold(textPreview || t('pwa.untitled')).map((part, index) =>
+                part.bold ? <strong key={index} style={{ color: 'red', fontWeight: 'bold' }}>{part.text}</strong> : <React.Fragment key={index}>{part.text}</React.Fragment>);
               const videoLabel = videos.length > 0
                 ? `${videos[0].originalFileName || videos[0].videoFileName}${videos.length > 1 ? ` ${t('pwa.write.otherVideos').replace('{count}', String(videos.length - 1))}` : ''}`
                 : note.originalFileName || note.videoFileName || '';
@@ -116,7 +119,7 @@ export function NoteListStep({
                       {isVideo ? (
                         <div className="min-w-0">
                           <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                            {textPreview || t('pwa.untitled')}
+                            {renderedPreview}
                           </p>
                           {videoLabel && (
                             <p className="text-xs text-gray-500 mt-1 truncate">
@@ -126,13 +129,7 @@ export function NoteListStep({
                         </div>
                       ) : (
                       <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
-                        {(
-                          ((note.title ? `${note.title}\n` : '') + (note.body ?? ''))
-                            .replace(/!\[.*?\]\(.*?\)/g, '')
-                            .replace(/\n\n+/g, '\n')
-                            .trim()
-                            .slice(0, 120)
-                        ) || t('pwa.untitled')}
+                        {renderedPreview}
                       </p>
                       )}
                     </div>
@@ -203,7 +200,7 @@ export function NoteListStep({
           {t('pwa.reregisterNotifications')}
         </button>
         <span className="text-xs text-gray-300 font-mono text-right">
-          {runtimeKind} / {runtimeOrigin || t('pwa.checkingOrigin')} / SW {swVersion ?? '---'}
+          {runtimeKind} / {runtimeOrigin || t('pwa.checkingOrigin')} / PWA {PWA_VERSION}
         </span>
       </div>
     </div>

@@ -154,6 +154,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><th style="width:58px">No</th><th>タイトル</th><th>内容</th></tr>
   <tr><td><span class="doc-badge badge-000i">000-I</span></td><td><strong><a href="./000_INTENTION_LAYER">Intention Layer</a></strong></td><td>AIエージェント時代の上位思想・プロダクト定義</td></tr>
   <tr><td><span class="doc-badge badge-000">000</span></td><td><strong><a href="./000_REQUIREMENTS">要求仕様</a></strong></td><td>プロダクトが満たすべき機能・非機能要件</td></tr>
+  <tr><td><span class="doc-badge badge-000">000-T</span></td><td><strong><a href="./000_FEATURE_TREE">機能ツリー（マスターツリー）</a></strong></td><td>コンセプト→要求→実現案→実画面→モジュール→テストの正本ツリー</td></tr>
   <tr><td><span class="doc-badge badge-001">001</span></td><td><strong><a href="./001_OVERVIEW">システム全体像</a></strong></td><td>登場人物・技術スタック・データフロー等</td></tr>
   <tr><td><span class="doc-badge badge-002">002</span></td><td><strong><a href="./002_PC">PCローカル・UI設計</a></strong></td><td>画面構成・モジュール・データ構造・フロー</td></tr>
   <tr><td><span class="doc-badge badge-003">003</span></td><td><strong><a href="./003_IPHONE">クラウド同期・iPhone設計</a></strong></td><td>画面構成・Service Worker・データ構造等</td></tr>
@@ -166,6 +167,7 @@ html.dark .read-order .note-text { color: #fcd34d; }
   <tr><td><span class="doc-badge badge-007">007</span></td><td><strong><a href="./007_COMMUNICATION">コミュニケーション設計</a></strong></td><td>ユーザーと開発者の 1 対 1 掲示板・安全な日次確認</td></tr>
   <tr><td><span class="doc-badge badge-008">008</span></td><td><strong><a href="./008_DISTRIBUTION">配布設計（Microsoft Store MSIX）</a></strong></td><td>5.0.0移行開始から5.1.0 MSIX一本化までの配布・更新・データ移行</td></tr>
   <tr><td><span class="doc-badge badge-003">013</span></td><td><strong><a href="./013_WEB_SHARE">クイックランチャー付箋 Web共有</a></strong></td><td>Drive経由のWeb閲覧・編集、保存容量と自動整理</td></tr>
+  <tr><td><span class="doc-badge badge-002">014</span></td><td><strong><a href="./014_PC_OPERATIONS">PC画面・機能割り当て設計</a></strong></td><td>画面・配置・機能一覧・代表ユースケースと段階的改善案</td></tr>
   <tr><td><span class="doc-badge badge-100">100</span></td><td><strong><a href="./100_PRIVACY">プライバシーポリシー</a></strong></td><td>Google Drive連携・ログ・データ削除方針</td></tr>
   <tr><td><span class="doc-badge badge-101">101</span></td><td><strong><a href="./101_TERMS">利用規約</a></strong></td><td>利用条件・免責事項・外部サービスの扱い</td></tr>
   <tr><td><span class="doc-badge badge-200">200</span></td><td><strong><a href="./200_SIRI_SETUP">Siri から PC に付箋を送る</a></strong></td><td>iPhone のショートカット App を使った音声送信の設定手順（実験的）</td></tr>

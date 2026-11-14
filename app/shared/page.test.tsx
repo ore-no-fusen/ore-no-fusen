@@ -57,6 +57,44 @@ async function editCurrentNote() {
 }
 
 describe('shared note editor', () => {
+  it('retains the automatically selected PC order when the next order read fails, while showing updated content and a warning',async()=>{
+    const a=sharedNote('本文A','A'),z=sharedNote('本文Z','Z');a.scope={...a.scope,noteId:'a'};z.scope={...z.scope,noteId:'z'};
+    const order={schemaVersion:1,accountSubject:'test-account',pcId:'11111111-1111-4111-8111-111111111111',name:'PC',entries:[{noteId:'z',generation:1},{noteId:'a',generation:1}]};
+    mocks.loadSharedNotes.mockResolvedValue({notes:[a,z],files:[],orders:[order]});
+    await renderSharedNotes();await screen.findByText('2件の付箋を読み込みました。');
+    const first=()=>screen.getByRole('navigation',{name:'付箋一覧'}).querySelector('button')?.textContent;
+    expect(first()).toContain('Z');
+    mocks.loadSharedNotes.mockResolvedValue({notes:[a,{...z,operation:{...z.operation,payload:{...z.operation.payload,markdown:'更新本文Z'}}}],files:[],orders:[],orderProblems:[{pcId:order.pcId,message:'offline'}]});
+    fireEvent.click(screen.getByRole('button',{name:'Webを更新'}));
+    await screen.findByText(/一部のPCの表示順を取得できません/);expect(first()).toContain('Z');
+    fireEvent.click(screen.getByRole('button',{name:/Z Windows/}));expect(screen.getByRole('article').textContent).toContain('更新本文Z');
+    expect(mocks.appendWebEdit).not.toHaveBeenCalled();
+  });
+  it('uses the only PC order and keeps the current note selected across reordering and refresh', async()=>{
+    const a=sharedNote('本文A','A'),z=sharedNote('本文Z','Z');a.scope={...a.scope,noteId:'a'};z.scope={...z.scope,noteId:'z'};
+    const order={schemaVersion:1,accountSubject:'test-account',pcId:'11111111-1111-4111-8111-111111111111',name:'PC',entries:[{noteId:'z',generation:1},{noteId:'a',generation:1}]};
+    mocks.loadSharedNotes.mockResolvedValue({notes:[a,z],files:[],orders:[order]});
+    await renderSharedNotes();await screen.findByText('2件の付箋を読み込みました。');
+    const rows=()=>Array.from(screen.getByRole('navigation',{name:'付箋一覧'}).querySelectorAll('button')).map(b=>b.textContent);
+    expect(rows()[0]).toContain('Z');expect(screen.queryByRole('combobox',{name:'表示順のPC'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:/Z Windows/}));
+    mocks.loadSharedNotes.mockResolvedValue({notes:[a,z],files:[],orders:[{...order,entries:[...order.entries].reverse()}]});
+    fireEvent.click(screen.getByRole('button',{name:'Webを更新'}));
+    await waitFor(()=>expect(rows()[0]).toContain('A'));expect(screen.getByRole('article').textContent).toContain('本文Z');
+  });
+  it('lets the user select a PC and remembers that account-specific choice without editing content',async()=>{
+    const a=sharedNote('本文A','A'),z=sharedNote('本文Z','Z');a.scope={...a.scope,noteId:'a'};z.scope={...z.scope,noteId:'z'};
+    const first={schemaVersion:1,accountSubject:'test-account',pcId:'11111111-1111-4111-8111-111111111111',name:'同名PC',entries:[{noteId:'z',generation:1},{noteId:'a',generation:1}]};
+    const second={...first,pcId:'22222222-2222-4222-8222-222222222222',entries:[...first.entries].reverse()};
+    mocks.loadSharedNotes.mockResolvedValue({notes:[a,z],files:[],orders:[first,second]});
+    const view=await renderSharedNotes();const select=await screen.findByRole('combobox',{name:'表示順のPC'});
+    fireEvent.change(select,{target:{value:first.pcId}});
+    expect(screen.getByRole('navigation',{name:'付箋一覧'}).querySelector('button')?.textContent).toContain('Z');
+    expect(localStorage.getItem('onf-shared-order:test-account')).toBe(first.pcId);
+    view.unmount();await renderSharedNotes();await screen.findByRole('combobox',{name:'表示順のPC'});
+    expect((screen.getByRole('combobox',{name:'表示順のPC'}) as HTMLSelectElement).value).toBe(first.pcId);
+    expect(mocks.appendWebEdit).not.toHaveBeenCalled();
+  });
   it('counts a successful empty list separately from note viewing and never counts a failed load', async()=>{
     mocks.loadSharedNotes.mockResolvedValueOnce({notes:[],files:[]});
     const view=await renderSharedNotes();

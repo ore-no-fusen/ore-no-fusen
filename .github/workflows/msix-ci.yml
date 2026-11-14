@@ -1,6 +1,5 @@
 name: MSIX CI
 'on':
-  workflow_dispatch: null
   workflow_call:
     inputs:
       prevalidated:

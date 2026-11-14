@@ -237,7 +237,16 @@ export function useNoteList({
           deleteFileFromDrive(accessToken, 'notes_to_iphone.json').catch(() => {});
         }
 
-        publishDrafts(Array.from(merged.values()));
+        // 同期中にも一覧から削除・編集できる。同期開始時のmergedを再表示せず、
+        // 書き込み後の最新DBと削除済みIDを読み直して画面へ反映する。
+        const [latestDrafts, latestDeletedIds] = await Promise.all([
+          loadAllDrafts(), loadDeletedDraftIds(),
+        ]);
+        const latestDeleted = new Set(latestDeletedIds);
+        publishDrafts(latestDrafts.filter((draft) => !latestDeleted.has(draft.id)));
+      })
+      .catch(() => {
+        // 最新状態を確認できなければ、削除前の一覧で現在の表示を上書きしない。
       })
       .finally(() => {
         if (!cancelled) setIsHistoryLoading(false);

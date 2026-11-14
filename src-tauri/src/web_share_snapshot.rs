@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::future::Future;
 
 pub(crate) const MAX_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const MAX_ACCOUNT_BYTES: usize = 512 * 1024 * 1024;
@@ -54,11 +55,163 @@ pub(crate) struct Store {
     total_bytes: usize,
 }
 
+/// The Drive operations the snapshot store depends on. Production uses
+/// `GdriveShareDrive`, which delegates to the existing `gdrive` functions
+/// with identical arguments, call order, and error propagation, so behavior
+/// is unchanged. Tests substitute a fake so the CAS guarantees (a failed
+/// conditional write never overwrites; a failed GC gate deletes nothing)
+/// can be verified without a live Drive fixture.
+pub(crate) trait ShareDrive: Clone + Send + Sync + 'static {
+    fn read_cas(
+        &self,
+        id: &str,
+        folder: &str,
+    ) -> impl Future<Output = Result<(Value, String), String>> + Send;
+    fn write_cas(
+        &self,
+        id: &str,
+        etag: &str,
+        value: &Value,
+    ) -> impl Future<Output = Result<(), String>> + Send;
+    fn delete_cas(
+        &self,
+        id: &str,
+        etag: &str,
+    ) -> impl Future<Output = Result<(), String>> + Send;
+    fn find_file(
+        &self,
+        folder: &str,
+        name: &str,
+    ) -> impl Future<Output = Result<Option<String>, String>> + Send;
+    fn file_exists(&self, id: &str) -> impl Future<Output = Result<bool, String>> + Send;
+    fn name_snapshot(
+        &self,
+        id: &str,
+        note_id: &str,
+    ) -> impl Future<Output = Result<(), String>> + Send;
+    fn list_named_files(
+        &self,
+        folder: &str,
+        prefix: &str,
+        json_only: bool,
+    ) -> impl Future<Output = Result<Vec<(String, String)>, String>> + Send;
+    fn delete_preview(
+        &self,
+        folder: &str,
+        id: &str,
+        namespace: &str,
+    ) -> impl Future<Output = Result<(), String>> + Send;
+    fn create_at_id(
+        &self,
+        folder: &str,
+        id: &str,
+        name: &str,
+        bytes: Vec<u8>,
+        mime: &str,
+    ) -> impl Future<Output = Result<gdrive::CreateAtId, String>> + Send;
+    fn generate_id(&self) -> impl Future<Output = Result<String, String>> + Send;
+    fn available_bytes(&self) -> impl Future<Output = Result<Option<u64>, String>> + Send;
+}
+
+/// Production `ShareDrive`: every method delegates to the corresponding
+/// `gdrive` function unchanged (including the If-Match CAS conditions).
+#[derive(Clone)]
+pub(crate) struct GdriveShareDrive {
+    client: reqwest::Client,
+    token: String,
+}
+
+impl GdriveShareDrive {
+    pub(crate) fn new(client: &reqwest::Client, token: &str) -> Self {
+        Self {
+            client: client.clone(),
+            token: token.to_owned(),
+        }
+    }
+}
+
+impl ShareDrive for GdriveShareDrive {
+    async fn read_cas(&self, id: &str, folder: &str) -> Result<(Value, String), String> {
+        gdrive::read_web_share_cas(&self.client, &self.token, id, folder).await
+    }
+    async fn write_cas(&self, id: &str, etag: &str, value: &Value) -> Result<(), String> {
+        gdrive::write_web_share_cas(&self.client, &self.token, id, etag, value).await
+    }
+    async fn delete_cas(&self, id: &str, etag: &str) -> Result<(), String> {
+        gdrive::delete_web_share_cas(&self.client, &self.token, id, etag).await
+    }
+    async fn find_file(&self, folder: &str, name: &str) -> Result<Option<String>, String> {
+        gdrive::find_web_share_file(&self.client, &self.token, folder, name).await
+    }
+    async fn file_exists(&self, id: &str) -> Result<bool, String> {
+        gdrive::web_share_file_exists(&self.client, &self.token, id).await
+    }
+    async fn name_snapshot(&self, id: &str, note_id: &str) -> Result<(), String> {
+        gdrive::name_web_share_snapshot(&self.client, &self.token, id, note_id).await
+    }
+    async fn list_named_files(
+        &self,
+        folder: &str,
+        prefix: &str,
+        json_only: bool,
+    ) -> Result<Vec<(String, String)>, String> {
+        gdrive::list_web_share_named_files(
+            &self.client,
+            &self.token,
+            folder,
+            prefix,
+            json_only,
+        )
+        .await
+    }
+    async fn delete_preview(
+        &self,
+        folder: &str,
+        id: &str,
+        namespace: &str,
+    ) -> Result<(), String> {
+        gdrive::delete_web_preview(&self.client, &self.token, folder, id, namespace).await
+    }
+    async fn create_at_id(
+        &self,
+        folder: &str,
+        id: &str,
+        name: &str,
+        bytes: Vec<u8>,
+        mime: &str,
+    ) -> Result<gdrive::CreateAtId, String> {
+        gdrive::create_web_share_file_at_id(
+            &self.client,
+            &self.token,
+            folder,
+            id,
+            name,
+            bytes,
+            mime,
+        )
+        .await
+    }
+    async fn generate_id(&self) -> Result<String, String> {
+        gdrive::generate_web_share_id(&self.client, &self.token).await
+    }
+    async fn available_bytes(&self) -> Result<Option<u64>, String> {
+        gdrive::drive_available_bytes(&self.client, &self.token).await
+    }
+}
+
 fn digest(value: &Value) -> String {
     format!("{:x}", Sha256::digest(serde_json::to_vec(value).unwrap()))
 }
 fn same_snapshot(left: &Snapshot, right: &Snapshot) -> bool {
     serde_json::to_value(left).unwrap() == serde_json::to_value(right).unwrap()
+}
+/// Cleanup may delete an old record only when the copy re-read during this
+/// sync still carries the scope and digest captured into the snapshot. A
+/// record changed after capture (by any writer) fails this check and stays
+/// in the cleanup list for the next sync to re-examine; content that was
+/// never re-confirmed is never deleted.
+fn cleanup_confirmed(item: &Cleanup, value: &Value, scope: &contract::ShareScope) -> bool {
+    value["scope"] == serde_json::to_value(scope).unwrap() && digest(value) == item.digest
 }
 fn frozen_digest(snapshot: &Snapshot) -> String {
     let mut content = snapshot.clone();
@@ -164,9 +317,8 @@ impl Snapshot {
     }
 }
 
-async fn capture_images(
-    client: &reqwest::Client,
-    token: &str,
+async fn capture_images<D: ShareDrive>(
+    drive: &D,
     folder: &str,
     snapshot: &mut Snapshot,
 ) -> Result<(), String> {
@@ -175,13 +327,9 @@ async fn capture_images(
             if snapshot.images.contains_key(&image.sha256) {
                 continue;
             }
-            let id = gdrive::find_web_share_file(
-                client,
-                token,
-                folder,
-                &format!("image-{}", image.sha256),
-            )
-            .await?
+            let id = drive
+                .find_file(folder, &format!("image-{}", image.sha256))
+                .await?
             .ok_or("共有画像がありません。旧記録は削除していません")?;
             snapshot.images.insert(
                 image.sha256.clone(),
@@ -216,6 +364,10 @@ impl Store {
         Self::load_versioned(client,token,folder,account,files.into_iter().map(|(id,name)|(id,name,None)).collect(),settings,None,progress).await
     }
     pub async fn load_versioned<P:Fn(&str,usize,usize)+Send+Sync>(client:&reqwest::Client,token:&str,folder:&str,account:&str,files:Vec<(String,String,Option<String>)>,settings:Vec<FileRecord>,managed_inventory:Option<Vec<(String,String)>>,progress:P)->Result<Self,String> {
+        let drive=GdriveShareDrive::new(client,token);
+        Self::load_versioned_with_drive(&drive,folder,account,files,settings,managed_inventory,progress).await
+    }
+    async fn load_versioned_with_drive<D:ShareDrive,P:Fn(&str,usize,usize)+Send+Sync>(drive:&D,folder:&str,account:&str,files:Vec<(String,String,Option<String>)>,settings:Vec<FileRecord>,managed_inventory:Option<Vec<(String,String)>>,progress:P)->Result<Self,String> {
         let mut store = Self::default();
         let available: HashSet<_> = files
             .iter()
@@ -232,10 +384,10 @@ impl Store {
         let mut snapshots = HashMap::<String, Vec<Stored>>::new();
         crate::web_share_read_cache::retain(account,folder,&available);
         let read_files = crate::web_share_download::read_all_with_progress(files, |(id, name,version)| {
-            let (client, token, folder,account) = (client.clone(), token.to_owned(), folder.to_owned(),account.to_owned());
+            let (drive, folder,account) = ((*drive).clone(), folder.to_owned(),account.to_owned());
             async move {
                 let (value,etag)=if let Some(hit)=crate::web_share_read_cache::get(&account,&folder,&id,version.as_deref()){hit}else{
-                    let (value,etag)=gdrive::read_web_share_cas(&client,&token,&id,&folder).await?;
+                    let (value,etag)=drive.read_cas(&id,&folder).await?;
                     if value["schemaVersion"]==2 {let checked:Snapshot=serde_json::from_value(value.clone()).map_err(|_|"共有状態を読み取れません")?;checked.validate(&account)?;if let Some(v)=version.as_deref(){crate::web_share_read_cache::put(&account,&folder,&id,v,&value,&etag);}}
                     (value,etag)
                 };
@@ -341,15 +493,14 @@ impl Store {
                 if loser.snapshot.pending.is_some() {
                     let mut cancelled = loser.snapshot.clone();
                     cancelled.pending = None;
-                    gdrive::write_web_share_cas(
-                        client,
-                        token,
-                        &loser.id,
-                        &loser.etag,
-                        &serde_json::to_value(&cancelled).unwrap(),
-                    )
-                    .await?;
-                    loser = Self::reload(client, token, folder, &loser.id, account).await?;
+                    drive
+                        .write_cas(
+                            &loser.id,
+                            &loser.etag,
+                            &serde_json::to_value(&cancelled).unwrap(),
+                        )
+                        .await?;
+                    loser = Self::reload_with_drive(drive, folder, &loser.id, account).await?;
                 }
                 let mut frozen = loser.snapshot.clone();
                 if frozen
@@ -360,15 +511,14 @@ impl Store {
                     return Err("共有状態の調停先が変わりました。再同期で確認します".into());
                 }
                 frozen.superseded_by = Some(canonical.id.clone());
-                gdrive::write_web_share_cas(
-                    client,
-                    token,
-                    &loser.id,
-                    &loser.etag,
-                    &serde_json::to_value(&frozen).unwrap(),
-                )
-                .await?;
-                loser = Self::reload(client, token, folder, &loser.id, account).await?;
+                drive
+                    .write_cas(
+                        &loser.id,
+                        &loser.etag,
+                        &serde_json::to_value(&frozen).unwrap(),
+                    )
+                    .await?;
+                loser = Self::reload_with_drive(drive, folder, &loser.id, account).await?;
                 if !same_snapshot(&loser.snapshot, &frozen) {
                     return Err("共有状態の保全中に変更がありました".into());
                 }
@@ -379,7 +529,7 @@ impl Store {
                     }
                     // Its body may since have been edited or revoked at the
                     // canonical anchor. Do not resurrect the old frozen body.
-                    gdrive::delete_web_share_cas(client, token, &loser.id, &loser.etag).await?;
+                    drive.delete_cas(&loser.id, &loser.etag).await?;
                     continue;
                 }
                 // Adopt only currently referenced images of the frozen owner.
@@ -450,19 +600,19 @@ impl Store {
                 }
                 merged.absorbed_snapshots.insert(loser.id.clone(), captured);
                 merged.validate(account)?;
-                gdrive::write_web_share_cas(
-                    client,
-                    token,
-                    &canonical.id,
-                    &canonical.etag,
-                    &serde_json::to_value(&merged).unwrap(),
-                )
-                .await?;
-                canonical = Self::reload(client, token, folder, &canonical.id, account).await?;
+                drive
+                    .write_cas(
+                        &canonical.id,
+                        &canonical.etag,
+                        &serde_json::to_value(&merged).unwrap(),
+                    )
+                    .await?;
+                canonical =
+                    Self::reload_with_drive(drive, folder, &canonical.id, account).await?;
                 if !same_snapshot(&canonical.snapshot, &merged) {
                     return Err("統合後に共有設定が変わりました。整理を次回へ延期します".into());
                 }
-                gdrive::delete_web_share_cas(client, token, &loser.id, &loser.etag).await?;
+                drive.delete_cas(&loser.id, &loser.etag).await?;
             }
             store.notes.insert(key, canonical);
         }
@@ -500,10 +650,10 @@ impl Store {
                 {
                     // A concurrent migration may already have removed this
                     // ancestor. Never resurrect a stale in-memory record.
-                    if gdrive::web_share_file_exists(client, token, id).await? == false {
+                    if drive.file_exists(id).await? == false {
                         continue;
                     }
-                    let (actual, _) = gdrive::read_web_share_cas(client, token, id, folder).await?;
+                    let (actual, _) = drive.read_cas(id, folder).await?;
                     if actual != *value {
                         return Err("旧記録が同期中に変更されました。再同期して確認します".into());
                     }
@@ -557,17 +707,16 @@ impl Store {
                     changed = true;
                 }
                 if changed {
-                    capture_images(client, token, folder, &mut saved.snapshot).await?;
+                    capture_images(drive, folder, &mut saved.snapshot).await?;
                     saved.snapshot.validate(account)?;
-                    gdrive::write_web_share_cas(
-                        client,
-                        token,
-                        &saved.id,
-                        &saved.etag,
-                        &serde_json::to_value(&saved.snapshot).unwrap(),
-                    )
-                    .await?;
-                    saved = Self::reload(client, token, folder, &saved.id, account).await?;
+                    drive
+                        .write_cas(
+                            &saved.id,
+                            &saved.etag,
+                            &serde_json::to_value(&saved.snapshot).unwrap(),
+                        )
+                        .await?;
+                    saved = Self::reload_with_drive(drive, folder, &saved.id, account).await?;
                 }
                 store.notes.insert(key, saved);
                 continue;
@@ -640,30 +789,24 @@ impl Store {
                     digest: digest(value),
                 });
             }
-            capture_images(client, token, folder, &mut snapshot).await?;
+            capture_images(drive, folder, &mut snapshot).await?;
             snapshot.validate(account)?;
-            let (actual, etag) =
-                gdrive::read_web_share_cas(client, token, &anchor.0, folder).await?;
+            let (actual, etag) = drive.read_cas(&anchor.0, folder).await?;
             if actual != anchor.2 {
                 return Err("移行中に共有内容が変わりました。元の記録を保持しました".into());
             }
-            gdrive::write_web_share_cas(
-                client,
-                token,
-                &anchor.0,
-                &etag,
-                &serde_json::to_value(&snapshot).unwrap(),
-            )
-            .await?;
+            drive
+                .write_cas(&anchor.0, &etag, &serde_json::to_value(&snapshot).unwrap())
+                .await?;
             // Naming is an optimization hint only; readers still validate the
             // complete document. A failed rename never authorizes deletion.
-            let _ = gdrive::name_web_share_snapshot(client, token, &anchor.0, &key).await;
-            let saved = Self::reload(client, token, folder, &anchor.0, account).await?;
+            let _ = drive.name_snapshot(&anchor.0, &key).await;
+            let saved = Self::reload_with_drive(drive, folder, &anchor.0, account).await?;
             store.notes.insert(key, saved);
         }
         progress("migration",migration_total,migration_total);
         // Publish and read back first. Cleanup never includes new/unseen files.
-        let managed_files=match managed_inventory {Some(files)=>files,None=>gdrive::list_web_share_named_files(client,token,folder,"web-image-",false).await?};
+        let managed_files=match managed_inventory {Some(files)=>files,None=>drive.list_named_files(folder,"web-image-",false).await?};
         let cleanup_total=store.notes.len();
         for (index,saved) in store.notes.values_mut().enumerate() {
             progress("cleanup",index,cleanup_total);
@@ -676,15 +819,14 @@ impl Store {
             {
                 let mut cancelled = saved.snapshot.clone();
                 cancelled.pending = None;
-                gdrive::write_web_share_cas(
-                    client,
-                    token,
-                    &saved.id,
-                    &saved.etag,
-                    &serde_json::to_value(&cancelled).unwrap(),
-                )
-                .await?;
-                *saved = Self::reload(client, token, folder, &saved.id, account).await?;
+                drive
+                    .write_cas(
+                        &saved.id,
+                        &saved.etag,
+                        &serde_json::to_value(&cancelled).unwrap(),
+                    )
+                    .await?;
+                *saved = Self::reload_with_drive(drive, folder, &saved.id, account).await?;
             }
             if saved.snapshot.revoked
                 && saved.snapshot.pending.is_none()
@@ -698,15 +840,14 @@ impl Store {
                 tombstone.operation.payload.title.clear();
                 tombstone.operation = normalized(tombstone.operation)?;
                 tombstone.images.clear();
-                gdrive::write_web_share_cas(
-                    client,
-                    token,
-                    &saved.id,
-                    &saved.etag,
-                    &serde_json::to_value(&tombstone).unwrap(),
-                )
-                .await?;
-                *saved = Self::reload(client, token, folder, &saved.id, account).await?;
+                drive
+                    .write_cas(
+                        &saved.id,
+                        &saved.etag,
+                        &serde_json::to_value(&tombstone).unwrap(),
+                    )
+                    .await?;
+                *saved = Self::reload_with_drive(drive, folder, &saved.id, account).await?;
             }
             if saved.snapshot.superseded_by.is_some() {
                 return Err("共有状態の自動整理中です。次の同期で再確認します".into());
@@ -725,15 +866,14 @@ impl Store {
                 let mut gated = saved.snapshot.clone();
                 gated.gc_nonce = uuid::Uuid::new_v4().to_string();
                 // A racing writer makes this CAS fail: zero image deletions.
-                gdrive::write_web_share_cas(
-                    client,
-                    token,
-                    &saved.id,
-                    &saved.etag,
-                    &serde_json::to_value(&gated).unwrap(),
-                )
-                .await?;
-                *saved = Self::reload(client, token, folder, &saved.id, account).await?;
+                drive
+                    .write_cas(
+                        &saved.id,
+                        &saved.etag,
+                        &serde_json::to_value(&gated).unwrap(),
+                    )
+                    .await?;
+                *saved = Self::reload_with_drive(drive, folder, &saved.id, account).await?;
                 for (id, name) in candidates {
                     if let Some(owner) = saved.snapshot.managed_image_owners.iter().find(|owner| {
                         preview::owned_preview_name(
@@ -741,14 +881,16 @@ impl Store {
                             &name,
                         )
                     }) {
-                        let _ = gdrive::delete_web_preview(
-                            client,
-                            token,
-                            folder,
-                            &id,
-                            &format!("{}-{owner}", saved.snapshot.operation.scope.note_id),
-                        )
-                        .await;
+                        let _ = drive
+                            .delete_preview(
+                                folder,
+                                &id,
+                                &format!(
+                                    "{}-{owner}",
+                                    saved.snapshot.operation.scope.note_id
+                                ),
+                            )
+                            .await;
                     }
                 }
             }
@@ -760,15 +902,10 @@ impl Store {
                 if !available.contains(&item.id) {
                     continue;
                 }
-                let result = gdrive::read_web_share_cas(client, token, &item.id, folder).await;
+                let result = drive.read_cas(&item.id, folder).await;
                 if let Ok((value, etag)) = result {
-                    let scope_matches = value["scope"]
-                        == serde_json::to_value(&saved.snapshot.operation.scope).unwrap();
-                    if scope_matches
-                        && digest(&value) == item.digest
-                        && gdrive::delete_web_share_cas(client, token, &item.id, &etag)
-                            .await
-                            .is_ok()
+                    if cleanup_confirmed(item, &value, &saved.snapshot.operation.scope)
+                        && drive.delete_cas(&item.id, &etag).await.is_ok()
                     {
                         continue;
                     }
@@ -778,17 +915,17 @@ impl Store {
             if remaining.len() != saved.snapshot.cleanup.len() {
                 let mut updated = saved.snapshot.clone();
                 updated.cleanup = remaining;
-                if gdrive::write_web_share_cas(
-                    client,
-                    token,
-                    &saved.id,
-                    &saved.etag,
-                    &serde_json::to_value(&updated).unwrap(),
-                )
-                .await
-                .is_ok()
+                if drive
+                    .write_cas(
+                        &saved.id,
+                        &saved.etag,
+                        &serde_json::to_value(&updated).unwrap(),
+                    )
+                    .await
+                    .is_ok()
                 {
-                    *saved = Self::reload(client, token, folder, &saved.id, account).await?;
+                    *saved =
+                        Self::reload_with_drive(drive, folder, &saved.id, account).await?;
                 }
             }
             store.total_bytes += serde_json::to_vec(&saved.snapshot).unwrap().len();
@@ -822,7 +959,16 @@ impl Store {
         id: &str,
         account: &str,
     ) -> Result<Stored, String> {
-        let (value, etag) = gdrive::read_web_share_cas(client, token, id, folder).await?;
+        let drive = GdriveShareDrive::new(client, token);
+        Self::reload_with_drive(&drive, folder, id, account).await
+    }
+    async fn reload_with_drive<D: ShareDrive>(
+        drive: &D,
+        folder: &str,
+        id: &str,
+        account: &str,
+    ) -> Result<Stored, String> {
+        let (value, etag) = drive.read_cas(id, folder).await?;
         let snapshot: Snapshot =
             serde_json::from_value(value).map_err(|_| "共有状態の再確認に失敗しました")?;
         snapshot.validate(account)?;
@@ -847,6 +993,18 @@ impl Store {
         &mut self,
         client: &reqwest::Client,
         token: &str,
+        folder: &str,
+        operation: &ShareOperation,
+        images: BTreeMap<String, Vec<u8>>,
+        new_id: Option<&str>,
+    ) -> Result<(), String> {
+        let drive = GdriveShareDrive::new(client, token);
+        self.save_with_drive(&drive, folder, operation, images, new_id)
+            .await
+    }
+    async fn save_with_drive<D: ShareDrive>(
+        &mut self,
+        drive: &D,
         folder: &str,
         operation: &ShareOperation,
         images: BTreeMap<String, Vec<u8>>,
@@ -899,18 +1057,22 @@ impl Store {
             .to_owned();
         if previous.is_none() {
             let value = serde_json::to_value(&snapshot).unwrap();
-            let result = gdrive::create_web_share_file_at_id(
-                client,
-                token,
+            let result = drive
+                .create_at_id(
+                    folder,
+                    &id,
+                    &format!("op-state-{key}.json"),
+                    serde_json::to_vec(&value).unwrap(),
+                    "application/json",
+                )
+                .await?;
+            let saved = Self::reload_with_drive(
+                drive,
                 folder,
                 &id,
-                &format!("op-state-{key}.json"),
-                serde_json::to_vec(&value).unwrap(),
-                "application/json",
+                &operation.scope.account_subject,
             )
             .await?;
-            let saved =
-                Self::reload(client, token, folder, &id, &operation.scope.account_subject).await?;
             if result == gdrive::CreateAtId::AlreadyExists
                 || serde_json::to_value(&saved.snapshot).unwrap() != value
             {
@@ -939,7 +1101,7 @@ impl Store {
                 let encoded = tokio::task::spawn_blocking(move || preview::encode_preview(&bytes))
                     .await
                     .map_err(|_| "画像の縮小処理が中断されました")??;
-                let file_id = gdrive::generate_web_share_id(client, token).await?;
+                let file_id = drive.generate_id().await?;
                 let name = format!("web-image-{key}-{id}-{}.jpg", uuid::Uuid::new_v4());
                 let asset = PreviewAsset {
                     file_id: file_id.clone(),
@@ -998,7 +1160,8 @@ impl Store {
             if after > preview::PREVIEW_BUDGET_BYTES && after > existing {
                 return Err("Web用画像の容量上限です。既存の付箋と原本は保持しています".into());
             }
-            if gdrive::drive_available_bytes(client, token)
+            if drive
+                .available_bytes()
                 .await?
                 .is_some_and(|free| free < bytes + MAX_SNAPSHOT_BYTES as u64)
             {
@@ -1016,32 +1179,25 @@ impl Store {
                     .collect(),
             });
             snapshot.validate(&operation.scope.account_subject)?;
-            gdrive::write_web_share_cas(
-                client,
-                token,
+            drive
+                .write_cas(&id, &saved.etag, &serde_json::to_value(&snapshot).unwrap())
+                .await?;
+            saved = Self::reload_with_drive(
+                drive,
+                folder,
                 &id,
-                &saved.etag,
-                &serde_json::to_value(&snapshot).unwrap(),
+                &operation.scope.account_subject,
             )
             .await?;
-            saved =
-                Self::reload(client, token, folder, &id, &operation.scope.account_subject).await?;
             if !same_snapshot(&saved.snapshot, &snapshot) {
                 return Err(
                     "画像予約後に本文または共有設定が変わりました。送信を止めました".into(),
                 );
             }
             for (_, asset, name, bytes) in uploads {
-                let status = gdrive::create_web_share_file_at_id(
-                    client,
-                    token,
-                    folder,
-                    &asset.file_id,
-                    &name,
-                    bytes,
-                    "image/jpeg",
-                )
-                .await?;
+                let status = drive
+                    .create_at_id(folder, &asset.file_id, &name, bytes, "image/jpeg")
+                    .await?;
                 if status != gdrive::CreateAtId::Created {
                     return Err("同じ画像IDの保存結果を確認できないため確定しません".into());
                 }
@@ -1067,9 +1223,14 @@ impl Store {
         }
         let value = serde_json::to_value(&snapshot).unwrap();
         // Commit against the reservation's exact revision; never rebase a stale body.
-        gdrive::write_web_share_cas(client, token, &id, &saved.etag, &value).await?;
-        let saved =
-            Self::reload(client, token, folder, &id, &operation.scope.account_subject).await?;
+        drive.write_cas(&id, &saved.etag, &value).await?;
+        let saved = Self::reload_with_drive(
+            drive,
+            folder,
+            &id,
+            &operation.scope.account_subject,
+        )
+        .await?;
         if serde_json::to_value(&saved.snapshot).unwrap() != value {
             return Err("保存後に別の変更がありました。原本を保持して再同期してください".into());
         }
@@ -1097,6 +1258,40 @@ mod tests {
         .write_to(&mut cursor, image::ImageFormat::Png)
         .unwrap();
         cursor.into_inner()
+    }
+    const ACCOUNT: &str = "snapshot-test@example.test";
+    fn valid_snapshot(note: &str, bytes: &[u8]) -> Snapshot {
+        let op = operation(note, bytes);
+        let hash = op.payload.images[0].sha256.clone();
+        Snapshot {
+            schema_version: 2,
+            operation: op,
+            paused: false,
+            revoked: false,
+            sharing_id: "sharing".into(),
+            images: BTreeMap::from([(
+                hash.clone(),
+                PreviewAsset {
+                    file_id: "file".into(),
+                    source_sha256: hash.clone(),
+                    sha256: hash,
+                    mime_type: "image/png".into(),
+                    size_bytes: bytes.len() as u32,
+                    width: 32,
+                    height: 16,
+                    legacy: true,
+                },
+            )]),
+            published: true,
+            pending: None,
+            mutation_id: "mutation".into(),
+            gc_nonce: String::new(),
+            managed_image_owners: vec!["owner".into()],
+            superseded_by: None,
+            absorbed_snapshots: BTreeMap::new(),
+            conflicts: vec![],
+            cleanup: vec![],
+        }
     }
     #[test]
     fn reservation_readback_must_match_all_control_and_content_fields() {
@@ -1141,6 +1336,391 @@ mod tests {
             };
             assert!(!same_snapshot(&original, &changed));
         }
+    }
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+    fn text_operation(note: &str, operation_id: &str, title: &str) -> ShareOperation {
+        let value = serde_json::json!({"scope":{"accountSubject":"snapshot-test@example.test","noteId":note,"generation":1},"operationId":operation_id,"kind":"edit","parents":[],"resolvedIds":[],"payloadHash":"","payload":{"title":title,"markdown":"本文","images":[]}});
+        normalized(serde_json::from_value(value).unwrap()).unwrap()
+    }
+    fn text_snapshot(operation: ShareOperation, owner: &str) -> Snapshot {
+        Snapshot {
+            schema_version: 2,
+            operation,
+            paused: false,
+            revoked: false,
+            sharing_id: "sharing".into(),
+            images: BTreeMap::new(),
+            published: true,
+            pending: None,
+            mutation_id: String::new(),
+            gc_nonce: String::new(),
+            managed_image_owners: vec![owner.into()],
+            superseded_by: None,
+            absorbed_snapshots: BTreeMap::new(),
+            conflicts: vec![],
+            cleanup: vec![],
+        }
+    }
+    /// In-memory `ShareDrive` fake. Conditional writes enforce the stored
+    /// etag exactly like Drive's If-Match, so a stale writer fails instead
+    /// of overwriting; every mutation is recorded for assertions.
+    #[derive(Default)]
+    struct FakeState {
+        files: HashMap<String, (Value, String)>,
+        names: HashMap<String, String>,
+        listed: Vec<(String, String)>,
+        etag_seq: u64,
+        id_seq: u64,
+        fail_writes: bool,
+        write_attempts: Vec<(String, String)>,
+        cas_deletes: Vec<String>,
+        preview_deletes: Vec<String>,
+        creates: Vec<String>,
+    }
+    #[derive(Clone, Default)]
+    struct FakeDrive {
+        state: std::sync::Arc<std::sync::Mutex<FakeState>>,
+    }
+    const CAS_ERROR: &str =
+        "別の端末で変更されました。上書きせず内容を保持しました。再度同期してください";
+    impl FakeDrive {
+        fn insert(&self, id: &str, value: Value, etag: &str) {
+            self.state
+                .lock()
+                .unwrap()
+                .files
+                .insert(id.into(), (value, etag.into()));
+        }
+        fn stored(&self, id: &str) -> Option<(Value, String)> {
+            self.state.lock().unwrap().files.get(id).cloned()
+        }
+        /// Simulates another terminal rewriting the file: the content is
+        /// replaced and the etag the store holds becomes stale.
+        fn replace_from_other_terminal(&self, id: &str, value: Value) {
+            let mut state = self.state.lock().unwrap();
+            state.etag_seq += 1;
+            let etag = format!("etag-other-{}", state.etag_seq);
+            state.files.insert(id.into(), (value, etag));
+        }
+    }
+    impl ShareDrive for FakeDrive {
+        async fn read_cas(&self, id: &str, _folder: &str) -> Result<(Value, String), String> {
+            self.state
+                .lock()
+                .unwrap()
+                .files
+                .get(id)
+                .cloned()
+                .ok_or_else(|| "共有状態を確認できません（fake）".to_string())
+        }
+        async fn write_cas(&self, id: &str, etag: &str, value: &Value) -> Result<(), String> {
+            let mut state = self.state.lock().unwrap();
+            state.write_attempts.push((id.into(), etag.into()));
+            if state.fail_writes || etag.is_empty() {
+                return Err(CAS_ERROR.into());
+            }
+            match state.files.get(id) {
+                Some((_, current)) if current == etag => {
+                    state.etag_seq += 1;
+                    let next = format!("etag-{}", state.etag_seq);
+                    state.files.insert(id.into(), (value.clone(), next));
+                    Ok(())
+                }
+                _ => Err(CAS_ERROR.into()),
+            }
+        }
+        async fn delete_cas(&self, id: &str, etag: &str) -> Result<(), String> {
+            let mut state = self.state.lock().unwrap();
+            match state.files.get(id) {
+                Some((_, current)) if current == etag => {
+                    state.files.remove(id);
+                    state.cas_deletes.push(id.into());
+                    Ok(())
+                }
+                _ => Err("共有記録は保持し、次回同期で整理を再試行します".into()),
+            }
+        }
+        async fn find_file(&self, _folder: &str, name: &str) -> Result<Option<String>, String> {
+            Ok(self.state.lock().unwrap().names.get(name).cloned())
+        }
+        async fn file_exists(&self, id: &str) -> Result<bool, String> {
+            Ok(self.state.lock().unwrap().files.contains_key(id))
+        }
+        async fn name_snapshot(&self, _id: &str, _note_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+        async fn list_named_files(
+            &self,
+            _folder: &str,
+            prefix: &str,
+            json_only: bool,
+        ) -> Result<Vec<(String, String)>, String> {
+            Ok(self
+                .state
+                .lock()
+                .unwrap()
+                .listed
+                .iter()
+                .filter(|(_, name)| {
+                    name.contains(prefix) && (!json_only || name.ends_with(".json"))
+                })
+                .cloned()
+                .collect())
+        }
+        async fn delete_preview(
+            &self,
+            _folder: &str,
+            id: &str,
+            _namespace: &str,
+        ) -> Result<(), String> {
+            let mut state = self.state.lock().unwrap();
+            state.preview_deletes.push(id.into());
+            state.files.remove(id);
+            Ok(())
+        }
+        async fn create_at_id(
+            &self,
+            _folder: &str,
+            id: &str,
+            name: &str,
+            bytes: Vec<u8>,
+            _mime: &str,
+        ) -> Result<gdrive::CreateAtId, String> {
+            let mut state = self.state.lock().unwrap();
+            if state.files.contains_key(id) {
+                return Ok(gdrive::CreateAtId::AlreadyExists);
+            }
+            state.etag_seq += 1;
+            let etag = format!("etag-{}", state.etag_seq);
+            let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            state.files.insert(id.into(), (value, etag));
+            state.names.insert(name.into(), id.into());
+            state.creates.push(id.into());
+            Ok(gdrive::CreateAtId::Created)
+        }
+        async fn generate_id(&self) -> Result<String, String> {
+            let mut state = self.state.lock().unwrap();
+            state.id_seq += 1;
+            Ok(format!("generated-{}", state.id_seq))
+        }
+        async fn available_bytes(&self) -> Result<Option<u64>, String> {
+            Ok(Some(u64::MAX))
+        }
+    }
+    #[test]
+    fn save_cas_conflict_never_overwrites_the_other_terminal() {
+        block_on(async {
+            let drive = FakeDrive::default();
+            let mut store = Store::default();
+            let first = text_operation("note-cas", "op-cas-1", "最初の本文");
+            store
+                .save_with_drive(&drive, "folder", &first, BTreeMap::new(), Some("state-cas"))
+                .await
+                .unwrap();
+            assert_eq!(store.notes["note-cas"].snapshot.operation, first);
+            // Another terminal rewrites the same state file. The etag the
+            // store holds is now stale and its content must survive.
+            let other = text_snapshot(
+                text_operation("note-cas", "op-cas-2", "他端末の本文"),
+                "state-cas",
+            );
+            drive.replace_from_other_terminal(
+                "state-cas",
+                serde_json::to_value(&other).unwrap(),
+            );
+            let edit = text_operation("note-cas", "op-cas-3", "競合する編集");
+            let result = store
+                .save_with_drive(&drive, "folder", &edit, BTreeMap::new(), None)
+                .await;
+            let error = result.expect_err("stale CAS write must fail");
+            assert!(error.contains("上書きせず"), "unexpected error: {error}");
+            let (stored, _) = drive.stored("state-cas").unwrap();
+            assert_eq!(
+                stored["operation"]["payload"]["title"], "他端末の本文",
+                "the other terminal's content must not be overwritten"
+            );
+            assert_eq!(
+                store.notes["note-cas"].snapshot.operation, first,
+                "local state keeps the last confirmed snapshot"
+            );
+            let state = drive.state.lock().unwrap();
+            assert_eq!(state.write_attempts.len(), 2);
+            assert!(state.cas_deletes.is_empty() && state.preview_deletes.is_empty());
+        });
+    }
+    #[test]
+    fn gc_gate_cas_failure_deletes_no_images() {
+        block_on(async {
+            let note = "note-gc";
+            let snapshot = text_snapshot(text_operation(note, "op-gc-1", "整理対象"), "state-gc");
+            let drive = FakeDrive::default();
+            drive.insert(
+                "state-gc",
+                serde_json::to_value(&snapshot).unwrap(),
+                "etag-1",
+            );
+            // Every conditional write now fails, as if another terminal is
+            // racing this sync. The GC gate must stop all image deletion.
+            drive.state.lock().unwrap().fail_writes = true;
+            let orphan_name = format!("web-image-{note}-state-gc-{}.jpg", uuid::Uuid::new_v4());
+            let result = Store::load_versioned_with_drive(
+                &drive,
+                "folder-gc",
+                "snapshot-test@example.test",
+                vec![("state-gc".into(), "op-state-note-gc.json".into(), None)],
+                vec![],
+                Some(vec![("orphan-1".into(), orphan_name)]),
+                |_, _, _| {},
+            )
+            .await;
+            assert!(
+                result.is_err(),
+                "a failed GC gate must abort the load"
+            );
+            let state = drive.state.lock().unwrap();
+            assert_eq!(
+                state.write_attempts.len(),
+                1,
+                "only the GC gate write is attempted"
+            );
+            assert_eq!(state.write_attempts[0].0, "state-gc");
+            assert!(
+                state.preview_deletes.is_empty(),
+                "no preview image may be deleted"
+            );
+            assert!(state.cas_deletes.is_empty(), "no state file may be deleted");
+        });
+    }
+    #[test]
+    fn conflicting_snapshot_copies_block_the_note_without_writes() {
+        block_on(async {
+            let note = "note-conflict";
+            let first = text_snapshot(
+                text_operation(note, "op-shared", "端末Aの本文"),
+                "state-a",
+            );
+            let second = text_snapshot(
+                text_operation(note, "op-shared", "端末Bの本文"),
+                "state-b",
+            );
+            let drive = FakeDrive::default();
+            drive.insert("state-a", serde_json::to_value(&first).unwrap(), "etag-a");
+            drive.insert("state-b", serde_json::to_value(&second).unwrap(), "etag-b");
+            let store = Store::load_versioned_with_drive(
+                &drive,
+                "folder-conflict",
+                "snapshot-test@example.test",
+                vec![
+                    ("state-a".into(), "op-state-note-conflict.json".into(), None),
+                    ("state-b".into(), "op-state-note-conflict.json".into(), None),
+                ],
+                vec![],
+                Some(vec![]),
+                |_, _, _| {},
+            )
+            .await
+            .unwrap();
+            assert!(
+                store.blocked.contains(note),
+                "conflicting copies must block the note"
+            );
+            assert!(store.paused.contains(note));
+            assert!(
+                !store.notes.contains_key(note),
+                "no canonical copy may be adopted"
+            );
+            assert_eq!(
+                store.operations.len(),
+                2,
+                "both published bodies are retained"
+            );
+            let state = drive.state.lock().unwrap();
+            assert!(
+                state.write_attempts.is_empty(),
+                "arbitration must not run on conflict"
+            );
+            assert!(state.cas_deletes.is_empty() && state.preview_deletes.is_empty());
+            assert!(state.creates.is_empty());
+        });
+    }
+    #[test]
+    fn validate_accepts_a_complete_snapshot_and_rejects_account_mismatch() {
+        let snapshot = valid_snapshot("note", &png(11));
+        assert!(snapshot.validate(ACCOUNT).is_ok());
+        assert!(snapshot.validate("other@example.test").is_err());
+    }
+    #[test]
+    fn validate_rejects_snapshot_whose_referenced_image_is_missing() {
+        // A state whose referenced image is absent is never adopted as the
+        // base for a later write; the sync stops instead of overwriting.
+        let mut snapshot = valid_snapshot("note", &png(12));
+        snapshot.images.clear();
+        assert!(snapshot.validate(ACCOUNT).is_err());
+    }
+    #[test]
+    fn validate_rejects_snapshot_with_an_unreferenced_image() {
+        let mut snapshot = valid_snapshot("note", &png(13));
+        let other = format!("{:x}", Sha256::digest(b"unreferenced"));
+        let mut asset = snapshot.images.values().next().unwrap().clone();
+        asset.source_sha256 = other.clone();
+        asset.sha256 = other.clone();
+        snapshot.images.insert(other, asset);
+        assert!(snapshot.validate(ACCOUNT).is_err());
+    }
+    #[test]
+    fn validate_rejects_pending_reservation_of_legacy_assets() {
+        let mut snapshot = valid_snapshot("note", &png(14));
+        let hash = snapshot.operation.payload.images[0].sha256.clone();
+        let asset = snapshot.images[&hash].clone();
+        snapshot.pending = Some(ImageReservation {
+            mutation_id: uuid::Uuid::new_v4().to_string(),
+            owner_pc: "windows".into(),
+            expires_at: 0,
+            assets: BTreeMap::from([(hash, asset)]),
+        });
+        assert!(snapshot.validate(ACCOUNT).is_err());
+    }
+    #[test]
+    fn frozen_digest_ignores_superseded_by_but_tracks_content() {
+        // Absorption receipts compare frozen digests: the reconciliation
+        // marker itself must not change the digest, while any content
+        // change must. A mismatch marks the copies as colliding and the
+        // loader blocks instead of merging or overwriting either body.
+        let snapshot = valid_snapshot("note", &png(15));
+        let mut frozen = snapshot.clone();
+        frozen.superseded_by = Some("canonical".into());
+        assert_eq!(frozen_digest(&snapshot), frozen_digest(&frozen));
+        let mut edited = snapshot.clone();
+        edited.operation.payload.title = "別端末の編集".into();
+        assert_ne!(frozen_digest(&snapshot), frozen_digest(&edited));
+    }
+    #[test]
+    fn cleanup_confirmed_only_for_the_captured_scope_and_digest() {
+        // Mirrors the cleanup gate in load_versioned: an old record is
+        // deleted only when the copy re-read in this sync still matches
+        // what was captured. Unconfirmed later changes are never deleted.
+        let op = operation("note", &png(16));
+        let captured = serde_json::json!({
+            "scope": serde_json::to_value(&op.scope).unwrap(),
+            "operationId": "old-operation",
+            "payload": {"markdown": "本文"}
+        });
+        let item = Cleanup {
+            id: "record".into(),
+            digest: digest(&captured),
+        };
+        assert!(cleanup_confirmed(&item, &captured, &op.scope));
+        let mut changed = captured.clone();
+        changed["payload"]["markdown"] = "別端末の新しい本文".into();
+        assert!(!cleanup_confirmed(&item, &changed, &op.scope));
+        let other = operation("other", &png(17));
+        assert!(!cleanup_confirmed(&item, &captured, &other.scope));
     }
     #[test]
     #[ignore = "requires explicitly authorized temporary Google Drive fixtures"]

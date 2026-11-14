@@ -173,8 +173,8 @@ Store提出用MSIXはrelease実行ファイルとresourcesを作成後、`packag
 ## 🛠️ 技術スタック
 
 ### フロントエンド
-- **Next.js 14** (App Router)
-- **React 18**
+- **Next.js 15.5** (App Router)
+- **React 19.1**
 - **TypeScript**
 - **Tailwind CSS**
 - **CodeMirror 6** (Markdownエディタ)

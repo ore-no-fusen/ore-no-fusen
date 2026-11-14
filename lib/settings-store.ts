@@ -19,6 +19,7 @@ export type AppSettings = {
     base_path: string
     language: "ja" | "en"
     auto_start: boolean
+    show_startup_screen?: boolean
     desktop_shortcut_prompted: boolean
     analytics_consent?: "granted" | "denied"
     /** 再確認ダイアログの表示リビジョン。利用情報の送信同意とは独立。 */
@@ -66,6 +67,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     base_path: "",
     language: "ja",
     auto_start: true,
+    show_startup_screen: true,
     desktop_shortcut_prompted: false,
     font_size: 16,
     sound_enabled: true,
@@ -132,6 +134,7 @@ export function useSettings() {
                         base_path: parsed.base_path ?? parsed.basePath ?? DEFAULT_SETTINGS.base_path,
                         language: parsed.language ?? DEFAULT_SETTINGS.language,
                         auto_start: parsed.auto_start ?? parsed.autoStart ?? DEFAULT_SETTINGS.auto_start,
+                        show_startup_screen: parsed.show_startup_screen ?? true,
                         desktop_shortcut_prompted: parsed.desktop_shortcut_prompted ?? false,
                         analytics_consent: parsed.analytics_consent,
                         analytics_consent_reconfirmation_version: parsed.analytics_consent_reconfirmation_version,
@@ -172,6 +175,7 @@ export function useSettings() {
                     base_path: loaded.base_path,
                     language: loaded.language,
                     auto_start: loaded.auto_start,
+                    show_startup_screen: loaded.show_startup_screen ?? true,
                     desktop_shortcut_prompted: loaded.desktop_shortcut_prompted ?? false,
                     analytics_consent: loaded.analytics_consent,
                     analytics_consent_reconfirmation_version: loaded.analytics_consent_reconfirmation_version,

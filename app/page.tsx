@@ -270,6 +270,7 @@ function OrchestratorContent() {
   const [setupRequired, setSetupRequired] = useState(isMainWindow);
   const [isCheckingSetup, setIsCheckingSetup] = useState(isMainWindow);
   const [loadingStatus, setLoadingStatus] = useState("STARTING..."); // [NEW] Visual Debug Log
+  const [startupFailed, setStartupFailed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false); // [RESTORED]
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<string>('general');
@@ -432,7 +433,7 @@ function OrchestratorContent() {
     return WebviewWindow.getByLabel(getWindowLabel(path));
   }, [getWindowLabel]);
 
-  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean, physical_bounds?: { x: number; y: number; width: number; height: number } }, isNew?: boolean, fromIphone?: boolean) => {
+  const openNoteWindow = useCallback(async (path: string, meta?: { x?: number, y?: number, width?: number, height?: number, always_on_top?: boolean, opacity?: number, background_color?: string, startup_restore?: boolean, launcher_open?: boolean, physical_bounds?: { x: number; y: number; width: number; height: number } }, isNew?: boolean, fromIphone?: boolean) => {
     const label = getWindowLabel(path);
     const startupRestore = meta?.startup_restore === true;
 
@@ -552,7 +553,7 @@ function OrchestratorContent() {
                 console.warn('[付箋表示] ツールウィンドウ化に失敗しました:', e);
               }
               }
-              if (!startupRestore) await invoke("fusen_take_out_favorite", {path});
+              if (!startupRestore && !meta?.launcher_open) await invoke("fusen_take_out_favorite", {path});
               settleCreation();
             });
 
@@ -872,7 +873,7 @@ function OrchestratorContent() {
     if (!isMainWindow) return; // [FIX] プールウィンドウからの過剰反応を防ぐ Guard
 
     let unlisten: (() => void) | undefined;
-    const promise = listen<{ path: string; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean; x?: number; y?: number; width?: number; height?: number }>('fusen:open_note', async (event) => {
+    const promise = listen<{ path: string; launcherOpen?: boolean; isNew?: boolean; backgroundColor?: string; content?: string; isCrystal?: boolean; x?: number; y?: number; width?: number; height?: number }>('fusen:open_note', async (event) => {
       const bg = event.payload.backgroundColor;
       const notePath = event.payload.path;
       if (event.payload.isCrystal && event.payload.content !== undefined) {
@@ -885,6 +886,7 @@ function OrchestratorContent() {
             await mappedWindow.show();
             await mappedWindow.unminimize();
             await mappedWindow.setFocus();
+            if (event.payload.launcherOpen) await emit('fusen:note_display_ready', { path: notePath, label: mappedLabel });
             return;
           }
           crystalPoolWindowsRef.current.delete(key);
@@ -953,7 +955,14 @@ function OrchestratorContent() {
           return;
         }
       }
-      await openNoteWindow(notePath, bg ? { background_color: bg } : undefined, event.payload.isNew);
+      await openNoteWindow(notePath, {
+        background_color: bg,
+        launcher_open: event.payload.launcherOpen,
+        x: event.payload.x,
+        y: event.payload.y,
+        width: event.payload.width,
+        height: event.payload.height,
+      }, event.payload.isNew);
       if (event.payload.isCrystal) {
         await invoke('fusen_register_crystal_arrange_window', {
           label: getWindowLabel(notePath),
@@ -1821,6 +1830,7 @@ function OrchestratorContent() {
             } catch (setupErr) {
               log(`[起動処理] デフォルトフォルダ作成に失敗: ${setupErr}`);
               setLoadingStatus(startupIsEnglish ? 'Failed to prepare the data location' : '保存先の準備に失敗しました');
+              setStartupFailed(true);
               return;
             }
           }
@@ -1852,6 +1862,7 @@ function OrchestratorContent() {
               logStartupStep('4/6', `状態同期が完了しました: ${state ? '成功' : '失敗'}`);
 
               if (!state) {
+                setStartupFailed(true);
                 setLoadingStatus(startupIsEnglish ? 'Synchronization failed' : '同期に失敗しました');
                 log('[起動処理] エラー: 状態オブジェクトが空です');
                 return;
@@ -1968,6 +1979,7 @@ function OrchestratorContent() {
                       .map((win) => win.destroy().catch(() => {})),
                   );
                   if (startupResult.ready.length === 0) {
+                    setStartupFailed(true);
                     logStartupStep('6/6', '準備完了0件のため空の付箋は表示せず、起動中画面に再起動案内を表示します');
                     return;
                   }
@@ -1980,6 +1992,7 @@ function OrchestratorContent() {
                   startPoolReplenishInBackground();
                 } catch (e) {
                   log(`[起動処理] 一括表示エラー: ${e}`);
+                  setStartupFailed(true);
                   setLoadingStatus(startupIsEnglish
                     ? 'Failed to show notes. Please restart the app.'
                     : '付箋の表示に失敗しました: ' + String(e));
@@ -2033,6 +2046,7 @@ function OrchestratorContent() {
               }
             } catch (e) {
               log(`[起動処理] 内部エラー: ${e}`);
+              setStartupFailed(true);
               setLoadingStatus(startupIsEnglish
                 ? 'An error occurred during startup. Please restart the app.'
                 : 'エラー: ' + String(e));
@@ -2041,6 +2055,7 @@ function OrchestratorContent() {
           })();
         } catch (e) {
           log(`[起動処理] 重大なエラー: ${e}`);
+          setStartupFailed(true);
           setLoadingStatus(startupIsEnglish
             ? 'A critical startup error occurred. Please restart the app.'
             : '重大なエラー: ' + String(e));
@@ -2049,6 +2064,7 @@ function OrchestratorContent() {
       };
 
       checkAndRestore().catch(e => {
+        setStartupFailed(true);
         invoke('fusen_debug_log', { message: `[起動処理] セットアップ確認中に例外発生: ${e}` }).catch(() => { });
         const fallbackEnglish = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('en');
         setLoadingStatus(fallbackEnglish
@@ -2444,7 +2460,7 @@ function OrchestratorContent() {
     );
   }
 
-  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} language={language} />;
+  if (isCheckingSetup) return <LoadingScreen message={loadingStatus} language={language} forceVisible={startupFailed} />;
 
   // ★ここが修正ポイント: 設定が必要な場合は、新しく作った SettingsPage を表示
   if (setupRequired || isSettingsOpen) {

@@ -117,7 +117,6 @@ export type NoteListStepProps = {
   /** i18n 翻訳関数 */
   t: (key: TranslationKey) => string;
   language: Language;
-  swVersion: string | null;
   runtimeOrigin: string;
   runtimeKind: string;
   onNew: () => void;

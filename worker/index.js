@@ -6,7 +6,9 @@ import { resolvePushTitles } from './notification-title';
 import { closeClickedNotification, focusViewerOrOpenTarget } from './notification-click';
 import { clearDriveCacheEntries } from '../lib/drive-cache-policy.mjs';
 
-const SW_VERSION = '6.1.0-pwa.1';
+import { PWA_VERSION } from '../lib/pwa-version.mjs';
+
+const SW_VERSION = PWA_VERSION;
 let driveCacheCleanup = null;
 function ensureDriveCacheCleanup() {
   if (!driveCacheCleanup) {

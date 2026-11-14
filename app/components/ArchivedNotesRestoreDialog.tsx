@@ -5,7 +5,7 @@ import MessageSurface from './MessageSurface';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Language } from '@/lib/i18n';
+import { getTranslation, type Language } from '@/lib/i18n';
 import { safeUnlisten, safeUnlistenWhenResolved } from '../utils/safeUnlisten';
 import { archivedLocations, recentArchivedNotes, searchArchivedNotes, type ArchivedNoteSummary, type RestoreArchivedNotesResult } from '../utils/archiveRestore';
 
@@ -19,6 +19,7 @@ function shownDate(value: string, language: Language): string {
 
 export default function ArchivedNotesRestoreDialog({ language, onClose, onRestored }: Props) {
   const en = language === 'en';
+  const t = getTranslation(language);
   const [notes, setNotes] = useState<ArchivedNoteSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -89,12 +90,12 @@ export default function ArchivedNotesRestoreDialog({ language, onClose, onRestor
   };
 
   return <div className="fixed inset-0 z-50 bg-neutral-950 text-neutral-100 flex flex-col p-5 overflow-hidden">
-    <div className="flex items-center gap-3 mb-4"><button onClick={onClose} aria-label={en ? 'Close' : '閉じる'}>←</button><h1 className="text-xl font-semibold">{en ? 'Restore archived notes' : 'しまった付箋を取り出す'}</h1></div>
+    <div className="flex items-center gap-3 mb-4"><button onClick={onClose} aria-label={en ? 'Close' : '閉じる'}>←</button><h1 className="text-xl font-semibold">{t('menu.restoreFiled')}</h1></div>
     <input autoFocus value={query} onChange={event => { setQuery(event.target.value); setLocation(null); }} placeholder={en ? 'Search names or text' : '名前や本文を検索'} className="rounded-lg bg-neutral-800 border border-neutral-600 px-4 py-3 mb-4" />
     {loading && <p>{en ? 'Loading…' : '読み込み中…'}</p>}
     {loadError && <p className="text-red-300">{loadError}</p>}
     {!loading && !query && !location && <div className="overflow-auto flex-1">
-      <h2 className="font-semibold mb-2">{en ? 'Recently archived' : '最近しまった付箋'}</h2>
+      <h2 className="font-semibold mb-2">{en ? 'Recently filed notes' : '最近保管した付箋'}</h2>
       <CardList notes={shown} selected={selected} language={language} onToggle={toggle} onDetail={openDetail} />
       <h2 className="font-semibold mt-5 mb-2">{en ? 'Browse by location' : '保存場所から探す'}</h2>
       <div className="grid grid-cols-2 gap-2">{locations.map(item => <button key={`${item.kind}:${item.name}`} onClick={() => setLocation({ kind: item.kind, name: item.name })} className="text-left rounded-lg bg-neutral-800 border border-neutral-700 px-4 py-3 hover:bg-neutral-700">📁 {item.name}<span className="float-right text-neutral-400">{item.count}{en ? '' : '枚'}</span></button>)}</div>
@@ -105,10 +106,10 @@ export default function ArchivedNotesRestoreDialog({ language, onClose, onRestor
     </div>}
     <div className="mt-auto pt-4 flex items-center justify-between border-t border-neutral-700">
       <button onClick={onClose} className="px-4 py-2">{en ? 'Cancel' : 'キャンセル'}</button>
-      <button disabled={!selected.size || restoring} onClick={restore} className="rounded-lg bg-sky-600 disabled:bg-neutral-700 px-5 py-2 font-semibold">{restoring ? (en ? 'Restoring…' : '取り出し中…') : en ? `Restore ${selected.size}` : `${selected.size}枚を取り出す`}</button>
+      <button disabled={!selected.size || restoring} onClick={restore} className="rounded-lg bg-sky-600 disabled:bg-neutral-700 px-5 py-2 font-semibold">{restoring ? (en ? 'Showing on desktop…' : '画面に戻しています…') : en ? `Show ${selected.size} on desktop` : `${selected.size}枚を画面に戻す`}</button>
     </div>
     {detail && <div className="absolute inset-8 z-10 rounded-xl bg-neutral-900 border border-neutral-600 p-5 overflow-auto"><button className="float-right" onClick={() => setDetail(null)}>✕</button><pre className="whitespace-pre-wrap font-sans mt-8">{detailBody || detail.preview}</pre></div>}
-    {result && <MessageSurface role="status" style={{ maxHeight: '40dvh' }} className="absolute bottom-20 left-5 right-5 max-h-[40vh] overflow-y-auto break-words rounded-lg bg-neutral-800 border border-neutral-600 p-3"><button className="float-right" onClick={() => setResult(null)}>✕</button><p>{en ? `${result.restored.length} restored` : `${result.restored.length}枚を取り出しました`}</p>{result.conflicts.map(item => <p key={item.sourcePath} className="text-amber-300">{en ? 'Not overwritten: ' : '上書きしませんでした: '}{item.sourcePath.split(/[\\/]/).pop()}</p>)}{result.failed.map(item => <p key={item.sourcePath} className="text-red-300">{item.error}</p>)}</MessageSurface>}
+    {result && <MessageSurface role="status" style={{ maxHeight: '40dvh' }} className="absolute bottom-20 left-5 right-5 max-h-[40vh] overflow-y-auto break-words rounded-lg bg-neutral-800 border border-neutral-600 p-3"><button className="float-right" onClick={() => setResult(null)}>✕</button><p>{en ? `${result.restored.length} shown on desktop` : `${result.restored.length}枚を画面に戻しました`}</p>{result.conflicts.map(item => <p key={item.sourcePath} className="text-amber-300">{en ? 'Not overwritten: ' : '上書きしませんでした: '}{item.sourcePath.split(/[\\/]/).pop()}</p>)}{result.failed.map(item => <p key={item.sourcePath} className="text-red-300">{item.error}</p>)}</MessageSurface>}
   </div>;
 }
 

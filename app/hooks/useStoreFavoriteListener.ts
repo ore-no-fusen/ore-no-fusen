@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export interface StoreFavoriteRequest { path: string; requestId: string }
+export interface StoreFavoriteRequest { path: string; requestId: string; wasStored?: boolean }
 
 // A render must not replace the listener while a storage transaction is running.
 export function useStoreFavoriteListener(handle: (request: StoreFavoriteRequest) => Promise<void>) {

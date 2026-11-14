@@ -62,7 +62,8 @@ export async function renameQuickNote(path: string, title: string): Promise<void
     await invoke('fusen_rename_quick_note', { path, title });
 }
 
-export type StorageSnapshot = {paths:string[]; items:QuickOpenItem[]; tags:string[]};
+export type StorageSnapshot = {paths:string[]; items:QuickOpenItem[]; tags:string[]; tag_counts?:Record<string,number>};
 export const storageSnapshot = () => invoke<StorageSnapshot>('fusen_storage_snapshot');
 export const storeQuickNote = (path:string) => invoke<void>('fusen_request_store', {path, requestedAt: Date.now()});
 export const storeTag = (tag:string) => invoke<{stored:number;failed:string[]}>('fusen_store_tag', {tag});
+export const registerTag = (tag:string) => invoke<{stored:number;failed:string[]}>('fusen_register_tag', {tag});

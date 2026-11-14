@@ -64,7 +64,7 @@ describe('QuickLauncher logic', () => {
 
 
     it('uses crystal trash for crystals and shelf removal for favorites', () => {
-        expect(removeActionLabel('shortcut')).toBe('登録を解除');
+        expect(removeActionLabel('shortcut')).toBe('ランチャーから登録解除');
         expect(removeActionLabel('recipe')).toBe('ゴミ箱へ移動');
         expect(removeActionLabel('qa')).toBe('ゴミ箱へ移動');
         expect(removeActionLabel('term')).toBe('ゴミ箱へ移動');

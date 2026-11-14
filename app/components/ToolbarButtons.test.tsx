@@ -35,7 +35,7 @@ describe('ToolbarButtons cautious actions', () => {
                 show
                 onToggleMinimize={vi.fn()}
                 onTogglePin={vi.fn()}
-                archiveLabel="アーカイブへしまう"
+                archiveLabel="Archiveフォルダーに保管"
                 onArchive={onArchive}
                 deleteLabel="削除"
                 onDelete={onDelete}
@@ -49,7 +49,7 @@ describe('ToolbarButtons cautious actions', () => {
         expect(cautiousGroup.className).toContain('mt-3');
         expect(cautiousGroup.className).toContain('flex-col');
 
-        fireEvent.click(screen.getByRole('button', { name: 'アーカイブへしまう' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Archiveフォルダーに保管' }));
         fireEvent.click(screen.getByRole('button', { name: '削除' }));
         expect(onArchive).toHaveBeenCalledTimes(1);
         expect(onDelete).toHaveBeenCalledTimes(1);
@@ -62,7 +62,7 @@ describe('ToolbarButtons cautious actions', () => {
                 isMinimized
                 show
                 onToggleMinimize={vi.fn()}
-                archiveLabel="アーカイブへしまう"
+                archiveLabel="Archiveフォルダーに保管"
                 onArchive={vi.fn()}
                 onDelete={vi.fn()}
             />

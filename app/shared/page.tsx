@@ -11,6 +11,7 @@ import { NewNote } from './NewNote';
 import { isWebUsageExcluded, setWebUsageExcluded, trackWebFeature } from './lib/usage';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
 import { VisibleImage } from './VisibleImage';
+import { applyLauncherOrder, type LauncherOrder } from '@/lib/web-launcher-order';
 import { clearEditDraft, editBaseline, listOtherEditDrafts, recoverEditDraft, readEditDraft, writeEditDraft, type EditDraft } from './lib/edit-draft';
 
 type DriveFile = { id: string; name: string; mimeType?: string };
@@ -114,6 +115,8 @@ function fencedCodeRanges(lines: string[]): Map<number, LineRange> {
 export default function SharedNotesPage() {
   const [token, setToken] = useState('');
   const [notes, setNotes] = useState<SharedNote[]>([]);
+  const [{orders,pcId:orderPcId,account:orderAccount},setOrderView] = useState<{orders:LauncherOrder[];pcId:string;account:string}>({orders:[],pcId:'',account:''});
+  const [orderWarning, setOrderWarning] = useState('');
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [selected, setSelected] = useState(0);
   const [search, setSearch] = useState('');
@@ -176,6 +179,18 @@ export default function SharedNotesPage() {
       const loaded = await loadSharedNotes(accessToken);
       if (!pageActive.current) return null;
       const allNotes = [...loaded.notes, ...(loaded.stoppedNotes ?? [])];
+      const nextOrders = loaded.orders ?? [];
+      const account = loaded.account ?? nextOrders[0]?.accountSubject ?? allNotes[0]?.scope.accountSubject ?? '';
+      let chosen: string | null = null;
+      try { if(account) chosen=localStorage.getItem(`onf-shared-order:${account}`); } catch { /* Optional display preference. */ }
+      const problems=loaded.orderProblems??[];
+      setOrderView(previous=>{
+        const retained=previous.account===account?previous.orders.filter(order=>problems.some(p=>p.pcId===order.pcId)):[];
+        const merged=[...nextOrders,...retained];
+        const selected=chosen ?? (previous.account===account?previous.pcId:'');
+        return {orders:merged,account,pcId:selected || (merged.length===1?merged[0].pcId:'')};
+      });
+      setOrderWarning(problems.length?'一部のPCの表示順を取得できません。取得済みの順があれば保持し、それ以外は題名順で表示します。':'');
       setNotes(allNotes);
       setFiles(loaded.files);
       if (!listUsageRecorded.current) { trackWebFeature('web_list_loaded'); listUsageRecorded.current = true; }
@@ -222,11 +237,11 @@ export default function SharedNotesPage() {
     });
     return [...unique.values()].sort((left, right) => left.localeCompare(right, 'ja'));
   }, [notes]);
-  const visibleNotes = useMemo(() => notes
-    .map((note, index) => ({ note, index }))
+  const visibleNotes = useMemo(() => applyLauncherOrder(notes
+    .map((note, index) => ({ note, index, scope:note.scope })), orders.find(order=>order.pcId===orderPcId))
     .filter(({ note }) => Boolean(note.paused) === showStopped && (!normalizedSearch ||
       `${note.operation.payload.title}\n${note.operation.payload.markdown}`.toLowerCase().includes(normalizedSearch)) &&
-      (!selectedTag || (note.operation.payload.tags ?? []).some((tag) => tag.toLowerCase() === selectedTag.toLowerCase()))), [notes, normalizedSearch, selectedTag, showStopped]);
+      (!selectedTag || (note.operation.payload.tags ?? []).some((tag) => tag.toLowerCase() === selectedTag.toLowerCase()))), [notes, normalizedSearch, selectedTag, showStopped, orders, orderPcId]);
   const current = visibleNotes.find(({ index }) => index === selected)?.note;
   useEffect(() => {
     if (visibleNotes.length && !visibleNotes.some(({ index }) => index === selected)) {
@@ -349,6 +364,7 @@ export default function SharedNotesPage() {
         </div>
       </header>
       <p role="status" style={{ color: '#52627a', minHeight: 24 }}>{message}</p>
+      {orderWarning && <p role="status" style={{color:'#926000'}}>{orderWarning}</p>}
       {creating&&token&&<NewNote token={token} onDone={(text,request)=>{
         setCreating(false);setMessage(text);
         if(request){
@@ -363,6 +379,16 @@ export default function SharedNotesPage() {
       </div>}
       {notes.length > 0 && <div>
         <section aria-label="付箋を探す">
+          {(orders.length>1 || (orderPcId && !orders.some(order=>order.pcId===orderPcId))) && <label style={{display:'block',marginBottom:12}}>表示順のPC
+            <select aria-label="表示順のPC" value={orderPcId} disabled={editing || busy} style={{...button,marginLeft:8}} onChange={event=>{
+              setOrderView(previous=>({...previous,pcId:event.target.value}));
+              try {if(orderAccount)localStorage.setItem(`onf-shared-order:${orderAccount}`,event.target.value);} catch { /* Keep this session's choice. */ }
+            }}>
+              <option value="">PCを選択（題名順）</option>
+              {orderPcId && !orders.some(order=>order.pcId===orderPcId) && <option value={orderPcId}>選択したPCの表示順は未取得</option>}
+              {orders.map(order=><option key={order.pcId} value={order.pcId}>{order.name} ({order.pcId.slice(0,8)})</option>)}
+            </select>
+          </label>}
           <div role="group" aria-label="タグで絞り込み" style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 0 12px' }}>
             <button type="button" aria-pressed={!selectedTag} disabled={editing || busy} onClick={() => setSelectedTag('')} style={{ ...button, flex: '0 0 auto', borderRadius: 999, background: !selectedTag ? '#1689dc' : '#f8fafc', color: !selectedTag ? 'white' : '#162238' }}>すべて</button>
             {allTags.map((tag) => {

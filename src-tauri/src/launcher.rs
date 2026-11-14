@@ -11,7 +11,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
+use tauri::{AppHandle, Emitter, Listener, Manager, State, WebviewUrl};
 
 const MAX_WEB_SHARE_IMAGE_BYTES: u64 = 50 * 1024 * 1024;
 
@@ -287,6 +287,9 @@ fn parse_launcher_tags(content: &str) -> Vec<String> {
         .find_map(|line| line.trim().strip_prefix("tags:"))
         .map(str::trim)
         .unwrap_or_default();
+    if let Ok(tags) = logic::parse_tag_values(value) {
+        return tags.into_iter().filter(|tag| !tag.is_empty()).collect();
+    }
     let value = value
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
@@ -317,7 +320,9 @@ fn shortcut_item_from_content(path: &Path, content: &str) -> Option<QuickOpenIte
     if !note_has_tag(&tags, "shortcut") {
         return None;
     }
-    let path_str = path.to_string_lossy().to_string();
+    // Sync scans a canonical base (Windows \\?\ prefix), while the launcher
+    // saves ordinary paths. Keep the same identity before applying saved order.
+    let path_str = dunce::simplified(path).to_string_lossy().to_string();
     let filename = path.file_name()?.to_string_lossy();
     let (_, _, context) = logic::parse_filename(&filename);
     Some(QuickOpenItem {
@@ -367,14 +372,16 @@ fn load_shortcut_items_strict(base_path: &Path) -> Result<Vec<QuickOpenItem>, St
         }
     }
     let order = load_launcher_order()?;
-    Ok(merge_ordered_items(
-        order
-            .orders
-            .get("shortcut")
-            .map(Vec::as_slice)
-            .unwrap_or(&[]),
-        items,
-    ))
+    let paths = sync_order_paths(order.orders.get("shortcut").map(Vec::as_slice).unwrap_or(&[]));
+    Ok(merge_ordered_items(&paths, items))
+}
+
+// The sync directory was canonicalized before scanning. Resolve saved aliases
+// too (including Windows 8.3 paths), without changing the stored launcher order.
+fn sync_order_paths(paths: &[String]) -> Vec<String> {
+    paths.iter().map(|path| dunce::canonicalize(path)
+        .map(|resolved| resolved.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.clone())).collect()
 }
 
 fn cached_shortcut_items(base_path: &Path) -> Result<Vec<QuickOpenItem>, String> {
@@ -683,6 +690,8 @@ struct WebShareSyncState {
     revoked_ids: HashSet<String>,
     #[serde(default)]
     snapshot_ids: HashMap<String, String>,
+    #[serde(default)]
+    order_file_ids: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -962,6 +971,10 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
         sync_state.revoked_ids.insert(note_id);
         summary.revoked += 1;
     }
+    let order_entries = items.iter().map(|item| {
+        let relative = Path::new(&item.path).canonicalize().ok()?.strip_prefix(&base).ok()?.to_string_lossy().replace('\\', "/");
+        note_ids_by_path.get(&relative).map(|id| crate::web_launcher_order::Entry { note_id: id.clone(), generation: 1 })
+    }).collect::<Option<Vec<_>>>();
     let sync_total=items.len();
     for (index,item) in items.into_iter().enumerate() {
         progress("apply",index,sync_total);
@@ -1030,6 +1043,21 @@ pub(crate) async fn fusen_sync_quick_launcher_to_web(
     }
     if let Err(error)=crate::web_create::cleanup_published(&client,&token,&share_folder,&account_subject,&snapshots,&request_files).await {
         crate::logger::log_info(&format!("[Web同期] 作成済み要求の整理を保留: {error}"));
+    }
+    if summary.held.is_empty() {
+        let result = async {
+            let entries = order_entries.ok_or("表示順の付箋IDを確認できません")?;
+            let pc = crate::gdrive::load_or_create_pc_device()?;
+            let order = crate::web_launcher_order::LauncherOrder { schema_version: 1,
+                account_subject: account_subject.clone(), pc_id: pc.pc_id.clone(), name: pc.pc_name, entries };
+            let reserved = sync_state.order_file_ids.get(&pc.pc_id).cloned();
+            crate::web_launcher_order::publish(crate::web_share_snapshot::GdriveShareDrive::new(&client, &token),
+                &share_folder, &order, reserved.as_deref(), |id| {
+                    sync_state.order_file_ids.insert(pc.pc_id.clone(), id.to_owned());
+                    persist_web_share_sync_state(&state_path, &sync_state)
+                }).await
+        }.await;
+        if let Err(error) = result { summary.held.push(format!("ランチャーの表示順: {error}")); }
     }
     crate::logger::log_info(&format!("[Web同期] 完了: {}ms / 送信{} 受信{} 変更なし{} 保留{}", sync_started.elapsed().as_millis(), summary.uploaded, summary.applied, summary.unchanged, summary.held.len()));
     Ok(summary)
@@ -1368,11 +1396,13 @@ fn move_path_in_order(
 fn remove_tag_from_content(content: &str, tag: &str) -> String {
     let (_, _, _, _, _, _, mut tags, _) = logic::extract_meta_from_content(content);
     tags.retain(|value| logic::normalize_reserved_tag(value) != tag);
-    logic::update_frontmatter_value(content, "tags", format!("[{}]", tags.join(", ")))
+    let value = logic::format_tag_values(&tags);
+    logic::update_frontmatter_value_for_web_share(content, "tags", &value)
 }
 
 fn web_unshare_content(source: &str, id: &str) -> Option<String> {
-    let (front,_) = logic::split_frontmatter(source);
+    let (open_end, close_start, _) = logic::strict_web_share_frontmatter(source).ok()??;
+    let front = &source[open_end..close_start];
     if front.lines().any(|line|line.trim()==format!("webRevokedId: {}",id)) {return None;}
     let unregistered=remove_tag_from_content(source,"shortcut");
     Some(logic::update_frontmatter_value_for_web_share(&unregistered,"webRevokedId",id))
@@ -1381,6 +1411,27 @@ fn web_unshare_content(source: &str, id: &str) -> Option<String> {
 #[cfg(test)]
 mod web_unshare_tests {
     use super::*;
+    #[test]
+    fn quoted_tag_boundaries_survive_listing_and_web_unshare() {
+        let source = "---\ntitle: Example\ntags: [\"案件,至急\",\"shortcut\"]\n---\n**本文**";
+        assert_eq!(parse_launcher_tags(source), vec!["案件,至急", "shortcut"]);
+        let updated = web_unshare_content(source, "test-id").unwrap();
+        assert_eq!(parse_launcher_tags(&updated), vec!["案件,至急"]);
+        assert_eq!(logic::extract_meta_from_content(&updated).6, vec!["案件,至急"]);
+        assert_eq!(logic::split_frontmatter(source).1, logic::split_frontmatter(&updated).1);
+        assert!(!note_has_tag(&parse_launcher_tags("---\ntags: [\"private,shortcut\"]\n---\nbody"), "shortcut"));
+    }
+    #[test]
+    fn web_unshare_preserves_literal_tag_names_and_real_frontmatter_boundaries() {
+        for tag in ["$budget", "a---b", "案件,至急", "quote\"and\\slash"] {
+            let tags = serde_json::to_string(&vec![tag, "shortcut"]).unwrap();
+            let source = format!("---\ntitle: Example\ntags: {tags}\n---\n\n**本文**\n- [x] 保持");
+            let updated = web_unshare_content(&source, "test-id").unwrap();
+            assert_eq!(parse_launcher_tags(&updated), vec![tag]);
+            assert!(updated.ends_with("\n---\n\n**本文**\n- [x] 保持"));
+            assert!(web_unshare_content(&updated, "test-id").is_none());
+        }
+    }
     #[test]
     fn web_unshare_preserves_body_and_other_tags_and_marks_the_same_write() {
         let source="---\ntype: sticky\ntags: [shortcut, work]\n---\n\n本文\n- [x] 項目";
@@ -1658,15 +1709,6 @@ pub(crate) fn fusen_quick_open_notes(
 /// ファイル全文（frontmatter を含む）を読み込み、launches を +1 して書き戻す。
 /// note.body（frontmatter を除いた本文）ではなく全文を対象にすることで、
 /// frontmatter（recipe タグ・backgroundColor 等）を破壊しないことを保証する。
-#[cfg(test)]
-fn increment_launches_in_file(path: &str) -> Result<(), String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let usage = logic::extract_recipe_usage_meta(&content);
-    let updated_content =
-        logic::update_frontmatter_value(&content, "launches", (usage.launches + 1).to_string());
-    std::fs::write(path, &updated_content).map_err(|e| e.to_string())
-}
-
 fn launcher_background_color(content: &str) -> Option<String> {
     let mut in_frontmatter = false;
     for line in content.lines() {
@@ -1696,7 +1738,7 @@ fn launcher_background_color(content: &str) -> Option<String> {
     None
 }
 
-fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<u32>, Option<u32>) {
+fn launcher_window_geometry(content: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
     let Some(window) = content
         .lines()
         .find_map(|line| line.trim().strip_prefix("window:"))
@@ -1711,12 +1753,12 @@ fn launcher_window_geometry(content: &str) -> (Option<i32>, Option<i32>, Option<
         let Some((key, value)) = field.split_once(':') else {
             continue;
         };
-        let parsed = value.trim().parse::<u32>().ok();
+        let parsed = value.trim().parse::<f64>().ok().filter(|v| v.is_finite());
         match key.trim() {
-            "x" => x = value.trim().parse::<i32>().ok(),
-            "y" => y = value.trim().parse::<i32>().ok(),
-            "width" => width = parsed.filter(|value| (200..=2000).contains(value)),
-            "height" => height = parsed.filter(|value| (120..=2000).contains(value)),
+            "x" => x = value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= i32::MIN as f64 && *v <= i32::MAX as f64),
+            "y" => y = value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= i32::MIN as f64 && *v <= i32::MAX as f64),
+            "width" => width = parsed.filter(|value| (200.0..=2000.0).contains(value)),
+            "height" => height = parsed.filter(|value| (120.0..=2000.0).contains(value)),
             _ => {}
         }
     }
@@ -1740,6 +1782,16 @@ where
     persist_launches(&updated_content)
 }
 
+fn increment_launches_in_file(path: &str) -> Result<String, String> {
+    for _ in 0..3 {
+        let current = storage::read_note(path)?.body;
+        let usage = logic::extract_recipe_usage_meta(&current);
+        let updated = logic::update_frontmatter_value(&current, "launches", usage.launches.saturating_add(1).to_string());
+        if storage::write_note_if_unchanged(path, &current, &updated).is_ok() { return Ok(updated); }
+    }
+    Err("利用回数を保存できませんでした。付箋の内容は変更していません".into())
+}
+
 #[tauri::command]
 pub(crate) async fn fusen_open_quick_note(
     app: AppHandle,
@@ -1753,6 +1805,7 @@ pub(crate) async fn fusen_open_quick_note(
             .open_note_windows
             .get(&crate::normalize_path_for_label(&path))
             .cloned()
+            .or_else(|| state.arrange_crystal_windows.iter().find(|(_, p)| crate::normalize_path_for_label(p) == crate::normalize_path_for_label(&path)).map(|(label, _)| label.clone()))
     }
     .and_then(|label| app.get_webview_window(&label));
     if let Some(window) = &retained {
@@ -1772,7 +1825,19 @@ pub(crate) async fn fusen_open_quick_note(
         )
     });
     let emit_path = path.clone();
-    run_quick_open_after_read(
+    let (ready_sender, ready_receiver) = tokio::sync::oneshot::channel::<String>();
+    let ready_sender = Mutex::new(Some(ready_sender));
+    let ready_path = crate::normalize_path_for_label(&path);
+    let ready_listener = app.listen("fusen:note_display_ready", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            if payload.get("path").and_then(|p| p.as_str()).is_some_and(|p| crate::normalize_path_for_label(p) == ready_path) {
+                if let Some(label) = payload.get("label").and_then(|p| p.as_str()) {
+                    if let Some(sender) = ready_sender.lock().unwrap_or_else(|p|p.into_inner()).take() { let _ = sender.send(label.into()); }
+                }
+            }
+        }
+    });
+    let dispatched = run_quick_open_after_read(
         &content,
         |background_color| {
             if retained.is_some() {
@@ -1782,6 +1847,7 @@ pub(crate) async fn fusen_open_quick_note(
                 "fusen:open_note",
                 serde_json::json!({
                     "path": emit_path,
+                    "launcherOpen": true,
                     "backgroundColor": background_color,
                     "content": content,
                     "isCrystal": is_crystal,
@@ -1793,12 +1859,31 @@ pub(crate) async fn fusen_open_quick_note(
             )
             .map_err(|e| e.to_string())
         },
-        |updated_content| {
-            std::fs::write(&path, updated_content).map_err(|e| e.to_string())?;
-            cache_quick_open_content(Path::new(&path), updated_content);
-            Ok(())
-        },
-    )?;
+        |_updated_content| Ok(()),
+    );
+    if let Err(error) = dispatched { app.unlisten(ready_listener); return Err(error); }
+    if retained.is_none() {
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(15), ready_receiver).await;
+        app.unlisten(ready_listener);
+        let label = ready.map_err(|_| "付箋の表示準備が完了しませんでした。ランチャー登録と画面の非表示状態は保持しています")?
+            .map_err(|_| "付箋の表示準備が中断されました")?;
+        let mut displayed = false;
+        for _ in 0..100 {
+            if let Some(window) = app.get_webview_window(&label) {
+                if window.is_visible().unwrap_or(false) {
+                    window.unminimize().map_err(|e|e.to_string())?;
+                    window.set_focus().map_err(|e|e.to_string())?;
+                    displayed = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        if !displayed { return Err("付箋を表示できませんでした。ランチャー登録と画面の非表示状態は保持しています".into()); }
+        crate::favorite_storage::fusen_take_out_favorite(app.clone(), path.clone())?;
+    } else { app.unlisten(ready_listener); }
+    let updated_content = increment_launches_in_file(&path)?;
+    cache_quick_open_content(Path::new(&path), &updated_content);
     invalidate_shortcut_cache(shortcut_cache());
     Ok(())
 }
@@ -2340,6 +2425,19 @@ mod tests {
     }
 
     #[test]
+    fn quick_open_usage_preserves_latest_body_tags_and_geometry() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        let latest = "---\ntags: [shortcut, 調査]\nlaunches: 9\nwindow: { x: 11, y: 22 }\n---\n最新本文\n![画像](assets/a.png)";
+        std::fs::write(&path, latest).unwrap();
+        let updated = increment_launches_in_file(&path.to_string_lossy()).unwrap();
+        assert!(updated.contains("launches: 10"));
+        assert!(updated.contains("tags: [shortcut, 調査]"));
+        assert!(updated.contains("window: { x: 11, y: 22 }"));
+        assert_eq!(logic::split_frontmatter(&updated).1, logic::split_frontmatter(latest).1);
+    }
+
+    #[test]
     fn quick_open_lightweight_style_parser_preserves_color_and_window_size() {
         let content = "---\nbackgroundColor: \"#cfd8dc\"\nwindow: { x: 10, y: 20, width: 640, height: 520 }\n---\nbody";
         assert_eq!(
@@ -2348,7 +2446,30 @@ mod tests {
         );
         assert_eq!(
             launcher_window_geometry(content),
-            (Some(10), Some(20), Some(640), Some(520))
+            (Some(10.0), Some(20.0), Some(640.0), Some(520.0))
+        );
+    }
+
+    #[test]
+    fn quick_open_geometry_preserves_fractional_and_negative_logical_positions() {
+        assert_eq!(
+            launcher_window_geometry("---\nwindow: { x: -745.5, y: 50.666666666666664, width: 640.8, height: 520.4 }\n---\nbody"),
+            (Some(-745.5), Some(50.666666666666664), Some(640.8), Some(520.4))
+        );
+    }
+
+    #[test]
+    fn quick_open_geometry_ignores_missing_or_unsafe_bounds() {
+        assert_eq!(launcher_window_geometry("---\ntags: [shortcut]\n---\nbody"), (None, None, None, None));
+        for position in ["NaN", "inf", "-inf", "2147483648", "-2147483649"] {
+            assert_eq!(
+                launcher_window_geometry(&format!("---\nwindow: {{ x: {position}, y: {position}, width: 199, height: 2001 }}\n---\nbody")),
+                (None, None, None, None)
+            );
+        }
+        assert_eq!(
+            launcher_window_geometry("---\nwindow: { x: 0, y: 0, width: NaN, height: inf }\n---\nbody"),
+            (Some(0.0), Some(0.0), None, None)
         );
     }
 
@@ -2428,6 +2549,26 @@ mod tests {
         let paths: Vec<String> = result.into_iter().map(|item| item.path).collect();
 
         assert_eq!(paths, vec!["a.md", "b.md", "c.md"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn sync_canonical_paths_preserve_saved_launcher_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let normal_dir = dunce::simplified(dir.path()).to_path_buf();
+        let a = normal_dir.join("a.md");
+        let b = normal_dir.join("b.md");
+        let content = "---\ntags: [shortcut]\n---\nBody";
+        fs::write(&a, content).unwrap();
+        fs::write(&b, content).unwrap();
+        let items = vec![
+            shortcut_item_from_content(&a.canonicalize().unwrap(), content).unwrap(),
+            shortcut_item_from_content(&b.canonicalize().unwrap(), content).unwrap(),
+        ];
+        let saved = vec![b.to_string_lossy().into_owned(), a.to_string_lossy().into_owned()];
+        let result = merge_ordered_items(&sync_order_paths(&saved), items);
+        let expected = vec![dunce::canonicalize(&b).unwrap(), dunce::canonicalize(&a).unwrap()];
+        assert_eq!(result.into_iter().map(|item| PathBuf::from(item.path)).collect::<Vec<_>>(), expected);
     }
 
     #[test]

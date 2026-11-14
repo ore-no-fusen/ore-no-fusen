@@ -165,7 +165,7 @@ describe('StickyNote Component', () => {
     it('タグなしではアーカイブへの移動と表示する', async () => {
         render(<StickyNote />);
 
-        expect(await screen.findByRole('button', { name: 'アーカイブへしまう' })).not.toBeNull();
+        expect(await screen.findByRole('button', { name: 'Archiveフォルダーに保管' })).not.toBeNull();
     });
 
     it('Windows canonicalパスの同期通知で閲覧中の付箋を再読込する', async () => {
@@ -339,21 +339,21 @@ describe('StickyNote Component', () => {
         mockNoteTags = ['仕事'];
         render(<StickyNote />);
 
-        expect(await screen.findByRole('button', { name: '「仕事」へしまう' })).not.toBeNull();
+        expect(await screen.findByRole('button', { name: '「仕事」フォルダーに保管' })).not.toBeNull();
     });
 
-    it('タグが複数でもしまう先を選ぶボタンを表示する', async () => {
+    it('タグが複数でも保管先フォルダーを選ぶボタンを表示する', async () => {
         mockNoteTags = ['APL知識', 'OreNoFusen'];
         render(<StickyNote />);
 
-        expect(await screen.findByRole('button', { name: 'しまう先を選ぶ' })).not.toBeNull();
+        expect(await screen.findByRole('button', { name: '保管先フォルダーを選ぶ' })).not.toBeNull();
     });
 
     it('複数タグのしまうボタンは付箋上の指定位置に選択メニューを開く', async () => {
         mockNoteTags = ['APL知識', 'OreNoFusen'];
         render(<StickyNote />);
 
-        fireEvent.click(await screen.findByRole('button', { name: 'しまう先を選ぶ' }), {
+        fireEvent.click(await screen.findByRole('button', { name: '保管先フォルダーを選ぶ' }), {
             clientX: 320,
             clientY: 240,
         });

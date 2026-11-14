@@ -61,6 +61,8 @@ PC/GitHub、自動/手動、実施時期・条件は分類に混ぜず別列で�
 |T03-10|結果の判定|MSIX処理の失敗・未実施を成功扱いしないか|修正中・CIの回帰試験|対象時|—|◎ 通常|◎ 通常|失敗や未実施を成功扱いしない確認|
 |T03-11|成果物の保全|必要な成果物を残し、削除対象だけを整理できるか|修正中・CIの回帰試験|対象時|—|◎ 通常|◎ 通常|削除対象/対象外の確認。結果なしで省略しない|
 
+安全系の4ファイル（`data-safety.spec.ts`、`trash-maintenance.spec.ts`、`archive-restore.spec.ts`、`pwa-delete-persistence.spec.ts`）は、文書のみ以外のPR・develop/main push・merge_groupで独立した `e2e-safety` ジョブが実行する。CI gateで成功を必須とし、既存のPC hookと日英ガイド検査は維持する。
+
 ## T04 連携・全体動作のテスト
 
 表5：連携・全体動作のテストの実施条件
@@ -91,8 +93,8 @@ PC/GitHub、自動/手動、実施時期・条件は分類に混ぜず別列で�
 |T06-02|配布スクリプト|PowerShell・XMLに構文の誤りがないか|該当変更時、独立workflowで早期確認|対象時|—|◎ 該当変更時|◎ 該当変更時|候補：PC検査を準備すれば再利用可能。短時間|
 |T06-03|梱包処理|Windows SDKを使ったMSIX梱包処理が正しく動くか|梱包コード変更時の手動回帰|梱包処理変更時|—|—|—|PCの隔離試験。署名/導入はしない。開発用MSIX梱包・署名/T06-06と別|
 |T06-04|公開資料|公開するマニュアルに内部資料が混ざらないか|公開マニュアルbuild前|対象時|—|◎ 通常|◎ 通常|公開ファイルに内部資料を混ぜない確認|
-|T06-05|署名|MSIXの署名が正しいか|MSIX作成・署名後|実機/リリース時|—|◎ MSIX対象時|◎ MSIX対象時|対象のMSIXと証明書ごとの確認。別成果物の成功を流用不可|
-|T06-06|インストール・起動|MSIXをインストールし、アプリを起動できるか|署名検証後|実機/リリース時|—|◎ MSIX対象時|◎ MSIX対象時|CIは使い捨て環境、PCは実機。データ保全が必要|
+|T06-05|署名|MSIXの署名が正しいか|MSIX作成・署名後|実機/リリース時|—|—|—|PCの対象MSIXと証明書を確認|
+|T06-06|インストール・起動|MSIXを導入・起動できるか|署名検証後|実機/リリース時|—|—|—|PCで実機確認しデータを保全|
 |T06-07|Store提出物|提出形式が正しく、実機合格したexeと一致するか|正式PC実機合格後のSTEP 2|STEP 2|—|—|—|残す。実機合格exeを再利用し、再コンパイルしない|
 |T06-08|公開後の更新|Storeから実際に導入・更新できるか|提出・認定・公開後|正式公開後|—|—|—|開発用MSIXとは署名/配布経路が異なるため残す|
 
@@ -113,14 +115,14 @@ T01は文書形式やリンク処理の検査であり、設計内容の妥当�
 |設計書build・リンク検査|旧T31|設計書変更時の独立した分岐|設計書変更時|—|◎ docs-v2変更時|◎ docs-v2変更時|既存：Testから1回だけ呼ぶ。独立pushとの二重起動を解消|
 |実際の変更範囲の判定|旧T17|CIでは判定器の回帰合格後|手動調査時|hook独自判定|◎ 全変更|◎ 全変更|文書コンテンツ判定をPC/CIで共通化。移動元も検査|
 |テストカバレッジ集計|旧T38|必要時、単体テストと併せて集計|必要時のみ|—|—|—|常時実行ではない。不要な毎回実行を追加しない|
-|Tauri用画面の静的build|旧T21|MSIX対象時はTauri exeのbeforeBuild、対象外はfrontend末尾|必要時|—|◎ 通常（実検査1回）|◎ 通常（実検査1回／証跡再利用0回）|MSIX時はexe作成に集約。対象外はfrontendで検査し、どちらの失敗もgateで拒否|
-|Web/API用の本番build|旧T22|CIのMSIX内（Tauri exeより前）|必要時|—|◎ MSIX対象時|◎ MSIX対象時|Tauri用画面の静的buildとは対象/出力が異なる。Vercelとの同等性は別確認|
+|Tauri用画面の静的build|旧T21|frontend内|必要時|—|◎ 通常|◎ 通常／再利用可|MSIXをGitHubで作らず画面buildを残す|
+|Web/API用の本番build|旧T22|frontend内|必要時|—|◎ 通常|◎ 通常／再利用可|Tauri静的buildとは対象が異なる|
 |CI結果の集約・統合可否|旧T18|各PR・統合後CIの末尾|リリース時にも照合|—|◎ 全変更|◎ 全変更|残す。必要な検査の失敗/不明/予期しないskipは拒否|
 |VercelのWeb/API自動build|旧T43|PR/統合後に独立起動、対象実機より前|—|—|◎ 外部サービス|◎ 外部サービス|候補：文書変更の外部buildは今回の削減対象外。設定/環境の別確認が必要|
 |リリース候補・CI・tree・exe照合|旧T44|正式候補固定前・再開時・統合後|STEP 1/2・再開時|—|CIを参照|CIを参照|残す。確認待ちでbuildをやり直さず同一exeを使用|
-|開発証明書の準備・信頼確認|旧T24|重いbuildの前|初回/失効時・build前|—|◎ MSIX対象時|◎ MSIX対象時|PCと使い捨てCIの証明書は別。単純な同一扱い不可|
-|Tauri/Rust実行ファイルbuild|旧T23|CIは前段合格後のMSIX内／正式STEP 1|MSIX/リリース時|—|◎ MSIX対象時|◎ MSIX対象時|候補：PC移管で枠節約。ただしCIのダミー環境と提出物は別|
-|開発用MSIX梱包・署名|旧T25|exeのビルド成功後|実機/リリース時|—|◎ MSIX対象時|◎ MSIX対象時|同一exeは再buildせず梱包へ再利用する|
+|開発証明書の準備・信頼確認|旧T24|PCでMSIX作成前|初回/失効時|—|—|—|PCの証明書を確認|
+|Tauri/Rust実行ファイルbuild|旧T23|正式STEP 1|MSIX/リリース時|—|—|—|PCで実機確認し提出用にも再利用|
+|開発用MSIX梱包・署名|旧T25|PCのexeビルド成功後|実機/リリース時|—|—|—|実機確認用をPCで作成|
 |公開マニュアルbuild・リンク検査|旧T30|公開マニュアルが対象の場合|原稿変更時|—|◎ 通常/ガイド文書|◎ 通常/ガイド文書|候補：本体と公開repoの原稿一致を確認して再利用|
 
 ### 工程と実行順
@@ -128,9 +130,9 @@ T01は文書形式やリンク処理の検査であり、設計内容の妥当�
 要求整理→設計→画面・内部処理の実装→対象テスト→配布物作成→導入・実機確認→申請・公開後確認という開発の流れを維持します。作成作業をテストと数えません。T分類の掲載順はCIコマンドの厳密な直列実行順ではありません。
 
 - PC通常コミット直前：共通の文書判定→差分検査→対象時にガイド2件を除くアプリE2E T02-04。全件Vitest/型検査はCIへ集約。版番号限定モードだけT06-01。
-- PR/統合後CI：判定器の回帰T03-05→実際の対象判定→対象jobを並列→必要時MSIX→CI結果の集約。T03-05の判定器を試すテストと、実際に判定する処理は別です。
-- frontendの現行順：リリース制御→管理画面→公開原稿境界/マニュアルbuild→ガイドE2E→運用回帰→Discord→Vitest→型→Tauri画面build。分類順への実装変更はしていません。
-- MSIXの現行順：軽量な同一入力照合（一致なら状態記録で終了）→不一致時は証明書準備→Web/API build→Tauri exe（画面build含む）→梱包/署名→署名検証T06-05→導入・起動T06-06。単独手動起動時のみ追加検査がある条件も従来どおりです。
+- PR/統合後CI：判定器の回帰→対象判定→対象jobを並列→CI結果の集約。GitHubではMSIXを作成しない。
+- frontendの現行順：リリース制御→管理画面→公開原稿境界/マニュアルbuild→ガイドE2E→運用回帰→Discord→Vitest→型→Web/API build→Tauri画面build。分類順への実装変更はしていません。
+- PCのMSIX：実行ファイルを作成→開発署名MSIXを梱包→署名・導入・起動を確認。
 - マージ前：最新head/base/merge候補と、全適用CI・別workflow・必要Vercelの成功を確認。CI gate成功だけで統合しません。
 - iPhone実機T04-04はdevelop統合後のCI・Preview反映確認後。正式なPC実機T04-03、Store提出物T06-07、Store更新T06-08は各所定工程で実施。
 
@@ -142,16 +144,16 @@ T03-08〜11はリリース・復旧・結果判定・保全のロジックを試
 
 文書コンテンツのみの変更はアプリ検査を省略し、scope・文書差分検査・必要な文書build/リンク検査・gateを行います。設定・依存・実行コード・混在・未知の変更は通常判定を維持します。
 
-- Tauri画面build：MSIX対象時はTauri exeのbeforeBuildへ集約し1回、対象外はfrontendで1回。MSIX側の失敗はMSIX jobとgateを失敗させる。MSIX依存が前段にあるため、画面buildの失敗検知はexe作成工程へ移る。
+- Tauri画面build：frontendで実行し、失敗をgateで拒否する。
 - T02-01/02：毎回のPC全件実行を廃止しPRのCIへ集約。T02-05：ガイド2件はCIへ集約。
 - 運用・連携等の回帰：共通依存を含む変更範囲を確認して選択実行する候補。
 - 公開マニュアルbuildと外部Vercel：対象/環境を照合してから整理する候補。
 
 ## 統合後の実行・証跡照合
 
-GitHub欄の◎は必要な検証を示します。PR/mainは実検査、develop統合後のfrontend・rust・msixは条件が一致すれば現在SHAのジョブでPR成功証跡を照合します。tree全体・base/head・同じrepoの最新成功run/attempt・OS image/Node/Rust/設定・24時間以内・artifact digestの全一致が条件です。失敗・未完了・キャンセル・不明は成功にしません。欠落や不一致なら全検査へ戻り、gateは参照元の変化を拒否します。全検査へ戻すときはActionsのRe-run all jobsを選びます。失敗jobだけの再実行では成功済みjobは走り直しません。詳細は[CI運用規則](CI_MERGE_POLICY.md)を参照します。
+GitHub欄の◎は必要な検証を示します。PR/mainは実検査、develop統合後のfrontend・rustは条件が一致すれば現在SHAのジョブでPR成功証跡を照合します。tree全体・base/head・同じrepoの最新成功run/attempt・OS image/Node/Rust/設定・24時間以内・artifact digestの全一致が条件です。失敗・未完了・キャンセル・不明は成功にしません。欠落や不一致なら全検査へ戻り、gateは参照元の変化を拒否します。全検査へ戻すときはActionsのRe-run all jobsを選びます。失敗jobだけの再実行では成功済みjobは走り直しません。詳細は[CI運用規則](CI_MERGE_POLICY.md)を参照します。
 
-T06-05/06の再利用は新規パッケージの署名・導入を意味せず、同じ入力を検査した参照元runの結果照合です。正式提出物、PC/iPhone実機、main、独立した文書・分析・Vercelの検査は省略しません。短い回帰や異なる配信環境の検査は独立した失敗を検知するため残します。
+T06-05/06はPCで確認する。正式提出物、PC/iPhone実機、独立した文書・分析・Vercelの検査は省略しない。
 
 ## 実行コマンド
 
@@ -188,8 +190,8 @@ T06-05/06の再利用は新規パッケージの署名・導入を意味せず�
 |T06-02|`MSIX Script Check`|
 |T06-03|`node --test scripts/release-machine/msix.test.mjs`|
 |T06-04|`node --test scripts/export-public-guide.test.mjs`|
-|T06-05|`Get-AuthenticodeSignature等`|
-|T06-06|`ci-msix-smoke.ps1 / windows.ps1 -Action Install`|
+|T06-05|`Get-AuthenticodeSignature等`（PC）|
+|T06-06|`windows.ps1 -Action Install`（PC）|
 |T06-07|`validate-msix.ps1 / SHA256照合`|
 |T06-08|`STEP 3-4`|
 
@@ -205,8 +207,8 @@ T06-05/06の再利用は新規パッケージの署名・導入を意味せず�
 |CI結果の集約・統合可否|旧T18|`node scripts/ci-scope.mjs gate`|
 |VercelのWeb/API自動build|旧T43|`GitHub連携のVercel build`|
 |リリース候補・CI・tree・exe照合|旧T44|`release-machine/github.mjs・engine.mjs`|
-|開発証明書の準備・信頼確認|旧T24|`ci-msix-certificate.ps1 / test-msix.ps1 -PrepareCertificateOnly`|
-|Tauri/Rust実行ファイルbuild|旧T23|`npx tauri build --no-bundle --ci（CI）`|
+|開発証明書の準備・信頼確認|旧T24|`test-msix.ps1 -PrepareCertificateOnly`|
+|Tauri/Rust実行ファイルbuild|旧T23|PCのリリース手順に従う|
 |開発用MSIX梱包・署名|旧T25|`test-msix.ps1 -SkipBuild -NoInstall`|
 |公開マニュアルbuild・リンク検査|旧T30|`npm --prefix public-guide run build`|
 
