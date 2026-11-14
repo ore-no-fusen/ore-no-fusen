@@ -2,6 +2,7 @@
 
 import { trackEvent } from '../utils/analytics';
 import React, { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 export const SHARED_WEB_PUBLIC_URL = 'https://ore-no-fusen.vercel.app/shared';
 // Stable develop alias; its /viewer callback is registered in Google OAuth.
@@ -11,15 +12,32 @@ export default function SharedWebQr({ isEnglish, webSyncBusy, onSync, onOpen }: 
     isEnglish: boolean;
     webSyncBusy: boolean;
     onSync: () => void;
-    onOpen: () => void;
+    onOpen: (url: string) => void;
 }) {
-    const url = process.env.NODE_ENV === 'development' ? SHARED_WEB_TEST_URL : SHARED_WEB_PUBLIC_URL;
+    const [url, setUrl] = useState<string | null>(null);
+    const [destinationFailed, setDestinationFailed] = useState(false);
     const [expanded, setExpanded] = useState(false);
     const [image, setImage] = useState('');
     const [failed, setFailed] = useState(false);
 
     useEffect(() => {
-        if (!expanded) return;
+        let cancelled = false;
+        const resolve = async () => {
+            if (!('__TAURI_INTERNALS__' in window)) {
+                return process.env.NODE_ENV === 'development' ? SHARED_WEB_TEST_URL : SHARED_WEB_PUBLIC_URL;
+            }
+            const member = await invoke<{ environment: string }>('member_get');
+            if (member.environment === 'development') return SHARED_WEB_TEST_URL;
+            if (member.environment === 'production') return SHARED_WEB_PUBLIC_URL;
+            throw new Error('Unknown application environment');
+        };
+        void resolve().then(value => { if (!cancelled) setUrl(value); })
+            .catch(() => { if (!cancelled) setDestinationFailed(true); });
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        if (!expanded || !url) return;
         let cancelled = false;
         setFailed(false);
         void import('qrcode').then(({ default: QRCode }) => QRCode.toDataURL(url, {
@@ -34,17 +52,18 @@ export default function SharedWebQr({ isEnglish, webSyncBusy, onSync, onOpen }: 
             <button type="button" onClick={onSync} disabled={webSyncBusy} className="rounded border border-sky-900 px-2 py-1 hover:bg-zinc-800 disabled:opacity-50">{webSyncBusy ? (isEnglish ? 'Syncing…' : '同期中…') : (isEnglish ? '↻ Sync' : '↻ 同期')}</button>
             <span aria-hidden="true" className="px-2 text-zinc-500">→</span>
             <div className="flex items-center border-l border-zinc-600 pl-1">
-                <button type="button" onClick={() => { trackEvent('feature_used', {feature_name:'web_guide_open'}); onOpen(); }} aria-label={isEnglish ? 'Open Web on this PC' : 'このPCでWebを開く'} className="rounded px-2 py-1 hover:bg-zinc-800">PC</button>
+                <button type="button" disabled={!url} onClick={() => { if (!url) return; trackEvent('feature_used', {feature_name:'web_guide_open'}); onOpen(url); }} aria-label={isEnglish ? 'Open Web on this PC' : 'このPCでWebを開く'} className="rounded px-2 py-1 hover:bg-zinc-800">PC</button>
                 <span aria-hidden="true" className="text-zinc-600">／</span>
-                <button type="button" aria-label={isEnglish ? 'Open Web on phone (QR)' : 'スマホでWebを開く（QR）'} aria-expanded={expanded} onClick={() => { if (!expanded) trackEvent('feature_used', {feature_name:'web_guide_open'}); setExpanded(!expanded); }} className="rounded px-2 py-1 hover:bg-zinc-800">{isEnglish ? 'Phone' : 'スマホ'}</button>
+                <button type="button" disabled={!url} aria-label={isEnglish ? 'Open Web on phone (QR)' : 'スマホでWebを開く（QR）'} aria-expanded={expanded} onClick={() => { if (!expanded) trackEvent('feature_used', {feature_name:'web_guide_open'}); setExpanded(!expanded); }} className="rounded px-2 py-1 hover:bg-zinc-800">{isEnglish ? 'Phone' : 'スマホ'}</button>
             </div>
         </div>
+        {destinationFailed && <p role="alert">{isEnglish ? 'Could not determine the Web destination. Please restart the app.' : 'Webの接続先を判定できませんでした。アプリを再起動してください。'}</p>}
         {expanded && <div className="mt-2 rounded border border-zinc-700 bg-zinc-900 p-3 text-zinc-100">
             <p>{isEnglish ? 'Scan with your iPhone or Android camera, then connect the same Google account.' : 'iPhone・Androidのカメラで読み取り、同じGoogleアカウントで接続してください。'}</p>
             {image && <img src={image} width={240} height={240} alt={isEnglish ? 'QR code for the public Web page' : '公開Webを開くQRコード'} className="my-2 max-w-full" />}
             {failed && <p role="alert">{isEnglish ? 'Could not generate QR. Use the URL below.' : 'QRを生成できませんでした。下のURLをお使いください。'}</p>}
             <p className="break-all select-text">{url}</p>
-            {process.env.NODE_ENV === 'development' && <p className="mt-2 text-amber-200">{isEnglish ? 'Develop test page. Sign-in to Vercel may be required.' : 'developの実機確認用です。Vercelのログインを求められる場合があります。'}</p>}
+            {url === SHARED_WEB_TEST_URL && <p className="mt-2 text-amber-200">{isEnglish ? 'Develop test page. Sign-in to Vercel may be required.' : 'developの実機確認用です。Vercelのログインを求められる場合があります。'}</p>}
         </div>}
     </div>;
 }

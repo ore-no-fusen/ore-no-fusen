@@ -62,6 +62,23 @@ flowchart LR
 
 ## 4 機能要件・処理シーケンス
 
+### Web入口の環境判定
+
+QLの「PC」リンクと「スマホ」のQRは同じURLを使用する。Dev MSIXはdevelopの固定Preview `/shared`、Store版は本番 `/shared` を開く。TauriではRustの `member_get.environment` によるパッケージ判定を使用し、productionビルドであることをStore版の判定に使わない。判定中は入口を無効にし、判定不能・取得失敗時は案内を表示して本番へフォールバックしない。同期処理とDrive上の付箋は変更しない。
+
+```mermaid
+sequenceDiagram
+    participant User as 利用者
+    participant QL as QL画面
+    participant App as Rust環境判定
+    QL->>App: member_get
+    App-->>QL: development / production
+    User->>QL: PCリンク / スマホQR
+    QL-->>User: 同一環境のWeb入口
+```
+
+図4-0：パッケージ環境に対応するWeb入口。
+
 本章の保存シーケンスは従来方式（追記型ログ）を示す。閲覧・編集・同期などの機能を維持しつつ、改修方式では第6章に従い固定状態の条件付き更新へ置き換える。従来方式と改修方式を同時に採用する意味ではない。
 
 ### 4.0 PCランチャーと同じ表示順
