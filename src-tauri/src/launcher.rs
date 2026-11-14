@@ -320,7 +320,9 @@ fn shortcut_item_from_content(path: &Path, content: &str) -> Option<QuickOpenIte
     if !note_has_tag(&tags, "shortcut") {
         return None;
     }
-    let path_str = path.to_string_lossy().to_string();
+    // Sync scans a canonical base (Windows \\?\ prefix), while the launcher
+    // saves ordinary paths. Keep the same identity before applying saved order.
+    let path_str = dunce::simplified(path).to_string_lossy().to_string();
     let filename = path.file_name()?.to_string_lossy();
     let (_, _, context) = logic::parse_filename(&filename);
     Some(QuickOpenItem {
@@ -2545,6 +2547,25 @@ mod tests {
         let paths: Vec<String> = result.into_iter().map(|item| item.path).collect();
 
         assert_eq!(paths, vec!["a.md", "b.md", "c.md"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn sync_canonical_paths_preserve_saved_launcher_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let normal_dir = dunce::simplified(dir.path()).to_path_buf();
+        let a = normal_dir.join("a.md");
+        let b = normal_dir.join("b.md");
+        let content = "---\ntags: [shortcut]\n---\nBody";
+        fs::write(&a, content).unwrap();
+        fs::write(&b, content).unwrap();
+        let items = vec![
+            shortcut_item_from_content(&a.canonicalize().unwrap(), content).unwrap(),
+            shortcut_item_from_content(&b.canonicalize().unwrap(), content).unwrap(),
+        ];
+        let saved = vec![b.to_string_lossy().into_owned(), a.to_string_lossy().into_owned()];
+        let result = merge_ordered_items(&saved, items);
+        assert_eq!(result.into_iter().map(|item| item.path).collect::<Vec<_>>(), saved);
     }
 
     #[test]
