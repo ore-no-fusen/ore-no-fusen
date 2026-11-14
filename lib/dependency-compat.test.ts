@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { createRequire } from 'node:module';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, normalize } from 'node:path';
+import { isAbsolute, join, normalize } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
@@ -10,14 +10,19 @@ const require = createRequire(import.meta.url);
 const fromPackage = (name: string) => createRequire(require.resolve(name));
 
 describe('dependency consumer compatibility', () => {
-  it('Sentry glob finds matching source files without including other files', () => {
+  it('Sentry globFiles reads matching source files and excludes ignored files and directories', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'fusen-glob-'));
     try {
       mkdirSync(join(dir, 'nested'));
       writeFileSync(join(dir, 'nested', 'note.md'), 'note');
+      writeFileSync(join(dir, 'nested', 'skip.md'), 'ignored');
       writeFileSync(join(dir, 'nested', 'other.txt'), 'other');
-      const glob = fromPackage('@sentry/bundler-plugin-core')('glob');
-      expect(glob.globSync('**/*.md', { cwd: dir }).map(normalize)).toEqual([join('nested', 'note.md')]);
+      mkdirSync(join(dir, 'folder.md'));
+      const { globFiles } = require('@sentry/bundler-plugin-core');
+      const matches: string[] = await globFiles('**/*.md', { cwd: dir, ignore: ['**/skip.md'] });
+      expect(matches.map(normalize)).toEqual([join(dir, 'nested', 'note.md')]);
+      expect(matches.every(isAbsolute)).toBe(true);
+      expect(readFileSync(matches[0], 'utf8')).toBe('note');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

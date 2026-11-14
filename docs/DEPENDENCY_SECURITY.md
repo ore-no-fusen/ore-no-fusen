@@ -27,8 +27,10 @@ main反映後の自動更新はglob・minimatch・serialize-javascript・rustls�
 | Sentryのglob | bundler-plugin-coreが使うglobを14.0.6へ限定override。ソースファイル検索とSentryを含むproduction buildを確認する。 |
 | minimatch | 3系は3.1.5、5系は5.1.9、7〜10系は11.0.8へrange限定override。旧callable exportと新named exportの両方、対象/対象外のパターンを確認する。 |
 | PWAの直列化 | rollup-plugin-terser配下のserialize-javascriptを7.1.4へ限定override。関数とRegExpを含むオプションをworkerへ渡してminifyし、production Service Worker生成を確認する。 |
-| HTTPS/TLS | rustls0.23.46と必須のrustls-webpki更新のみ。親HTTPクライアントのmajorは変えず、新候補で実Drive HTTPS通信を確認する。 |
+| HTTPS/TLS | rustls0.23.46と必須のrustls-webpkiを更新。lock解決時のtempfile依存は宣言範囲内でgetrandom0.3.4へ再解決される。親HTTPクライアントのmajorは変えず、新候補で実Drive HTTPS通信を確認する。 |
 
-これらのoverrideも上流の宣言範囲外であり、インストール成功だけでは互換性を保証しない。全適用CIと更新後exeの実機確認を行う。古い提出MSIXへ更新後exeの合格を転用しない。
+glob14・minimatch11・serialize7へのoverrideは上流の宣言範囲外であり、インストール成功だけでは互換性を保証しない。minimatch3/5のpatch更新は宣言範囲内である。全適用CIと更新後exeの実機確認を行う。古い提出MSIXへ更新後exeの合格を転用しない。
+
+ESLintはこのリポジトリを設定のrootとし、作業ワークツリーから上位の同一設定を重複して読み込まない。検査対象や規則は無効化しない。
 
 一次資料：[glob](https://registry.npmjs.org/glob/latest)、[minimatch](https://registry.npmjs.org/minimatch)、[serialize-javascript](https://github.com/yahoo/serialize-javascript/blob/v7.1.4/index.js)、[rustls依存](https://crates.io/api/v1/crates/rustls/0.23.46/dependencies)。
