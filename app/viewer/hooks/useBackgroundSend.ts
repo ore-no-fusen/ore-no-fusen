@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   downloadFromDrive,
   uploadWithAutoRefresh,
@@ -46,6 +46,7 @@ type UseBackgroundSendOptions = {
 };
 
 type UseBackgroundSendReturn = {
+  activeDraftId: string | null;
   isSendingInBackground: boolean;
   backgroundSendSuccess: boolean;
   backgroundSendError: string | null;
@@ -63,6 +64,8 @@ export function useBackgroundSend({
   onTokenRefreshed,
   onSessionExpired,
 }: UseBackgroundSendOptions): UseBackgroundSendReturn {
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const busy = useRef(false);
   const [isSendingInBackground, setIsSendingInBackground] = useState(false);
   const [backgroundSendSuccess, setBackgroundSendSuccess] = useState(false);
   const [backgroundSendError, setBackgroundSendError] = useState<string | null>(null);
@@ -74,11 +77,14 @@ export function useBackgroundSend({
    * 副作用: Drive API 呼び出し（画像アップロード・JSON 更新）、IndexedDB 書き込み（saveDraft）、localStorage 読み書き（トークン）
    */
   const sendToPC = async ({ rawText, tags, blobs, videoBlobs, files = [], draftId, targetPcId }: SendPayload): Promise<boolean> => {
+    if (busy.current) return false;
     if (!accessToken) {
       setBackgroundSendError('Driveに接続してください。');
       setTimeout(() => setBackgroundSendError(null), 5000);
       return false;
     }
+    busy.current = true;
+    setActiveDraftId(draftId);
     setIsSendingInBackground(true);
     setBackgroundSendError(null);
 
@@ -120,10 +126,23 @@ export function useBackgroundSend({
         : {};
       const sentAt = nowJST();
       const videosToSend: VideoBlobMap = new Map(videoBlobs ?? []);
+      if (Array.from(videosToSend.values()).some(video => !video.blob || video.blob.size === 0)) {
+        throw new Error('動画のデータがありません。動画を選び直してください。');
+      }
       const legacyVideosToSend: VideoBlobMap = new Map();
       for (const [fileName, entry] of videosToSend.entries()) {
         const driveName = fileName || buildVideoFileName(entry.originalName, title);
         legacyVideosToSend.set(driveName, entry);
+      }
+
+      // Save the playable local copy before any external upload.
+      if (legacyVideosToSend.size > 0) {
+        await saveDraft({
+          id: draftId ?? noteId, title, body: extractedBody, created_at: sentAt,
+          images: Array.from(mergedBlobs, ([fileName, blob]) => ({ fileName, blob })),
+          videos: Array.from(legacyVideosToSend, ([fileName, { blob, originalName }]) => ({ fileName, originalName, blob })),
+          tags,
+        });
       }
 
       // --- キュー配列方式: read-modify-write ---
@@ -198,24 +217,24 @@ export function useBackgroundSend({
       await uploadWithAutoRefresh(token, 'notes_from_iphone.json', { items: updatedItems });
 
       // 送信済みとして IndexedDB に保存（sent_at をセット）
-      await saveDraft({
+      try { await saveDraft({
         id: draftId ?? noteId,
         title,
         body: fullBody,
         created_at: sentAt,
         files: files.map(fileMetadata),
         images: Array.from(mergedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file })),
-        videos: Array.from(legacyVideosToSend.entries()).map(([fileName, { originalName }]) => ({
-          fileName,
-          originalName,
-        })),
+        videos: Array.from(legacyVideosToSend, ([fileName, { originalName }]) => ({ fileName, originalName })),
         tags,
         sent_at: sentAt,
         type: videoItems.length > 0 ? 'video' : 'note',
         videoFileName: firstVideo?.videoFileName,
         originalFileName: firstVideo?.originalFileName,
         memo: videoMemo,
-      });
+      }); } catch {
+        // The Drive queue is already committed. Returning false would invite a duplicate send.
+        setBackgroundSendError('PCへの送信は完了しましたが、端末の送信済み表示を更新できませんでした。再送しないでください。');
+      }
 
       setIsSendingInBackground(false);
       setBackgroundSendSuccess(true);
@@ -235,8 +254,8 @@ export function useBackgroundSend({
         setTimeout(() => setBackgroundSendError(null), 5000);
       }
       return false;
-    }
+    } finally { busy.current = false; setActiveDraftId(null); }
   };
 
-  return { isSendingInBackground, backgroundSendSuccess, backgroundSendError, sendToPC };
+  return { activeDraftId, isSendingInBackground, backgroundSendSuccess, backgroundSendError, sendToPC };
 }

@@ -36,17 +36,21 @@ async function serializeImages(images: { fileName: string; blob: Blob }[]): Prom
   })).then((r) => r.filter(Boolean));
 }
 
-async function serializeVideos(videos: { fileName: string; originalName: string; blob?: Blob }[]): Promise<unknown[]> {
-  return stripVideoBlobs(videos);
+const videoBuffers = new WeakMap<Blob, Promise<ArrayBuffer>>();
+function videoBuffer(blob: Blob): Promise<ArrayBuffer> {
+  let buffer = videoBuffers.get(blob);
+  if (!buffer) {
+    buffer = blob.arrayBuffer();
+    videoBuffers.set(blob, buffer);
+    void buffer.catch(() => videoBuffers.delete(blob));
+  }
+  return buffer;
 }
-
-function stripVideoBlobs(videos: unknown[] = []): { fileName: string; originalName: string }[] {
-  return videos
-    .map((video: any) => ({
-      fileName: video.fileName,
-      originalName: video.originalName || video.fileName,
-    }))
-    .filter((video) => video.fileName);
+async function serializeVideos(videos: { fileName: string; originalName: string; blob?: Blob }[]): Promise<unknown[]> {
+  return Promise.all(videos.map(async ({ fileName, originalName, blob }) => ({
+    fileName, originalName,
+    ...(blob && blob.size > 0 ? { data: await videoBuffer(blob), type: blob.type } : {}),
+  })));
 }
 
 /** ArrayBuffer → Blob に変換（読み込み時） */
@@ -97,7 +101,26 @@ function logToFusenLogs(msg: string): void {
   } catch { /* ignore */ }
 }
 
-export async function saveDraft(draft: DraftRecord): Promise<void> {
+const draftOperations = new Map<string, Promise<void>>();
+function inDraftOrder(id: string, action: () => Promise<void>): Promise<void> {
+  const previous = draftOperations.get(id) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(action);
+  draftOperations.set(id, next);
+  void next.finally(() => { if (draftOperations.get(id) === next) draftOperations.delete(id); }).catch(() => {});
+  return next;
+}
+export function saveDraft(draft: DraftRecord): Promise<void> {
+  return inDraftOrder(draft.id, async () => {
+    try { await writeDraft(draft); }
+    catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        throw new Error('動画を保存する空き容量が足りません。不要な付箋を削除してから再度お試しください。');
+      }
+      throw error;
+    }
+  });
+}
+async function writeDraft(draft: DraftRecord): Promise<void> {
   const hasFiles = Object.prototype.hasOwnProperty.call(draft, 'files');
   const files = hasFiles ? await serializeFiles(draft.files || []) : undefined;
   const images = await serializeImages(draft.images || []);
@@ -113,6 +136,7 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
     const getReq = tx.objectStore('drafts').get(draft.id);
     getReq.onsuccess = () => {
       const existing = getReq.result;
+      if (existing?.deleted === true) { reject(new Error('この付箋は削除済みです。')); tx.abort(); return; }
       const storedDraft = {
         ...draft,
         originNoteId: draft.originNoteId ?? existing?.originNoteId,
@@ -122,7 +146,10 @@ export async function saveDraft(draft: DraftRecord): Promise<void> {
         type: draft.type ?? existing?.type,
         videoFileName: hasVideoFileName ? draft.videoFileName : existing?.videoFileName,
         originalFileName: hasOriginalFileName ? draft.originalFileName : existing?.originalFileName,
-        videos: hasVideos ? videos : stripVideoBlobs(existing?.videos),
+        videos: hasVideos ? (videos as any[]).map(video => ({
+          ...(existing?.videos ?? []).find((saved: any) => saved.fileName === video.fileName),
+          ...video,
+        })) : (existing?.videos ?? []),
         files: hasFiles ? files : existing?.files,
         memo: hasMemo ? draft.memo : existing?.memo,
         images,
@@ -154,10 +181,10 @@ export async function loadAllDrafts(): Promise<DraftRecord[]> {
     const tx = db.transaction('drafts', 'readonly');
     const req = tx.objectStore('drafts').getAll();
     req.onsuccess = () => {
-      const drafts = (req.result ?? []).map((d: any) => ({
+      const drafts = (req.result ?? []).filter((d: any) => d.deleted !== true).map((d: any) => ({
         ...d,
         images: deserializeImages(d.images || []),
-        videos: deserializeVideos(d.videos || []),
+        videos: (d.videos || []).map((video: any) => ({ fileName: video.fileName, originalName: video.originalName || video.fileName })),
         files: deserializeFiles(d.files || []),
       }));
       resolve(drafts);
@@ -179,7 +206,7 @@ export async function loadDraft(id: string): Promise<DraftRecord | null> {
     const req = tx.objectStore('drafts').get(id);
     req.onsuccess = () => {
       const d = req.result ?? null;
-      if (!d) { resolve(null); return; }
+      if (!d || d.deleted === true) { resolve(null); return; }
       resolve({
         ...d,
         images: deserializeImages(d.images || []),
@@ -197,11 +224,14 @@ export async function loadDraft(id: string): Promise<DraftRecord | null> {
  * 出力: Promise<void>
  * 副作用: IndexedDB 書き込み（fusen-drafts / drafts）
  */
-export async function deleteDraft(id: string): Promise<void> {
+export function deleteDraft(id: string): Promise<void> {
+  return inDraftOrder(id, () => removeDraft(id));
+}
+async function removeDraft(id: string): Promise<void> {
   const db = await openDraftsDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
-    tx.objectStore('drafts').delete(id);
+    tx.objectStore('drafts').put({ id, deleted: true }, id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

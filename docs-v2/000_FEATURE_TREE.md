@@ -178,6 +178,7 @@
 - **通知常駐（ロックだぜ）**：重要なメモは 🔔 を ON にすると、タップして確認した後も通知が再表示され、意図的に消すまでロック画面に残り続ける〔要求：§9.3・§9.4／仕様：003_IPHONE §6.2〕
   - 実画面：iPhone のロック画面／PWA メモ一覧の 🔔 ボタン
 - **iPhone から PC へ送る**：PWA の書く画面からテキスト・画像・動画（mp4/mov、PC 側では `assets/video/` に保存）・汎用ファイル添付を送れる。PC は30秒ポーリングで受け取り、受信時は確認ダイアログを出して取り込み／取り消しができる。複数の PC を同じ Drive に繋いでいる場合は送信先 PC を選べる〔要求：§9.2 REQ_IP_02／仕様：003_IPHONE §6.3・§6.4・§6.4.1／コード：IphoneReturnDialog.tsx・lib.rs `fusen_apply_iphone_return`〕
+  - 動画の端末内コピーを付箋から再生。付箋削除でコピーも削除し、元動画とPC受信済み動画は保持。保存・送信は画面を開いている間に非同期処理〔仕様：003_IPHONE §6.4／コード：WriteStep.tsx・indexeddb.ts・useBackgroundSend.ts〕
   - 実画面：iPhone PWA の write 画面／PC の受信確認ダイアログ
 - **Web共有**：クイックランチャー登録付箋を、自分の Google Drive 経由でブラウザから閲覧・本文編集・チェック切替・新規作成できる。同期は Windows 側の「Webと同期」を押したときだけの手動式で、競合・欠落・未確認の変更を自動で上書き・削除しない。共有の停止・再開、PCリンクとQRコードで同じ環境の共有画面を開く操作もある（Dev MSIXは検証Web、Store版は本番Web、判定不能時は開かない）〔仕様：013_WEB_SHARE §2・§4／コード：lib.rs `fusen_sync_quick_launcher_to_web`・web_share_snapshot.rs ほか／app/shared〕
   - PCランチャーの手動順を同期しWebへ適用。複数PCは表示順のPCを選択、順序だけの異常では本文閲覧を維持〔仕様：013_WEB_SHARE §4.0〕
