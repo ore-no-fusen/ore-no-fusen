@@ -252,6 +252,7 @@ function saveToIndexedDB(id, title, body, images, origin) {
         const getReq = store.get(id);
         getReq.onsuccess = () => {
           const existing = getReq.result;
+          if (existing?.deleted === true) return;
           store.put(
             {
               ...existing,

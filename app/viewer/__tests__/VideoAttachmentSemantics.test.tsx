@@ -271,4 +271,23 @@ describe('PC付箋の返送ID', () => {
     expect(payload.items[0]).not.toHaveProperty('originNoteId');
     expect(payload.items[0]).not.toHaveProperty('originAppearance');
   });
+  it('動画の端末保存が容量不足ならDriveへ送信しない', async () => {
+    vi.mocked(saveDraft).mockRejectedValueOnce(new DOMException('full', 'QuotaExceededError'));
+    const { result } = renderHook(() => useBackgroundSend({ accessToken: 'token', onTokenRefreshed: vi.fn(), onSessionExpired: vi.fn() }));
+    let sent;
+    await act(async () => { sent = await result.current.sendToPC({ rawText: '動画', tags: [], blobs: new Map(), videoBlobs: new Map([['v.mov', { originalName: 'v.mov', blob: new Blob(['video']) }]]), draftId: 'draft' }); });
+    expect(sent).toBe(false);
+    expect(uploadVideoWithAutoRefresh).not.toHaveBeenCalled();
+    expect(uploadWithAutoRefresh).not.toHaveBeenCalled();
+  });
+  it('Drive送信後の端末表示保存失敗は再送を促す送信失敗にしない', async () => {
+    vi.mocked(saveDraft).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('local failure'));
+    const { result } = renderHook(() => useBackgroundSend({ accessToken: 'token', onTokenRefreshed: vi.fn(), onSessionExpired: vi.fn() }));
+    let sent;
+    await act(async () => { sent = await result.current.sendToPC({ rawText: '動画', tags: [], blobs: new Map(), videoBlobs: new Map([['v.mov', { originalName: 'v.mov', blob: new Blob(['video']) }]]), draftId: 'draft' }); });
+    expect(sent).toBe(true);
+    expect(uploadWithAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(result.current.backgroundSendError).toContain('再送しない');
+  });
+
 });

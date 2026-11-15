@@ -18,6 +18,17 @@ import type { TranslationKey } from '@/lib/i18n';
 import { buildFileName } from './file-attachments';
 import type { DraftFileAttachment, PcDevice, PendingHydrate, PendingVideoMeta, VideoBlobMap } from './types';
 
+function VideoPreview({ blob, t }: { blob?: Blob; t: (key: TranslationKey) => string }) {
+  const [url, setUrl] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!blob || blob.size === 0) { setUrl(null); return; }
+    const next = URL.createObjectURL(blob);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [blob]);
+  return url ? <video controls playsInline preload="metadata" src={url} className="w-full max-h-60" /> : <p role="status" className="text-xs text-gray-500">{t('pwa.write.videoMissing')}</p>;
+}
+
 // ---------------------------------------------------------------------------
 // WriteStep: メモ編集画面（step === 'write'）
 // ---------------------------------------------------------------------------
@@ -46,6 +57,7 @@ type WriteStepProps = {
   isLoading: boolean;
   isSendingInBackground: boolean;
   currentDraftId: string | null;
+  currentDraftIdRef?: React.MutableRefObject<string | null>;
   accessToken: string | null;
   pcDevices?: PcDevice[];
   selectedPcId?: string;
@@ -109,6 +121,7 @@ export function WriteStep({
   isLoading,
   isSendingInBackground,
   currentDraftId,
+  currentDraftIdRef,
   accessToken,
   pcDevices = [],
   selectedPcId = '',
@@ -127,18 +140,36 @@ export function WriteStep({
   setVideoMetas,
   setErrorMessage,
   setIsLoading,
-  setCurrentDraftId,
+  setCurrentDraftId: setDraftIdState,
   setPendingHydrate,
   setSelectedPcId,
   refreshPcDevices,
   handleEditorInput,
   sendToPC,
 }: WriteStepProps) {
+  const fallbackDraftIdRef = React.useRef(currentDraftId);
+  const draftIdRef = currentDraftIdRef ?? fallbackDraftIdRef;
+  const setCurrentDraftId = (id: string | null) => { draftIdRef.current = id; setDraftIdState(id); };
+  const ensureDraftId = () => { const id = draftIdRef.current ?? createId(); setCurrentDraftId(id); return id; };
+  const sendBusyRef = React.useRef(false);
+  const [preparingSend, setPreparingSend] = React.useState(false);
+  const [videoSaveCount, setVideoSaveCount] = React.useState(0);
+  const saveVideoSelection = (videos: VideoBlobMap) => {
+    if (!editorRef.current) return;
+    const { title, body } = extractTitleBody(serializeEditor(editorRef.current));
+    const id = ensureDraftId();
+    setCurrentDraftId(id);
+    setVideoSaveCount(count => count + 1);
+    void saveDraft({ id, title, body, created_at: nowJST(), tags: writeTags,
+      images: Array.from(imageBlobsRef.current, ([fileName, blob]) => ({ fileName, blob })),
+      videos: Array.from(videos, ([fileName, { blob, originalName }]) => ({ fileName, originalName, blob })),
+    }).catch(error => setErrorMessage(t('pwa.write.saveFailed') + String(error))).finally(() => setVideoSaveCount(count => count - 1));
+  };
   const attachmentInputRef = React.useRef<HTMLInputElement>(null);
   const saveFiles = async (next: DraftFileAttachment[]) => {
     if (!editorRef.current) return;
     const { title, body } = extractTitleBody(serializeEditor(editorRef.current));
-    const id = currentDraftId ?? createId();
+    const id = ensureDraftId();
     await saveDraft({ id, title, body, created_at: nowJST(), tags: writeTags,
       images: Array.from(imageBlobsRef.current, ([fileName, blob]) => ({ fileName, blob })), files: next });
     setCurrentDraftId(id);
@@ -193,7 +224,7 @@ export function WriteStep({
   }, [setCropFile, setCropQueue, setShowCropModal]);
 
   return (
-    <div className="flex flex-col min-h-[100dvh] bg-[#F2F2F7]">
+    <fieldset disabled={preparingSend} className="flex flex-col min-h-[100dvh] bg-[#F2F2F7] border-0 m-0 p-0">
       {/* ヘッダー */}
       <div className="flex items-center px-4 py-3 bg-[#F2F2F7] gap-1">
         <button
@@ -203,7 +234,7 @@ export function WriteStep({
               const rawText = serializeEditor(editorRef.current);
               if (rawText.trim()) {
                 const { title, body } = extractTitleBody(rawText);
-                const draftId = currentDraftId ?? createId();
+                const draftId = ensureDraftId();
                 const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
                 await saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
@@ -359,7 +390,7 @@ export function WriteStep({
       {/* contenteditable エディタ */}
       <div
         ref={editorRef}
-        contentEditable="true"
+        contentEditable={!preparingSend}
         autoFocus
         suppressContentEditableWarning
         className="flex-1 mx-4 mt-1 mb-2 px-4 py-4 text-base outline-none overflow-y-auto min-h-[200px] focus:outline-none bg-white rounded-2xl shadow-sm"
@@ -525,27 +556,11 @@ export function WriteStep({
           setVideoBlobs(nextMap);
           setVideoMetas(nextMetas);
           setErrorMessage(null);
-          if (editorRef.current) {
-            const rawText = serializeEditor(editorRef.current);
-            if (rawText.trim()) {
-              const { title, body } = extractTitleBody(rawText);
-              const draftId = currentDraftId ?? createId();
-              const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
-              saveDraft({
-                id: draftId,
-                title,
-                body,
-                created_at: nowJST(),
-                files: filesRef?.current ?? files,
-                images: imagesArr,
-                tags: writeTags,
-              }).catch(() => {});
-              setCurrentDraftId(draftId);
-            }
-          }
+          saveVideoSelection(nextMap);
         }}
       />
 
+      {videoSaveCount > 0 && <p role="status" className="text-center text-sm text-gray-500">{t('pwa.write.videoSaving')}</p>}
       {/* 成功メッセージ */}
       {backgroundSendSuccess && (
         <p className="text-center text-green-600 text-sm py-1">{t('pwa.write.sent')}</p>
@@ -556,8 +571,8 @@ export function WriteStep({
       {videoMetas.length > 0 && (
         <div className="mx-4 mb-2 flex flex-col gap-2">
           {videoMetas.map((meta) => (
+            <div key={meta.fileName}>
             <div
-              key={meta.fileName}
               className="px-3 py-2 rounded-xl bg-white text-sm text-gray-700 shadow-sm flex items-center justify-between gap-2 border border-blue-100"
             >
               <span className="truncate">🎬 {meta.name}</span>
@@ -571,10 +586,13 @@ export function WriteStep({
                   videoBlobsRef.current = nextMap;
                   setVideoBlobs(nextMap);
                   setVideoMetas((prev) => prev.filter((v) => v.fileName !== meta.fileName));
+                  saveVideoSelection(nextMap);
                 }}
               >
                 ×
               </button>
+            </div>
+            <VideoPreview t={t} blob={videoBlobsRef.current.get(meta.fileName)?.blob} />
             </div>
           ))}
         </div>
@@ -641,7 +659,7 @@ export function WriteStep({
             try {
               const rawText = serializeEditor(editorRef.current);
               const { title, body } = extractTitleBody(rawText);
-              const draftId = currentDraftId ?? createId();
+              const draftId = ensureDraftId();
               const imagesArr = Array.from(imageBlobsRef.current.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
               mergeKnownTags(writeTags);
               await saveDraft({
@@ -651,6 +669,7 @@ export function WriteStep({
                 created_at: nowJST(),
                 files: filesRef?.current ?? files,
                 images: imagesArr,
+                videos: Array.from(videoBlobsRef.current, ([fileName, { blob, originalName }]) => ({ fileName, originalName, blob })),
                 tags: writeTags,
               });
               clearFiles();
@@ -676,14 +695,23 @@ export function WriteStep({
         {/* PCに送るボタン */}
         <button
           className="w-full py-4 rounded-2xl bg-blue-500 text-white font-semibold disabled:opacity-40 transition-transform active:scale-95 shadow-md text-base"
-          disabled={isSendingInBackground}
+          disabled={isSendingInBackground || preparingSend}
           onClick={async () => {
-            if (!editorRef.current) return;
+            if (!editorRef.current || sendBusyRef.current) return;
+            sendBusyRef.current = true;
+            setPreparingSend(true);
+            try {
             new Audio('/sounds/save.wav').play().catch(() => {});
             const rawText = serializeEditor(editorRef.current);
             const capturedTags = [...writeTags];
             const capturedBlobs = new Map(imageBlobsRef.current);
-            const draftId = currentDraftId ?? createId();
+            const capturedVideos = new Map(videoBlobsRef.current);
+            const capturedFiles = [...(filesRef?.current ?? files)];
+            if (videoMetas.some(meta => !capturedVideos.get(meta.fileName)?.blob?.size)) {
+              setErrorMessage(t('pwa.write.videoMissing'));
+              return;
+            }
+            const draftId = ensureDraftId();
             const { title, body } = extractTitleBody(rawText);
             const imagesArr = Array.from(capturedBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
 
@@ -693,8 +721,9 @@ export function WriteStep({
                 title,
                 body,
                 created_at: nowJST(),
-                files: filesRef?.current ?? files,
+                files: capturedFiles,
                 images: imagesArr,
+                videos: Array.from(capturedVideos, ([fileName, { blob, originalName }]) => ({ fileName, originalName, blob })),
                 tags: capturedTags,
               });
               setCurrentDraftId(draftId);
@@ -718,19 +747,9 @@ export function WriteStep({
               return;
             }
 
-            const sent = await sendToPC({
-              rawText,
-              tags: capturedTags,
-              blobs: capturedBlobs,
-              files: [...(filesRef?.current ?? files)],
-              videoBlobs: new Map(videoBlobsRef.current),
-              draftId,
-              ...(targetPcId ? { targetPcId } : {}),
-            });
-            if (!sent) return;
-
+            const clearSentEditor = () => {
             clearFiles();
-            editorRef.current.innerHTML = '';
+            if (editorRef.current) editorRef.current.innerHTML = '';
             imageBlobsRef.current = new Map();
             setImageBlobs(new Map());
             setWriteTags([]);
@@ -743,9 +762,25 @@ export function WriteStep({
             if (localStorage.getItem('pending_note') === draftId) {
               localStorage.removeItem('pending_note');
             }
+            };
+            if (capturedVideos.size > 0) clearSentEditor();
+            setPreparingSend(false);
+            const sent = await sendToPC({
+              rawText,
+              tags: capturedTags,
+              blobs: capturedBlobs,
+              files: capturedFiles,
+              videoBlobs: capturedVideos,
+              draftId,
+              ...(targetPcId ? { targetPcId } : {}),
+            });
+            if (!sent) return;
+            if (capturedVideos.size === 0) clearSentEditor();
+
+            } finally { sendBusyRef.current = false; setPreparingSend(false); }
           }}
         >
-          {isSendingInBackground ? t('pwa.sending') : t('pwa.write.sendToPc')}
+          {preparingSend ? t('pwa.write.savingLocal') : isSendingInBackground ? t('pwa.sending') : t('pwa.write.sendToPc')}
         </button>
       </div>
 
@@ -797,7 +832,7 @@ export function WriteStep({
               const rawText = serializeEditor(editorRef.current);
               if (rawText.trim()) {
                 const { title, body } = extractTitleBody(rawText);
-                const draftId = currentDraftId ?? createId();
+                const draftId = ensureDraftId();
                 const imagesArr = Array.from(nextBlobs.entries()).map(([fileName, file]) => ({ fileName, blob: file }));
                 saveDraft({ id: draftId, title, body, created_at: nowJST(), images: imagesArr, tags: writeTags }).catch(() => {});
                 setCurrentDraftId(draftId);
@@ -889,6 +924,6 @@ export function WriteStep({
           </MessageSurface>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }

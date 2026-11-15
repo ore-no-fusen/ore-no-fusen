@@ -173,8 +173,8 @@ describe('WriteStep loss prevention', () => {
     ]);
     expect(sendToPC).not.toHaveBeenCalled();
     await waitFor(() => expect(saveDraftMock).toHaveBeenCalled());
-    expect(saveDraftMock).toHaveBeenCalledWith(expect.not.objectContaining({
-      videos: expect.any(Array),
+    expect(saveDraftMock).toHaveBeenCalledWith(expect.objectContaining({
+      videos: [expect.objectContaining({ originalName: 'dance.mov', blob: file })],
     }));
   });
 
@@ -314,6 +314,31 @@ describe('WriteStep loss prevention', () => {
     expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({ files: [file] }));
     expect(editor.textContent).toBe('大事な付箋'); expect(filesRef.current).toEqual([file]);
     expect(setFiles).not.toHaveBeenCalled();
+  });
+
+  it('動画の背景送信が完了しても新しく入力した本文を消さない', async () => {
+    let finish!: (sent: boolean) => void;
+    const sendToPC = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
+    const videos = { current: new Map([['v.mov', { blob: new Blob(['video']), originalName: 'v.mov' }]]) };
+    const { editor, getByRole } = renderWriteStep({ sendToPC, videoBlobsRef: videos });
+    fireEvent.click(getByRole('button', { name: 'PCに送る' }));
+    await waitFor(() => expect(sendToPC).toHaveBeenCalled());
+    expect(editor.textContent).toBe('');
+    editor.textContent = '新しい付箋';
+    finish(true);
+    await waitFor(() => expect(getByRole('button', { name: 'PCに送る' })).toBeDefined());
+    expect(editor.textContent).toBe('新しい付箋');
+    expect(saveDraftMock).toHaveBeenCalledWith(expect.objectContaining({ title: '大事な付箋', videos: [expect.objectContaining({ originalName: 'v.mov' })] }));
+  });
+  it('連続した動画選択でも保存先の付箋IDを増やさない', async () => {
+    let sequence = 0;
+    vi.stubGlobal('crypto', { randomUUID: () => 'generated-' + (++sequence) });
+    const { container } = renderWriteStep();
+    const input = container.querySelector('input[accept="video/mp4,video/quicktime,.mp4,.mov"]')!;
+    fireEvent.change(input, { target: { files: [new File(['a'], 'a.mov')] } });
+    fireEvent.change(input, { target: { files: [new File(['b'], 'b.mov')] } });
+    await waitFor(() => expect(saveDraftMock).toHaveBeenCalledTimes(2));
+    expect(new Set(saveDraftMock.mock.calls.map(([draft]) => draft.id)).size).toBe(1);
   });
 
 });

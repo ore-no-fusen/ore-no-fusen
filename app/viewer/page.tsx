@@ -415,6 +415,7 @@ export default function ViewerPage() {
   });
 
   const {
+    activeDraftId,
     isSendingInBackground,
     backgroundSendSuccess,
     backgroundSendError,
@@ -428,6 +429,7 @@ export default function ViewerPage() {
 
   // メモ削除ハンドラ
   const handleDeleteNote = async (note: IphoneNote) => {
+    if (activeDraftId === note.id) { alert(t('pwa.write.sendingLocked')); return; }
     new Audio('/sounds/delete.wav').play().catch(() => {});
     setIsLoading(true);
     try {
@@ -600,6 +602,7 @@ export default function ViewerPage() {
             isLoading={isLoading}
             isSendingInBackground={isSendingInBackground}
             currentDraftId={currentDraftId}
+            currentDraftIdRef={currentDraftIdRef}
             accessToken={accessToken}
             pcDevices={pcDevices}
             selectedPcId={selectedPcId}
@@ -646,6 +649,7 @@ export default function ViewerPage() {
               setStep('write');
             }}
             onOpen={async (note) => {
+              if (activeDraftId === note.id) { alert(t('pwa.write.sendingLocked')); return; }
               const draft = await loadDraft(note.id).catch(() => null);
               const blobMap = new Map<string, Blob>();
               if (draft?.images && draft.images.length > 0) {
