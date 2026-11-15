@@ -79,3 +79,17 @@ test('safety E2E is isolated, required by the gate and keeps failure evidence br
  const artifact=job.steps.find(step=>step.uses==='actions/upload-artifact@v4');
  assert.equal(artifact.if,'failure()');assert.equal(artifact.with['retention-days'],1);
 });
+
+
+test('PCで確認した変更のpush・PR・統合は検査を自動再実行しない', () => {
+  for (const file of fs.readdirSync('.github/workflows').filter(name => /ya?ml$/.test(name))) {
+    const events = parse(fs.readFileSync('.github/workflows/' + file, 'utf8')).on ?? {};
+    for (const trigger of ['push', 'pull_request', 'pull_request_target', 'merge_group']) {
+      assert.equal(Object.hasOwn(events, trigger), false, file + ': ' + trigger);
+    }
+  }
+  const workflow = parse(fs.readFileSync('.github/workflows/test.yml', 'utf8'));
+  assert.equal(workflow.on.workflow_dispatch.inputs.base.required, true);
+  assert.match(workflow.jobs.scope.steps.find(step => step.id === 'scope').env.BASE, /inputs.base/);
+  assert.ok(workflow.jobs.gate);
+});
