@@ -26,7 +26,7 @@ function VideoPreview({ blob, t }: { blob?: Blob; t: (key: TranslationKey) => st
     setUrl(next);
     return () => URL.revokeObjectURL(next);
   }, [blob]);
-  return url ? <video controls playsInline preload="metadata" src={url} className="w-full max-h-60" /> : <p role="status" className="text-xs text-gray-500">{t('pwa.write.videoMissing')}</p>;
+  return url ? <video controls playsInline preload="metadata" src={`${url}#t=0.001`} className="w-full max-h-60" /> : <p role="status" className="text-xs text-gray-500">{t('pwa.write.videoMissing')}</p>;
 }
 
 // ---------------------------------------------------------------------------

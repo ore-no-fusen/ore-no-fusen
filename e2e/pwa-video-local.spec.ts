@@ -35,6 +35,10 @@ test('iPhoneモックの送信済み付箋から動画を再生して削除す�
   await page.locator('li', { hasText: '動画コピーの確認' }).click();
   const video = page.locator('video');
   await expect(video).toBeVisible();
+  await expect(video).toHaveAttribute('src', /#t=0\.001$/);
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(2);
+  expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('iphone-video-before-play.png'), fullPage: true });
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
   await video.evaluate(async (v: HTMLVideoElement) => { v.muted = true; await v.play(); });
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0);
