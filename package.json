@@ -1,6 +1,6 @@
 {
   "name": "ore-no-fusen",
-  "version": "6.2.1",
+  "version": "6.2.2",
   "description": "FUSEN - local-first sticky notes for developers working with AI coding tools",
   "private": true,
   "scripts": {
@@ -79,6 +79,15 @@
     "node": ">=22.23.4 <23 || >=24.22.1 <25"
   },
   "overrides": {
-    "vite": "7.3.8"
+    "vite": "7.3.8",
+    "@sentry/bundler-plugin-core": {
+      "glob": "14.0.6"
+    },
+    "minimatch@^3": "3.1.5",
+    "minimatch@^5": "5.1.9",
+    "minimatch@>=7 <11": "11.0.8",
+    "rollup-plugin-terser": {
+      "serialize-javascript": "7.1.4"
+    }
   }
 }
