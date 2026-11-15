@@ -1,11 +1,11 @@
 name: Test
 'on':
-  push:
-    branches:
-      - develop
-      - main
-  pull_request: null
-  merge_group: null
+  workflow_dispatch:
+    inputs:
+      base:
+        description: '比較元の完全なcommit SHA（必要な検査を明示実行する時のみ）'
+        required: true
+        type: string
 concurrency:
   group: test-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
@@ -36,7 +36,7 @@ jobs:
       - name: Determine required checks
         id: scope
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE: ${{ inputs.base || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.sha }}
         run: node scripts/ci-scope.mjs "$BASE" "$HEAD"
   usage-analysis:
@@ -217,7 +217,7 @@ jobs:
           node-version: 24
       - name: Validate documentation-only change
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE: ${{ inputs.base || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.sha }}
         run: node scripts/ci-scope.mjs documents "$BASE" "$HEAD"
       - name: Public guide content and links
