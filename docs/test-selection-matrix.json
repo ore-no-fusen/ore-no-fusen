@@ -1,0 +1,1063 @@
+{
+  "schema": 1,
+  "source": "docs-v2/000_FEATURE_TREE.md",
+  "sourceSha256": "192e858db456e4c2e4586b50191e9ac1cc8a9c085c57a66d7a086724b3a52534",
+  "families": [
+    [
+      "U",
+      "見た目・操作系",
+      "表示・入力・画像・一覧"
+    ],
+    [
+      "D",
+      "保存・管理系",
+      "保存・削除・復元・草稿"
+    ],
+    [
+      "C",
+      "通信・連携系",
+      "送受信・認証・外部API"
+    ],
+    [
+      "O",
+      "起動・OS動作系",
+      "ウィンドウ・キー・通知"
+    ],
+    [
+      "R",
+      "配布・開発基盤系",
+      "ビルド・MSIX・検査・再開"
+    ]
+  ],
+  "rules": [
+    {
+      "id": "U1",
+      "name": "本文・書式・構造",
+      "choices": [
+        {
+          "when": "PC本文の表示",
+          "file": "app/components/__tests__/MarkdownRenderer.test.tsx"
+        },
+        {
+          "when": "PCの書式ボタン",
+          "file": "app/components/FloatingFormatBar.test.tsx"
+        },
+        {
+          "when": "PWAの一覧表示",
+          "file": "app/viewer/NoteListStep.rendering.test.tsx"
+        },
+        {
+          "when": "PWA編集本文の赤文字",
+          "file": "e2e/pwa-bold.spec.ts"
+        },
+        {
+          "when": "Web本文/チェック",
+          "file": "app/shared/page.test.tsx"
+        },
+        {
+          "when": "部分折りたたみ",
+          "file": "app/utils/editorOutline.test.ts"
+        },
+        {
+          "when": "日付/時刻の挿入",
+          "file": "app/hooks/useStickyNoteContextMenu.test.ts"
+        },
+        {
+          "when": "結晶本文の生成",
+          "file": "app/utils/crystalFormat.test.ts"
+        }
+      ],
+      "extra": [
+        {
+          "when": "折りたたみの実操作を変更",
+          "file": "e2e/editor-outline.spec.ts"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "U2",
+      "name": "画像・図・添付の操作",
+      "choices": [
+        {
+          "when": "描き込み",
+          "file": "app/components/ImageAnnotationModal.test.ts"
+        },
+        {
+          "when": "切り取り計算",
+          "file": "app/utils/imageCrop.test.ts"
+        },
+        {
+          "when": "画像の倍率操作",
+          "file": "app/components/ResizableImage.test.tsx"
+        },
+        {
+          "when": "図の生成/安全性",
+          "file": "app/utils/mermaid.test.ts"
+        },
+        {
+          "when": "PWA動画の再生画面",
+          "file": "e2e/pwa-video-local.spec.ts"
+        },
+        {
+          "when": "PWA添付の選択（該当ケース）",
+          "file": "app/viewer/__tests__/WriteStep.loss.test.tsx"
+        }
+      ],
+      "extra": [
+        {
+          "when": "図の実ブラウザー安全境界を変更",
+          "file": "app/utils/mermaidSecurity.browser.test.ts"
+        }
+      ],
+      "note": "動画UIだけなら再生1件。保存まで変えるときだけD4。OS画面キャプチャは専用単体なし：撮影/キャンセルを短く確認し、失敗処理の変更なら該当回帰テストを追加。"
+    },
+    {
+      "id": "U3",
+      "name": "一覧・検索・タグ操作",
+      "choices": [
+        {
+          "when": "検索",
+          "file": "app/components/SearchOverlay.test.tsx"
+        },
+        {
+          "when": "タグ絞り込み",
+          "file": "app/components/LauncherTagFilter.test.tsx"
+        },
+        {
+          "when": "タグ操作",
+          "file": "app/components/LauncherTagActions.test.tsx"
+        },
+        {
+          "when": "ランチャー一覧",
+          "file": "app/components/QuickLauncher.test.ts"
+        }
+      ],
+      "extra": [
+        {
+          "when": "一覧とウィンドウ操作の接続を変更",
+          "file": "e2e/quick-launcher.spec.ts"
+        }
+      ],
+      "note": "保存値の変更だけD1/D2、窓の整列を変えた分だけO3を追加。"
+    },
+    {
+      "id": "U4",
+      "name": "設定・言語・画面表示",
+      "choices": [
+        {
+          "when": "一般設定の選択",
+          "file": "app/utils/settingsPageText.test.ts"
+        },
+        {
+          "when": "翻訳処理",
+          "file": "lib/i18n.test.ts"
+        },
+        {
+          "when": "PWA言語切替",
+          "file": "app/viewer/NoteListStep.language.test.tsx"
+        },
+        {
+          "when": "支援画面",
+          "file": "app/components/EndrollMatsuri.test.tsx"
+        },
+        {
+          "when": "PWA診断ログ",
+          "file": "app/viewer/lib/diagnostic-log.test.ts"
+        }
+      ],
+      "extra": [
+        {
+          "when": "設定を保存する画面動線を変更",
+          "file": "e2e/settings-help.spec.ts"
+        }
+      ],
+      "note": "文言/余白だけなら対象表示だけ。PC logger自体は専用単体なし：該当ログの出力を確認。診断の保存先や秘密値処理を変えればD1/C3も判断する。"
+    },
+    {
+      "id": "D1",
+      "name": "本文・名前・属性の保存",
+      "choices": [
+        {
+          "when": "PC保存/競合/リネーム（関連関数で絞る）",
+          "file": "src-tauri/src/storage.rs"
+        },
+        {
+          "when": "名前/本文解析（関連関数で絞る）",
+          "file": "src-tauri/src/logic.rs"
+        },
+        {
+          "when": "設定値の保存",
+          "file": "lib/settings-store.test.ts"
+        },
+        {
+          "when": "画面の保存呼出",
+          "file": "app/hooks/useNoteFile.test.tsx"
+        }
+      ],
+      "extra": [
+        {
+          "when": "実際の保存/再読込/原本保持の通り道を変更",
+          "file": "e2e/data-safety.spec.ts"
+        }
+      ],
+      "note": "成功と書込失敗の原本保持を含める。storage全件を毎回の固定セットにしない。"
+    },
+    {
+      "id": "D2",
+      "name": "削除・保管・復元",
+      "choices": [
+        {
+          "when": "削除履歴（関連関数）",
+          "file": "src-tauri/src/trash_history.rs"
+        },
+        {
+          "when": "90日整理（関連関数）",
+          "file": "src-tauri/src/trash_cleanup.rs"
+        },
+        {
+          "when": "保管から戻す",
+          "file": "app/utils/archiveRestore.test.ts"
+        },
+        {
+          "when": "ランチャーで隠す/戻す",
+          "file": "app/components/QuickLauncher.storage.test.tsx"
+        }
+      ],
+      "extra": [
+        {
+          "when": "削除対象/保持条件を変更",
+          "file": "e2e/trash-maintenance.spec.ts"
+        },
+        {
+          "when": "保管/復元の接続を変更",
+          "file": "e2e/archive-restore.spec.ts"
+        }
+      ],
+      "note": "対象が消えることと対象外が残ることを確認。PCごみ箱の変更でPWA動画テストはしない。"
+    },
+    {
+      "id": "D3",
+      "name": "バックアップ・インポート",
+      "choices": [
+        {
+          "when": "バックアップ保存の関連関数",
+          "file": "src-tauri/src/storage.rs"
+        },
+        {
+          "when": "月次処理はmonthly_backup_tests、復旧はrestore_backup_testsで絞る",
+          "file": "src-tauri/src/lib.rs"
+        },
+        {
+          "when": "インポートの関連関数",
+          "file": "src-tauri/src/import.rs"
+        },
+        {
+          "when": "月次設定",
+          "file": "app/utils/monthlyBackupSettings.test.ts"
+        },
+        {
+          "when": "取込後の画面更新",
+          "file": "app/utils/importRefresh.test.ts"
+        }
+      ],
+      "extra": [],
+      "note": "実ファイル構成/権限を変えたら隔離フォルダーの対象1往復だけ追加。利用者の原本は試験に使わない。"
+    },
+    {
+      "id": "D4",
+      "name": "PWA保存・草稿・容量",
+      "choices": [
+        {
+          "when": "IndexedDB保存/削除（該当ケース）",
+          "file": "app/viewer/lib/indexeddb.test.ts"
+        },
+        {
+          "when": "送信前退避/入力保持（該当ケース）",
+          "file": "app/viewer/__tests__/WriteStep.loss.test.tsx"
+        },
+        {
+          "when": "保存失敗の復旧",
+          "file": "app/viewer/hooks/save-recovery.test.tsx"
+        },
+        {
+          "when": "遅い非同期一覧の保護",
+          "file": "app/viewer/hooks/useNoteList.test.tsx"
+        }
+      ],
+      "extra": [
+        {
+          "when": "動画バイナリ/別タブ削除のDB経路を変更",
+          "file": "scripts/video-storage.browser.test.mjs"
+        },
+        {
+          "when": "削除後の再読込動線を変更",
+          "file": "e2e/pwa-delete-persistence.spec.ts"
+        }
+      ],
+      "note": "DB処理を変えなければ保存一式を追加しない。容量超過/削除中の遅い保存など、変更する境界を選ぶ。"
+    },
+    {
+      "id": "C1",
+      "name": "PCとiPhoneの送受信",
+      "choices": [
+        {
+          "when": "動画の送信データ/保持",
+          "file": "app/viewer/__tests__/VideoAttachmentSemantics.test.tsx"
+        },
+        {
+          "when": "汎用添付の送信データ",
+          "file": "app/viewer/__tests__/FileAttachmentSemantics.test.tsx"
+        },
+        {
+          "when": "PWAのDrive通信",
+          "file": "app/viewer/lib/drive.test.ts"
+        },
+        {
+          "when": "PC受信時の反映選択",
+          "file": "app/components/IphoneReturnDialog.test.tsx"
+        },
+        {
+          "when": "PC受信内容の変換",
+          "file": "app/utils/receiveIphoneNote.test.ts"
+        }
+      ],
+      "extra": [
+        {
+          "when": "本文/添付の契約と接続を変更",
+          "file": "e2e/iphone-roundtrip.spec.ts"
+        },
+        {
+          "when": "PC→iPhoneの画像受渡しを変更",
+          "file": "e2e/pc-to-iphone-image.spec.ts"
+        }
+      ],
+      "note": "データ契約を変えたら送信/受信の該当ケースを組み合わせる。PWA内の再生UIだけならPC試験は不要。"
+    },
+    {
+      "id": "C2",
+      "name": "PCとWebの共有",
+      "choices": [
+        {
+          "when": "共有画面の編集/保存",
+          "file": "app/shared/page.test.tsx"
+        },
+        {
+          "when": "送受信",
+          "file": "app/shared/lib/drive.test.ts"
+        },
+        {
+          "when": "未送信草稿/競合",
+          "file": "app/shared/lib/edit-draft.test.ts"
+        },
+        {
+          "when": "新規付箋の送信",
+          "file": "app/shared/NewNote.test.tsx"
+        },
+        {
+          "when": "PCスナップショットの関連関数",
+          "file": "src-tauri/src/web_share_snapshot.rs"
+        }
+      ],
+      "extra": [
+        {
+          "when": "契約を変更（両側を確認）",
+          "file": "lib/web-share-contract.test.ts"
+        },
+        {
+          "when": "端末保存/復旧の接続を変更",
+          "file": "e2e/shared-storage.spec.ts"
+        },
+        {
+          "when": "共有順序を変更",
+          "file": "e2e/shared-launcher-order.spec.ts"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "C3",
+      "name": "認証・通信失敗・再送",
+      "choices": [
+        {
+          "when": "PWAの期限切れ/再試行",
+          "file": "app/viewer/lib/drive.test.ts"
+        },
+        {
+          "when": "共有ログインの復帰",
+          "file": "app/shared/lib/login-return.test.ts"
+        },
+        {
+          "when": "API認証/遷移",
+          "file": "app/api/auth/routes.test.ts"
+        },
+        {
+          "when": "PCのトークン/OAuthの関連関数",
+          "file": "src-tauri/src/gdrive.rs"
+        }
+      ],
+      "extra": [
+        {
+          "when": "認証の画面復帰を変更",
+          "file": "e2e/shared-web-auth.spec.ts"
+        },
+        {
+          "when": "共通の通信締切を変更",
+          "file": "scripts/network-deadline.test.mjs"
+        }
+      ],
+      "note": "影響する成功/期限切れ/拒否を選び、全画面や全サービスは回さない。"
+    },
+    {
+      "id": "C4",
+      "name": "外部サービス・API",
+      "choices": [
+        {
+          "when": "Siri API",
+          "file": "app/api/siri-send/route.test.ts"
+        },
+        {
+          "when": "会員API",
+          "file": "app/api/members/lib/service.test.ts"
+        },
+        {
+          "when": "会員番号の画面",
+          "file": "app/components/SupportMemberNumber.test.tsx"
+        },
+        {
+          "when": "お便り本文",
+          "file": "app/utils/feedbackConversation.test.ts"
+        },
+        {
+          "when": "お便り画像",
+          "file": "app/utils/feedbackImage.test.ts"
+        },
+        {
+          "when": "分析送信/同意",
+          "file": "app/utils/analytics.test.ts"
+        },
+        {
+          "when": "Discord応答Worker",
+          "file": "workers/discord-replies/src/index.test.mjs"
+        }
+      ],
+      "extra": [
+        {
+          "when": "お便りの画面とAPIをまたぐ動線を変更",
+          "file": "e2e/developer-conversation.spec.ts"
+        }
+      ],
+      "note": "変更したサービスだけ。新APIはその専用の成功/拒否/失敗試験を作り、既存の全API試験で埋め合わせない。"
+    },
+    {
+      "id": "O1",
+      "name": "新規ウィンドウ・復元",
+      "choices": [
+        {
+          "when": "作成プール",
+          "file": "app/utils/invisibleNotePool.test.ts"
+        },
+        {
+          "when": "作成要求の順序",
+          "file": "app/utils/freshRequestQueue.test.ts"
+        },
+        {
+          "when": "表示生成",
+          "file": "app/utils/windowCreation.test.ts"
+        },
+        {
+          "when": "復元順序",
+          "file": "app/utils/startupRestore.test.ts"
+        }
+      ],
+      "extra": [
+        {
+          "when": "生成と表示の接続を変更",
+          "file": "e2e/sticky-note.spec.ts"
+        }
+      ],
+      "note": "Tauriの本物の起動/フォーカスはブラウザーでは代替できない。必要な該当操作だけ常設の起動方法で確認する。"
+    },
+    {
+      "id": "O2",
+      "name": "キー・トレイ・起動入口",
+      "choices": [
+        {
+          "when": "キーの設定/競合",
+          "file": "app/utils/shortcutKey.test.ts"
+        },
+        {
+          "when": "OSキー登録の関連関数",
+          "file": "src-tauri/src/hotkey_manager.rs"
+        },
+        {
+          "when": "二度押しの関連関数",
+          "file": "src-tauri/src/double_tap.rs"
+        },
+        {
+          "when": "トレイ表示の関連関数",
+          "file": "src-tauri/src/tray.rs"
+        },
+        {
+          "when": "ショートカット作成の関連関数",
+          "file": "src-tauri/src/desktop_shortcut.rs"
+        }
+      ],
+      "extra": [
+        {
+          "when": "キー設定/無効化の動線を変更",
+          "file": "e2e/hotkey-disable.spec.ts"
+        }
+      ],
+      "note": "OS登録/自動起動は対象実機操作1回。自動起動の専用カバレッジ不足を一般起動試験の成功で埋めない。"
+    },
+    {
+      "id": "O3",
+      "name": "位置・サイズ・窓属性",
+      "choices": [
+        {
+          "when": "色/文字サイズ/最前面の値",
+          "file": "app/utils/noteAppearance.test.ts"
+        },
+        {
+          "when": "新規位置",
+          "file": "app/utils/newNotePosition.test.ts"
+        },
+        {
+          "when": "サイズ制御",
+          "file": "app/hooks/useMainWindowResizePolicy.test.tsx"
+        },
+        {
+          "when": "終了/復元の位置保持",
+          "file": "app/components/QuickLauncher.lifecycle.test.tsx"
+        },
+        {
+          "when": "タグで並べる関連関数",
+          "file": "src-tauri/src/arrange.rs"
+        }
+      ],
+      "extra": [],
+      "note": "OSへの座標/透明度/最前面反映、モニター救済は該当条件だけ実機確認。CSS余白だけで全窓確認を追加しない。"
+    },
+    {
+      "id": "O4",
+      "name": "通知・アラーム・音",
+      "choices": [
+        {
+          "when": "アラーム日時",
+          "file": "app/utils/alarmDateTime.test.ts"
+        },
+        {
+          "when": "発火時の前面制御",
+          "file": "app/utils/alarmAlwaysOnTop.test.ts"
+        },
+        {
+          "when": "PWA通知の遷移",
+          "file": "app/viewer/lib/notification-navigation.test.ts"
+        },
+        {
+          "when": "PWA Push処理",
+          "file": "app/viewer/lib/push.test.ts"
+        },
+        {
+          "when": "音の設定",
+          "file": "app/utils/soundPreferences.test.ts"
+        }
+      ],
+      "extra": [
+        {
+          "when": "PWA通知の常駐/閉じる動作を変更",
+          "file": "e2e/lock-notification.spec.ts"
+        }
+      ],
+      "note": "OS通知の到着/音/発火を変えたら対象端末の該当操作だけ確認。文言だけなら実発火させない。"
+    },
+    {
+      "id": "R1",
+      "name": "ビルド・版・依存・更新",
+      "choices": [
+        {
+          "when": "Tauri画面ビルド制御",
+          "file": "scripts/tauri-frontend-stage.test.mjs"
+        },
+        {
+          "when": "版更新の制御",
+          "file": "app/security/releaseVersionScript.test.ts"
+        },
+        {
+          "when": "依存の組合せ",
+          "file": "lib/dependency-compat.test.ts"
+        },
+        {
+          "when": "更新通知/Store判定",
+          "file": "app/hooks/useUpdateCheck.test.tsx"
+        }
+      ],
+      "extra": [],
+      "note": "実行方式/依存を変えたときだけ、影響するWebまたはPCのビルド。文書・版表示だけで両方作らない。影響不明なら先に調べる。"
+    },
+    {
+      "id": "R2",
+      "name": "MSIX・署名・導入",
+      "choices": [
+        {
+          "when": "MSIX作成/検証の制御",
+          "file": "scripts/release-machine/msix.test.mjs"
+        },
+        {
+          "when": "パッケージ状態取得",
+          "file": "scripts/msix-status.test.mjs"
+        }
+      ],
+      "extra": [],
+      "note": "梱包/署名/導入条件を変えた場合だけ対象MSIXの形式/内部exe/必要な導入確認。通常修正のたびにMSIXを作らない。"
+    },
+    {
+      "id": "R3",
+      "name": "hook・CIの起動と選択",
+      "choices": [
+        {
+          "when": "コミット時処理",
+          "file": "scripts/precommit.test.mjs"
+        },
+        {
+          "when": "CI自動/手動起動",
+          "file": "scripts/automation-policy.test.mjs"
+        },
+        {
+          "when": "手動CI差分分類",
+          "file": "scripts/ci-scope.test.mjs"
+        },
+        {
+          "when": "CI記録の再利用",
+          "file": "scripts/ci-validation-reuse.test.mjs"
+        }
+      ],
+      "extra": [],
+      "note": "該当設定の起動/停止/対象外を模擬差分と読取で確認。アプリ全件を起動して検査しない。"
+    },
+    {
+      "id": "R4",
+      "name": "候補合格・再開・実行制御",
+      "choices": [
+        {
+          "when": "合格記録/環境照合",
+          "file": "scripts/release-machine/local-validation.test.mjs"
+        },
+        {
+          "when": "候補固定/再開（ケース名で絞る）",
+          "file": "scripts/release-machine/engine.test.mjs"
+        },
+        {
+          "when": "子プロセス/秘密値",
+          "file": "scripts/release-machine/runner.test.mjs"
+        },
+        {
+          "when": "リリース画面",
+          "file": "scripts/release-machine/ui.test.mjs"
+        }
+      ],
+      "extra": [],
+      "note": "engineは該当ケース名だけ。模擬Git/MSIXで確認し、アプリ全件や実機合格exeの再作成を追加しない。"
+    }
+  ],
+  "features": [
+    {
+      "feature": "プールウィンドウ方式",
+      "sourceSection": "要求1-1　思いついた瞬間に、書ける状態になっていてほしい",
+      "rule": "O1"
+    },
+    {
+      "feature": "グローバルホットキー Ctrl+N",
+      "sourceSection": "要求1-1　思いついた瞬間に、書ける状態になっていてほしい",
+      "rule": "O2"
+    },
+    {
+      "feature": "Ctrl 2回押し／Shift 2回押しトリガー",
+      "sourceSection": "要求1-1　思いついた瞬間に、書ける状態になっていてほしい",
+      "rule": "O2"
+    },
+    {
+      "feature": "システムトレイ常駐＋トレイメニュー「新規メモ」",
+      "sourceSection": "要求1-1　思いついた瞬間に、書ける状態になっていてほしい",
+      "rule": "O2"
+    },
+    {
+      "feature": "付箋上の「＋」ボタン／右クリック「新規メモ」",
+      "sourceSection": "要求1-1　思いついた瞬間に、書ける状態になっていてほしい",
+      "rule": "O1"
+    },
+    {
+      "feature": "自動起動",
+      "sourceSection": "要求1-1　思いついた瞬間に、書ける状態になっていてほしい",
+      "rule": "O2"
+    },
+    {
+      "feature": "画面キャプチャ",
+      "sourceSection": "要求1-2　画面上のもの・手元のものを、そのまま付箋にしたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "クリップボード画像の貼り付け",
+      "sourceSection": "要求1-2　画面上のもの・手元のものを、そのまま付箋にしたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "エディタへの画像ドロップ貼り付け",
+      "sourceSection": "要求1-2　画面上のもの・手元のものを、そのまま付箋にしたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "変更の自動保存",
+      "sourceSection": "要求1-3　書いたら、保存を考えたくない（保存忘れで消えるのが怖い）",
+      "rule": "D1"
+    },
+    {
+      "feature": "明示保存 Ctrl+S",
+      "sourceSection": "要求1-3　書いたら、保存を考えたくない（保存忘れで消えるのが怖い）",
+      "rule": "D1"
+    },
+    {
+      "feature": "Siri から PC に付箋を送る",
+      "sourceSection": "要求1-4　手が離せないときは、声で送りたい",
+      "rule": "C4"
+    },
+    {
+      "feature": "ファイル名の自動生成",
+      "sourceSection": "要求1-5　ファイル名を考えたくない",
+      "rule": "D1"
+    },
+    {
+      "feature": "ファイル名の本文連動",
+      "sourceSection": "要求1-5　ファイル名を考えたくない",
+      "rule": "D1"
+    },
+    {
+      "feature": "初回セットアップで保存先（Vault）を選択",
+      "sourceSection": "要求1-6　保存場所は自分で決めたい",
+      "rule": "D1"
+    },
+    {
+      "feature": "太字の朱表示",
+      "sourceSection": "要求2-1　大事な一文を、ひと目で目立たせたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "フローティングフォーマットバー",
+      "sourceSection": "要求2-1　大事な一文を、ひと目で目立たせたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "編集用ホットキー",
+      "sourceSection": "要求2-1　大事な一文を、ひと目で目立たせたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "PWAの強調表示",
+      "sourceSection": "要求2-1　大事な一文を、ひと目で目立たせたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "画像への描き込み",
+      "sourceSection": "要求2-2　画像に、そのまま書き込みたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "トリミング",
+      "sourceSection": "要求2-2　画像に、そのまま書き込みたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "画像の表示サイズ変更",
+      "sourceSection": "要求2-2　画像に、そのまま書き込みたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "付箋全体の折りたたみ（△／▽）",
+      "sourceSection": "要求2-3　畳んでも、項目（見出し）は見えていてほしい",
+      "rule": "O3"
+    },
+    {
+      "feature": "本文の一部分の折りたたみ",
+      "sourceSection": "要求2-3　畳んでも、項目（見出し）は見えていてほしい",
+      "rule": "U1"
+    },
+    {
+      "feature": "見出し",
+      "sourceSection": "要求2-4　構造を整理して見せたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "チェックリスト",
+      "sourceSection": "要求2-4　構造を整理して見せたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "テーブル",
+      "sourceSection": "要求2-4　構造を整理して見せたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "Mermaid 図",
+      "sourceSection": "要求2-4　構造を整理して見せたい",
+      "rule": "U2"
+    },
+    {
+      "feature": "日付・時刻の挿入",
+      "sourceSection": "要求2-4　構造を整理して見せたい",
+      "rule": "U1"
+    },
+    {
+      "feature": "最前面に固定（ピン留め）",
+      "sourceSection": "要求2-5　付箋そのものを目立たせたい（他の窓に埋もれたくない）",
+      "rule": "O3"
+    },
+    {
+      "feature": "色分け（背景色5色）",
+      "sourceSection": "要求2-5　付箋そのものを目立たせたい（他の窓に埋もれたくない）",
+      "rule": "O3"
+    },
+    {
+      "feature": "透明度3段階",
+      "sourceSection": "要求2-5　付箋そのものを目立たせたい（他の窓に埋もれたくない）",
+      "rule": "O3"
+    },
+    {
+      "feature": "文字サイズ",
+      "sourceSection": "要求2-5　付箋そのものを目立たせたい（他の窓に埋もれたくない）",
+      "rule": "O3"
+    },
+    {
+      "feature": "アラーム",
+      "sourceSection": "要求2-6　時刻になったら知らせてほしい",
+      "rule": "O4"
+    },
+    {
+      "feature": "起動時の状態復元",
+      "sourceSection": "要求3-1　PCを開いたら、いつもの場所にいてほしい",
+      "rule": "O1"
+    },
+    {
+      "feature": "マルチモニター救済",
+      "sourceSection": "要求3-1　PCを開いたら、いつもの場所にいてほしい",
+      "rule": "O3"
+    },
+    {
+      "feature": "iPhone に送る（PC → iPhone）",
+      "sourceSection": "要求3-2　家の外でも見たい・続きをしたい",
+      "rule": "C1"
+    },
+    {
+      "feature": "通知常駐（ロックだぜ）",
+      "sourceSection": "要求3-2　家の外でも見たい・続きをしたい",
+      "rule": "O4"
+    },
+    {
+      "feature": "iPhone から PC へ送る",
+      "sourceSection": "要求3-2　家の外でも見たい・続きをしたい",
+      "rule": "C1"
+    },
+    {
+      "feature": "Web共有",
+      "sourceSection": "要求3-2　家の外でも見たい・続きをしたい",
+      "rule": "C2"
+    },
+    {
+      "feature": "タグで整列（カンバン整列）",
+      "sourceSection": "要求3-3　増えても、デスクトップが散らからないでほしい",
+      "rule": "O3"
+    },
+    {
+      "feature": "タグで絞り込み",
+      "sourceSection": "要求3-3　増えても、デスクトップが散らからないでほしい",
+      "rule": "U3"
+    },
+    {
+      "feature": "全部隠す／全部戻す",
+      "sourceSection": "要求3-3　増えても、デスクトップが散らからないでほしい",
+      "rule": "O3"
+    },
+    {
+      "feature": "フォルダーに保管",
+      "sourceSection": "要求3-3　増えても、デスクトップが散らからないでほしい",
+      "rule": "D2"
+    },
+    {
+      "feature": "ランチャーに登録して画面から隠す",
+      "sourceSection": "要求3-3　増えても、デスクトップが散らからないでほしい",
+      "rule": "D2"
+    },
+    {
+      "feature": "全文検索",
+      "sourceSection": "要求3-4　昔のメモを、すぐ見つけたい",
+      "rule": "U3"
+    },
+    {
+      "feature": "クイックランチャー",
+      "sourceSection": "要求3-4　昔のメモを、すぐ見つけたい",
+      "rule": "U3"
+    },
+    {
+      "feature": "タグ付けとタグフォルダ",
+      "sourceSection": "要求3-4　昔のメモを、すぐ見つけたい",
+      "rule": "U3"
+    },
+    {
+      "feature": "Markdown ファイル保存",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D1"
+    },
+    {
+      "feature": "アトミック保存と破損防止",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D1"
+    },
+    {
+      "feature": "手動バックアップ",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D3"
+    },
+    {
+      "feature": "月次安全バックアップ",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D3"
+    },
+    {
+      "feature": "バックアップからの復旧",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D3"
+    },
+    {
+      "feature": "削除とごみ箱",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D2"
+    },
+    {
+      "feature": "ごみ箱の90日整理",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D2"
+    },
+    {
+      "feature": "インポート",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D3"
+    },
+    {
+      "feature": "保存先（Vault）の変更",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "D1"
+    },
+    {
+      "feature": "プライバシー設計",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "C3"
+    },
+    {
+      "feature": "効果音",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "O4"
+    },
+    {
+      "feature": "多言語（日本語／英語）",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "U4"
+    },
+    {
+      "feature": "デスクトップショートカット",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "O2"
+    },
+    {
+      "feature": "設定画面",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "U4"
+    },
+    {
+      "feature": "ログと診断",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "U4"
+    },
+    {
+      "feature": "PWAの版表示",
+      "sourceSection": "補助ブランチA：基盤（土台）",
+      "rule": "U4"
+    },
+    {
+      "feature": "結晶化",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "U1"
+    },
+    {
+      "feature": "会員番号",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "C4"
+    },
+    {
+      "feature": "機能利用分析（同意制）",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "C4"
+    },
+    {
+      "feature": "開発者ホットライン（お便り）",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "C4"
+    },
+    {
+      "feature": "開発者とのやりとり掲示板",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "C4"
+    },
+    {
+      "feature": "開発を支援する",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "U4"
+    },
+    {
+      "feature": "アップデート確認",
+      "sourceSection": "補助ブランチB：発展",
+      "rule": "R1"
+    }
+  ],
+  "subfeatures": [
+    {
+      "parent": "iPhoneからPCへ送る",
+      "feature": "動画の再生画面",
+      "rule": "U2"
+    },
+    {
+      "parent": "iPhoneからPCへ送る",
+      "feature": "動画/草稿の端末保存と削除",
+      "rule": "D4"
+    },
+    {
+      "parent": "iPhoneからPCへ送る",
+      "feature": "動画の送信契約",
+      "rule": "C1"
+    },
+    {
+      "parent": "iPhoneからPCへ送る",
+      "feature": "汎用ファイルの送信契約",
+      "rule": "C1"
+    },
+    {
+      "parent": "iPhoneに送る",
+      "feature": "遅い一覧読取と復旧",
+      "rule": "D4"
+    },
+    {
+      "parent": "Web共有",
+      "feature": "新規作成と未送信草稿",
+      "rule": "C2"
+    },
+    {
+      "parent": "通知常駐",
+      "feature": "通知遷移と閉じる操作",
+      "rule": "O4"
+    },
+    {
+      "parent": "画面キャプチャ",
+      "feature": "OS起動とキャンセル",
+      "rule": "U2"
+    }
+  ]
+}
