@@ -1,4 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": []
+  "crons": [],
+  "git": {
+    "deploymentEnabled": {
+      "develop": false
+    }
+  }
 }
