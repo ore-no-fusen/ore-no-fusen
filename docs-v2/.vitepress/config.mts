@@ -79,7 +79,6 @@ export default withMermaid(defineConfig({
             { text: '007 コミュニケーション設計', link: '/007_COMMUNICATION' },
             { text: '013 クイックランチャー付箋 Web共有', link: '/013_WEB_SHARE' },
             { text: '014 PC画面・機能割り当て', link: '/014_PC_OPERATIONS' },
-            { text: '015 Web版とiPhone版の機能比較', link: '/015_WEB_IPHONE_COMPARISON' },
             { text: '100 プライバシーポリシー', link: '/100_PRIVACY' },
             { text: '101 利用規約', link: '/101_TERMS' },
             { text: '200 Siri から PC に付箋を送る', link: '/200_SIRI_SETUP' }
