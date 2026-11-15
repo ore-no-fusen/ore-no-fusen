@@ -93,3 +93,9 @@ test('PCで確認した変更のpush・PR・統合は検査を自動再実行し
   assert.match(workflow.jobs.scope.steps.find(step => step.id === 'scope').env.BASE, /inputs.base/);
   assert.ok(workflow.jobs.gate);
 });
+
+test('GitHub保存だけでdevelop Previewを再ビルドしない', () => {
+ const config=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+ assert.equal(config.git.deploymentEnabled.develop,false);
+ assert.equal(Object.hasOwn(config.git.deploymentEnabled,'main'),false);
+});
