@@ -15,6 +15,7 @@ Microsoft Store向けMSIXを唯一の正式配布形式とし、既存MSI・NSIS
 
 ---
 
+> 2026-11-15の運用改定：①worktreeで対象テスト、②採用分をdevelopへまとめ候補の全体試験1回とMSIX実機確認、③同じ候補をmain/Storeへ反映する。正本は `docs/010_RELEASE.md` と `docs/TEST_SELECTION_POLICY.md`。以下の毎回全件CI・旧STEP番号・main→develop同期PRの記載は移行前の実装状態を示す。自動化の対応実装と検証前に、既存の必要チェックを無断で省略しない。
 ## 1 目的
 
 本章では、Microsoft Store向けMSIXへの一本化、既存利用者の移行、更新、自動起動、winget、署名、データ保持を定義します。
