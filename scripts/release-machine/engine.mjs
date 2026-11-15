@@ -1,3 +1,4 @@
+import { validateLocalCandidate } from './local-validation.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -62,10 +63,12 @@ export function copyTree(source, destination) {
 }
 
 export class ReleaseMachine {
-  constructor({ root, dataDir = path.join(root, 'my/release-machine'), submissionRoot, runner, platform = process.platform }) {
+  constructor({ root, dataDir = path.join(root, 'my/release-machine'), submissionRoot, runner, platform = process.platform, validationProtocol = 'pc-local-v2' }) {
     this.root = fs.realpathSync.native(path.resolve(root)); this.dataDir = dataDir;
     this.submissionRoot = submissionRoot ?? 'D:\\Users\\uck\\Documents\\俺の付箋-Store提出';
     this.runner = runner; this.platform = platform; this.busy = false;
+    this.validationProtocol = validationProtocol;
+    this.validateLocalCandidate = (sha, options) => validateLocalCandidate(this, sha, options);
     this.github = new ReleaseGitHub(this);
     this.stateFile = path.join(dataDir, 'active.json'); fs.mkdirSync(dataDir, { recursive: true });
     this.state = fs.existsSync(this.stateFile) ? readJSON(this.stateFile) : { status: 'idle', steps: {} };
@@ -77,7 +80,7 @@ export class ReleaseMachine {
   get snapshotDir() { return path.join(this.runDir, 'release'); }
   save() { atomicJSON(this.stateFile, this.state); if (this.state.id) atomicJSON(path.join(this.runDir, 'state.json'), this.state); }
   log(text) { if (this.state.id) fs.appendFileSync(path.join(this.runDir, 'commands.log'), `[${new Date().toISOString()}] ${text}\n`); }
-  async cmd(file, args, cwd = this.root, logged = true, env) {
+  async cmd(file, args, cwd = this.root, logged = true, env, timeoutMs) {
     // Trust only the explicitly selected local checkout for this command.
     // This also permits read-only inspection from a different Windows account.
     if (file === 'git') args = ['-c', `safe.directory=${cwd.replaceAll('\\', '/')}`, ...args];
@@ -85,7 +88,7 @@ export class ReleaseMachine {
     const versionCommit = env?.RELEASE_MACHINE_VERSION_COMMIT === '1';
     if (logged) this.log(`場所: ${cwd}\nSet-Location -LiteralPath ${quote(cwd)}\n${versionCommit ? "$env:RELEASE_MACHINE_VERSION_COMMIT = '1'\n" : ''}& ${[file, ...args].map(quote).join(' ')}`);
     const building = args.includes('Build');
-    try { return await this.runner(file, args, { cwd, env, timeoutMs: building ? 35 * 60_000 : 120_000,
+    try { return await this.runner(file, args, { cwd, env, timeoutMs: timeoutMs ?? (building ? 35 * 60_000 : 120_000),
       onOutput: logged ? text => this.log(text.trimEnd()) : undefined,
       onPid: logged ? pid => { this.state.childPid = pid; this.save(); } : undefined }); }
     finally { if (logged && versionCommit) this.log('Remove-Item Env:RELEASE_MACHINE_VERSION_COMMIT -ErrorAction SilentlyContinue'); }
@@ -101,8 +104,12 @@ export class ReleaseMachine {
   }
   async changes(cwd = this.root) {
     const out = await this.git(['-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'], cwd, false);
-    // No silent exclusions: even untracked files are blockers. Rename records also block.
-    return out ? out.split('\0').filter(Boolean).map(row => row.slice(3)) : [];
+    // Untracked source and rename records block; the two live collaboration records are preserved separately.
+    const files = out ? out.split('\0').filter(Boolean).map(row => row.slice(3)) : [];
+    const protocol = this.state.id && this.state.status !== 'complete' ? (this.state.protocol ?? this.validationProtocol) : this.validationProtocol;
+    const local = protocol === 'pc-local-v2';
+    // Collaboration records are retained in place; this protocol never stages or restores them.
+    return local && cwd === this.root ? files.filter(file => !['.planning/ai-collab/CURRENT.md', '.planning/ai-collab/ACTIVE.md'].includes(file)) : files;
   }
   async clean(cwd = this.root) { const changes = await this.changes(cwd); if (changes.length) throw new Error(`未保存変更があります (${cwd}): ${changes.join(', ')}`); }
   async findMain() {
@@ -193,20 +200,22 @@ export class ReleaseMachine {
       // Complete all read-only guards before recording a new attempt or modifying Git.
       await this.guards({ appClosed: true });
       const base = await this.head();
-      if (base !== await this.git(['rev-parse', 'origin/develop'])) throw new Error('developを最新のorigin/developへfast-forwardしてから開始してください。');
-      try { await this.git(['merge-base', '--is-ancestor', 'origin/main', base]); }
+      if (this.validationProtocol === 'protected-pr-v1' && base !== await this.git(['rev-parse', 'origin/develop'])) throw new Error('developを最新のorigin/developへfast-forwardしてから開始してください。');
+      try { if (this.validationProtocol === 'protected-pr-v1') await this.git(['merge-base', '--is-ancestor', 'origin/main', base]); }
       catch { throw new Error('mainの更新をPR経由でdevelopへ同期し、CI成功後に開始してください。'); }
       const texts = VERSION_FILES.map(file => fs.readFileSync(path.join(this.root, file), 'utf8'));
-      if (JSON.parse(texts[0]).version !== version) throw new Error('版番号は独立ブランチで更新し、develop宛てPRのCI成功・統合後に開始してください。');
+      if (JSON.parse(texts[0]).version !== version) throw new Error('版番号を作業ブランチで更新し、PCのdevelopへ対象確認後に統合してください。');
       const files = Object.fromEntries(VERSION_KEYS.map((key, i) => [key, texts[i]]));
       updateReleaseVersionTexts(files, version, `${Number(version.split('.')[0]) + 1}.0.0`);
-      await this.github.assertCommitChecks(base);
+      let validation;
+      if (this.validationProtocol === 'pc-local-v2') validation = await this.validateLocalCandidate(base);
+      else await this.github.assertCommitChecks(base);
       const staged = await this.git(['diff', '--cached', '--name-only'], this.root, false); if (staged) throw new Error('ステージ済み変更があります。');
-      this.state = { id: `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`, version, base, status: 'running', operation: 'prepare', steps: {} }; this.save();
-    } else { await this.guards({ appClosed: true }); }
+      this.state = { id: `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`, version, base, validationIdentity: validation?.identity, status: 'running', operation: 'prepare', steps: {} }; this.save();
+    } else { await this.guards({ appClosed: true }); await this.verifyValidation(); }
     this.state.status = 'running'; this.state.operation = 'prepare'; this.state.error = null; this.save();
     if (!this.state.protocol && this.state.candidate) throw new Error('旧直接push方式の途中記録です。成果物を保持し、手動引継ぎ手順を確認してください。');
-    this.state.protocol = 'protected-pr-v1';
+    this.state.protocol ??= this.validationProtocol;
     this.state.candidate ??= this.state.base; this.save();
     await this.step('main', 'STEP 1-1 検証済み候補の作業場所を準備', async () => {
       await this.assertCandidate(false);
@@ -257,10 +266,15 @@ export class ReleaseMachine {
       await this.clean(this.state.mainRoot);
     }
   }
+  async verifyValidation() {
+    if (this.state.protocol !== 'pc-local-v2') return;
+    const receipt = await this.validateLocalCandidate(this.state.candidate ?? this.state.base, {verifyOnly:true});
+    if (!receipt?.identity || JSON.stringify(receipt.identity) !== JSON.stringify(this.state.validationIdentity)) throw Error('候補の合格記録と実行環境が一致しません。');
+  }
   async assertSnapshot() { await this.assertCandidate(); assertHashes(this.state.releaseDir, this.state.hashes); }
   async package() {
     if (this.state.status === 'complete') throw new Error('提出準備は既に完了しています。');
-    await this.guards(); await this.assertSnapshot();
+    await this.guards(); await this.verifyValidation(); await this.assertSnapshot();
     await this.windows('VerifyInstalled', ['-ReleaseDirectory', this.state.releaseDir, '-ExpectedVersion', this.state.devVersion ?? `${this.state.version}.1`]);
     this.state.confirmation = { at: new Date().toISOString(), candidate: this.state.candidate, hashes: this.state.hashes };
     this.state.status = 'running'; this.state.operation = 'package'; this.state.error = null; this.save(); this.log('STEP 1-5 利用者が実機合格を確認');

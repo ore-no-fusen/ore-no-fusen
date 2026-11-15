@@ -15,6 +15,7 @@ export class ReleaseGitHub {
     if (!/^(?:https:\/\/github\.com\/|git@github\.com:)ore-no-fusen\/ore-no-fusen(?:\.git)?$/.test(url.trim())) throw new Error('originが正規リポジトリと一致しません。');
   }
   async assertCommitChecks(sha) {
+    if (this.m.state.protocol === 'pc-local-v2') return this.m.validateLocalCandidate(sha);
     await this.assertOrigin();
     const checks = await this.api(`commits/${sha}/check-runs?per_page=100`);
     const statuses = await this.api(`commits/${sha}/status?per_page=100`);
@@ -51,6 +52,18 @@ export class ReleaseGitHub {
   }
   async integrate() {
     const m = this.m;
+    if (m.state.protocol === 'pc-local-v2') {
+      await this.assertOrigin();
+      await m.assertSnapshot();
+      await m.git(['fetch', 'origin']);
+      await this.assertTree(m.state.candidate);
+      await m.git(['merge-base', '--is-ancestor', 'origin/main', m.state.candidate]);
+      await m.git(['push', 'origin', m.state.candidate + ':refs/heads/main']);
+      await m.git(['fetch', 'origin']);
+      if (await m.git(['rev-parse', 'origin/main']) !== m.state.candidate) throw Error('保存したmainが合格候補と一致しません。');
+      await this.assertTree('origin/main');
+      m.state.releaseMain = m.state.candidate; m.save(); return;
+    }
     if (m.state.protocol !== 'protected-pr-v1') throw new Error('旧直接push方式の記録です。手動引継ぎが必要です。');
     await this.assertOrigin(); await m.git(['fetch', 'origin']);
     // Push only the immutable candidate branch. Never overwrite an existing different head.

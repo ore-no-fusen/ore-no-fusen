@@ -42,5 +42,5 @@ test('two-button browser flow, fixed confirmation, command logs, narrow screen a
   assert.equal(await page.locator('#version').inputValue(),'5.6.2');
   assert.equal(await page.locator('#confirmed').isChecked(),true);
   info.changes=['unrelated.txt'];Object.assign(state,{status:'idle',steps:{},id:null});await page.waitForFunction(()=>document.querySelector('#reason-text').textContent.includes('unrelated.txt'));assert.equal(await page.locator('#prepare').isDisabled(),true);
-  assert.match(await page.locator('#current').innerText(),/開始できません/); assert.doesNotMatch(await page.locator('#notice').innerText(),/押してください/); assert.deepEqual(errors,[]);
+  assert.match(await page.locator('#current').innerText(),/開始できません/); assert.doesNotMatch(await page.locator('#notice').innerText(),/押してください/); assert.deepEqual(errors,[]);state.protocol='pc-local-v2';await page.waitForFunction(()=>document.querySelector('#prepare-plan').textContent.includes('固定候補'));assert.doesNotMatch(await page.locator('#package-plan').innerText(),/PR|CI/);
 });

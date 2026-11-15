@@ -28,7 +28,7 @@
     const prepared = s.steps.install?.status === 'done';
     $('confirmed').disabled = !prepared || locked || s.status === 'complete';
     $('package').disabled = !prepared || !$('confirmed').checked || locked || blockers.length > 0 || s.status === 'complete';
-    $('package').textContent = complete ? '✓ Store提出準備 完了' : s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIX作成・PR確認';
+    $('package').textContent = complete ? '✓ Store提出準備 完了' : s.status === 'failed' && s.operation === 'package' ? '🚀 止まった工程から再試行' : 'Store用MSIX作成・保存';
     if (complete) $('confirmed').checked = true;
     $('gate').textContent = complete ? '次はMicrosoft Store（Partner Center）へ提出します。' : prepared && $('confirmed').checked ? '実機確認済み。同じexeから提出用を作ります。' : '準備完了と実機確認のチェックが必要です。';
     const blocked = Boolean(networkError || s.error || blockers.length);
@@ -65,6 +65,7 @@
     $('destination').textContent = s.destination || `D:\\Users\\uck\\Documents\\俺の付箋-Store提出\\${$('version').value}\\ore-no-fusen.msix`;
     $('complete').hidden=s.status!=='complete';
     const main=s.mainRoot || info.mainRoot || `${info.root}\\.w\\正式リリース`, version=$('version').value || '<版番号>';
+    if (s.protocol === 'protected-pr-v1') {
     $('prepare-plan').textContent=`① 版番号は先に独立ブランチで更新し、develop宛てPR・CI成功・統合まで完了してください。
 ② 最新developのCI成功と、版番号5ファイルを検査します。
 ③ 正式リリース-${version}ワークツリーの作業ブランチで本番exeを1回ビルド・保全します。mainは変更しません。
@@ -76,6 +77,16 @@
 ④ main統合後CIと候補ソースの一致を確認し、main→developの同期PRを作成します。同様にCI成功・マージ後に再開してください。
 ⑤ 同期後CIとソース一致を確認し、基本フォルダーdevelopをfast-forwardして提出先を開きます。
 保護解除・直接push・強制pushは行いません。待機中もMSIX・exe・実機合格記録を保持し、再ビルドしません。`;
+    } else {
+      $('prepare-plan').textContent=`① 版番号を更新し、対象確認後にPCのdevelopへ統合します。
+② 固定候補をPCで全体確認します。同じ入力・環境の合格結果は引き継ぎます。
+③ 候補の本番exeを1回ビルド・保全します。
+④ 同じexeから確認用MSIXを作成し、導入・起動します。`;
+      $('package-plan').textContent=`① 実機合格したexeをStore用MSIXに梱包します。
+② 形式とexe/resourcesのSHA256を照合し、固定提出先へ保存します。
+③ 合格候補のソースをGitHubのmainへ保存します。
+④ 本人承認後、Microsoft Storeへ申請します。`;
+    }
 
   }
   async function poll() {

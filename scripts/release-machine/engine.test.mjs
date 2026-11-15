@@ -92,7 +92,7 @@ async function fixture(t, { prepared = true } = {}) {
     }
     return 'fixture OK';
   };
-  const options={root,runner,platform:'win32',submissionRoot:path.join(folder,'Store submit')};const machine=new ReleaseMachine(options);
+  const options={validationProtocol:'protected-pr-v1',root,runner,platform:'win32',submissionRoot:path.join(folder,'Store submit')};const machine=new ReleaseMachine(options);
   t.after(()=>{ for(const block of git('worktree','list','--porcelain').split('\n\n')){const line=block.split('\n')[0];const dir=line.slice(9);if(path.resolve(dir)!==path.resolve(root)&&fs.existsSync(dir))git('worktree','remove','--force',dir);}fs.rmSync(folder,{recursive:true,force:true}); });
   return {machine,config,git,root,folder,options};
 }
@@ -232,7 +232,7 @@ test('merged PR with different source never completes or starts develop synchron
 
 test('primary checkout alias resolves to the same directory without accepting a worktree',async t=>{
  const f=await fixture(t);const alias=path.join(f.folder,'root-alias');fs.symlinkSync(f.root,alias,'junction');
- try {const m=new ReleaseMachine({...f.options,root:alias});assert.equal(m.root,fs.realpathSync.native(f.root));await prepare(m);assert.equal(m.state.status,'confirm',m.state.error);} finally {fs.rmdirSync(alias);}
+ try {const m=new ReleaseMachine({ validationProtocol: 'protected-pr-v1',...f.options,root:alias});assert.equal(m.root,fs.realpathSync.native(f.root));await prepare(m);assert.equal(m.state.status,'confirm',m.state.error);} finally {fs.rmdirSync(alias);}
 });
 test('a genuine temporary worktree remains forbidden',async t=>{
  const f=await fixture(t);f.git('checkout','main');const other=path.join(f.folder,'separate-checkout');f.git('worktree','add',other,'develop');const m=new ReleaseMachine({...f.options,root:other});await prepare(m);assert.equal(m.state.status,'failed');assert.match(m.state.error,/一時ワークツリー/);assert.equal(f.config.buildCount,0);
@@ -260,4 +260,19 @@ test('keeps the selected Dev revision after a packaging failure and retry',async
   await packageRelease(f.machine); assert.equal(f.machine.state.status,'complete',f.machine.state.error);
   const verify=f.config.history.find(h=>h.args.includes('VerifyInstalled'));
   assert.ok(verify.args.includes('5.6.2.2'));
+});
+
+test('PC中心の新規候補はローカル確認を使用しPR待ちにしない',async t=>{
+ const f=await fixture(t);f.machine.validationProtocol='pc-local-v2';let checks=0;f.machine.validateLocalCandidate=async()=>{checks++;return {identity:{fixture:true}}};await prepare(f.machine);assert.equal(f.machine.state.status,'confirm');assert.equal(checks,1);assert.equal(f.machine.state.protocol,'pc-local-v2');await packageRelease(f.machine);assert.equal(f.machine.state.status,'complete');assert.equal(f.config.prs.length,0);assert.equal(f.git('rev-parse','HEAD'),f.machine.state.candidate);
+});
+
+test('PC候補のbuild失敗後に環境が変われば旧合格で再開しない',async t=>{
+ const f=await fixture(t);f.machine.validationProtocol='pc-local-v2';
+ f.machine.validateLocalCandidate=async()=>({identity:{environment:'before'}});
+ f.config.fail=(_,args)=>args.includes('Build');
+ await prepare(f.machine);assert.equal(f.machine.state.status,'failed');
+ f.config.fail=null;f.machine.validateLocalCandidate=async()=>({identity:{environment:'after'}});
+ await prepare(f.machine);assert.equal(f.machine.state.status,'failed');
+ assert.match(f.machine.state.error,/合格記録と実行環境/);
+ assert.equal(f.config.prs.length,0);
 });

@@ -4,5 +4,5 @@ if [ "$RELEASE_MACHINE_VERSION_COMMIT" = "1" ]; then
   exit $?
 fi
 
-# PC: staged diff + applicable full E2E. CI: authoritative whole unit/type suites.
+# PC: staged diff only. Run relevant tests explicitly; candidate-wide tests run at release.
 node scripts/precommit.mjs

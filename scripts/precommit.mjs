@@ -8,13 +8,7 @@ export function runPrecommit(files, run, log = console.log) {
     log('[pre-commit] Documentation content only: application checks are not applicable.');
     return;
   }
-  if (files.some(file => /^(src-tauri\/|components\/|app\/components\/|app\/hooks\/|app\/utils\/|app\/page\.|app\/layout)/.test(file))) {
-    log('[pre-commit] Running PC application E2E; guide-only checks run in CI.');
-    run('npm', ['run', 'test:e2e', '--', '--grep-invert', '@ci-guide']);
-  } else {
-    log('[pre-commit] Full E2E is not applicable to these paths.');
-  }
-  log('[pre-commit] Local checks passed. Full unit/type validation is still required in CI.');
+  log('[pre-commit] Diff checks passed. Confirm the relevant tests separately; no automatic full-suite rerun.');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
