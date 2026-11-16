@@ -15,7 +15,7 @@
 |1-4|　↳ ソース|[app/utils/freshRequestQueue.ts](../app/utils/freshRequestQueue.ts)|[app/utils/freshRequestQueue.test.ts](../app/utils/freshRequestQueue.test.ts)<br>概要：作成要求を受付順に処理し、1.5秒超の古い要求と上限4件超を受け付けない。|
 |1-5|↳ 機能|グローバルホットキー Ctrl+N|**不足：対応テスト未確認**<br>確認範囲：不足。OSキー→新規窓の通し確認は別途必要|
 |1-6|　↳ ソース|[src-tauri/src/hotkey_manager.rs](../src-tauri/src/hotkey_manager.rs)|[src-tauri/src/hotkey_manager.rs 内のテスト](../src-tauri/src/hotkey_manager.rs)<br>概要：予約済みキーの拒否、キー設定の読込・保存、無効設定の保持を確認。|
-|1-7|　↳ ソース|[app/utils/shortcutKey.ts](../app/utils/shortcutKey.ts)|[app/utils/shortcutKey.test.ts](../app/utils/shortcutKey.test.ts)<br>概要（代表ケース）：converts modifier plus normal key combinations ／ returns null for modifier-only keys|
+|1-7|　↳ ソース|[app/utils/shortcutKey.ts](../app/utils/shortcutKey.ts)|[app/utils/shortcutKey.test.ts](../app/utils/shortcutKey.test.ts)<br>概要：キー入力と設定の一致・重複・対象外入力・表示を確認。Ctrl＋Nなどの組合せを読み取り、Ctrlだけ・Nだけは除外する。|
 |1-8|↳ 機能|Ctrl 2回押し／Shift 2回押しトリガー|**不足：対応テスト未確認**<br>確認範囲：不足。判定関数の単体はあるが実フック→窓は未確認|
 |1-9|　↳ ソース|[src-tauri/src/double_tap.rs](../src-tauri/src/double_tap.rs)|[src-tauri/src/double_tap.rs 内のテスト](../src-tauri/src/double_tap.rs)<br>概要：2回押しの検知、時間切れ・他キー併用の除外、3回押しでの重複防止を確認。|
 |1-10|↳ 機能|システムトレイ常駐＋トレイメニュー「新規メモ」|**不足：対応テスト未確認**<br>確認範囲：不足。メニュー文字列の単体と実作成を区別|
@@ -102,7 +102,7 @@
 |7-4|↳ 機能|フローティングフォーマットバー|[app/components/FloatingFormatBar.test.tsx](../app/components/FloatingFormatBar.test.tsx)<br>[e2e/sticky-note.spec.ts](../e2e/sticky-note.spec.ts)<br>概要：選択バーのボタン呼出・PCの太字操作<br>確認範囲：一部。部品の呼出と太字操作。全ボタン/配置の実操作一式ではない|
 |7-5|　↳ ソース|[app/components/FloatingFormatBar.tsx](../app/components/FloatingFormatBar.tsx)|[app/components/FloatingFormatBar.test.tsx](../app/components/FloatingFormatBar.test.tsx)<br>概要（代表ケース）：太字・見出し・箇条書き・チェックの4ボタンが表示される ／ 英語では太字ボタンのラベルが Bold になる|
 |7-6|↳ 機能|編集用ホットキー|[e2e/hotkey-disable.spec.ts](../e2e/hotkey-disable.spec.ts)<br>概要：編集キー変更・失敗復帰<br>確認範囲：ブラウザーの編集キー範囲。全OSキー登録の保証ではない|
-|7-7|　↳ ソース|[app/utils/shortcutKey.ts](../app/utils/shortcutKey.ts)|[app/utils/shortcutKey.test.ts](../app/utils/shortcutKey.test.ts)<br>概要（代表ケース）：converts modifier plus normal key combinations ／ returns null for modifier-only keys|
+|7-7|　↳ ソース|[app/utils/shortcutKey.ts](../app/utils/shortcutKey.ts)|[app/utils/shortcutKey.test.ts](../app/utils/shortcutKey.test.ts)<br>概要：キー入力と設定の一致・重複・対象外入力・表示を確認。Ctrl＋Nなどの組合せを読み取り、Ctrlだけ・Nだけは除外する。|
 |7-8|　↳ ソース|[src-tauri/src/hotkey_manager.rs](../src-tauri/src/hotkey_manager.rs)|[src-tauri/src/hotkey_manager.rs 内のテスト](../src-tauri/src/hotkey_manager.rs)<br>概要：予約済みキーの拒否、キー設定の読込・保存、無効設定の保持を確認。|
 |7-9|↳ 機能|PWAの強調表示|[e2e/pwa-bold.spec.ts](../e2e/pwa-bold.spec.ts)<br>概要：PWA赤文字・再表示<br>確認範囲：受信相当データによるブラウザー確認。実PC配送/実iOSは別|
 |7-10|　↳ ソース|**未確認**（対応テスト：[app/viewer/NoteListStep.rendering.test.tsx](../app/viewer/NoteListStep.rendering.test.tsx)）|[app/viewer/NoteListStep.rendering.test.tsx](../app/viewer/NoteListStep.rendering.test.tsx)<br>概要（代表ケース）：一覧の受信本文を朱の太字にし、元のMarkdownを開く処理へ渡す ／ 編集中の太字とチェック項目を表示し、保存時に強調記号を保持する|
