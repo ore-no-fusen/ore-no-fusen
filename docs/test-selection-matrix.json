@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": "docs-v2/000_FEATURE_TREE.md",
-  "sourceSha256": "31c7f38701732d798aae18724c2b82d0c21a244b8356b4057dd8e6a742c52f99",
+  "sourceSha256": "a10cf766e82540c6a1a3b0d91ca0c3b70b5d5134555fe3711a54d5a11697dfc7",
   "families": [
     [
       "U",
@@ -718,24 +718,24 @@
       "rule": "D1"
     },
     {
-      "feature": "Siri から PC に付箋を送る",
-      "sourceSection": "要求1-4　手が離せないときは、声で送りたい",
-      "rule": "C4"
-    },
-    {
       "feature": "ファイル名の自動生成",
-      "sourceSection": "要求1-5　ファイル名を考えたくない",
+      "sourceSection": "要求1-4　ファイル名を考えたくない",
       "rule": "D1"
     },
     {
       "feature": "ファイル名の本文連動",
-      "sourceSection": "要求1-5　ファイル名を考えたくない",
+      "sourceSection": "要求1-4　ファイル名を考えたくない",
       "rule": "D1"
     },
     {
       "feature": "初回セットアップで保存先（Vault）を選択",
-      "sourceSection": "要求1-6　保存場所は自分で決めたい",
+      "sourceSection": "要求1-5　保存場所は自分で決めたい",
       "rule": "D1"
+    },
+    {
+      "feature": "Siri から PC に付箋を送る",
+      "sourceSection": "要求1-6　手が離せないときは、声で送りたい",
+      "rule": "C4"
     },
     {
       "feature": "太字の朱表示",

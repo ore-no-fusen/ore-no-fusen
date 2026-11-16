@@ -62,7 +62,7 @@ pageClass: feature-traceability-page
 | 5 | 実画面軸 | どの画面・UIで現れるか |
 | 6 | 実装・テスト軸 | 実装モジュールとテストの対応・充足度（第2〜4部） |
 
-- 要求は各コンセプトの中で、中核に近いものから順に並べた（有効順の考え方）。
+- 要求は各コンセプトの中で、要求の強い順に並べ、番号も表示順と一致させる。音声送信はコンセプト1の末尾（1-6）で、未完成。
 - 3コンセプトに収まらないものは無理に押し込まず、**基盤**（保存・バックアップ・設定などの土台）と **発展**（結晶化・会員・ホットラインなど）の補助ブランチに置いた。各ブランチの冒頭にその旨を注記する。
 
 
@@ -110,27 +110,27 @@ pageClass: feature-traceability-page
   - 実画面：付箋ウィンドウ（保存ボタンなしで残る）
 - **明示保存 Ctrl+S**：基本は自動保存のため、安心感のために用意された明示保存〔要求：SPEC-NF-01-03〕
   - 実画面：付箋ウィンドウ
-### 要求1-4　手が離せないときは、声で送りたい
+### 要求1-4　ファイル名を考えたくない
 
 要求テスト → [合格条件・担当ケース・不足](#req-1-4)
-
-- **Siri から PC に付箋を送る**（実験的・先行公開）：iOSショートカットが Vercel API 経由で Drive の中継ファイルを更新し、PC が30秒ポーリングで受け取って付箋として表示する（約30秒以内）〔仕様：200_SIRI_SETUP／コード：app/api/siri-send〕
-  - 実画面：PC の付箋ウィンドウ（iPhone 側の PWA 一覧には残らない）
-### 要求1-5　ファイル名を考えたくない
-
-要求テスト → [合格条件・担当ケース・不足](#req-1-5)
 
 - **ファイル名の自動生成**：作成日時から `NNNN_YYYY-MM-DD_Context.md` 形式で自動生成し、入力を求めない〔要求：SPEC-LF-03-03〕
   - 実画面：付箋ファイル（Vault 内）
 - **ファイル名の本文連動**：本文1行目をファイル名のコンテキスト部分に使い、1行目が変わると0.8秒のデバウンス後に自動リネーム。使用できない文字は自動置換〔要求：§3.3〕
   - 実画面：付箋ファイル（Vault 内）
-### 要求1-6　保存場所は自分で決めたい
+### 要求1-5　保存場所は自分で決めたい
 
-要求テスト → [合格条件・担当ケース・不足](#req-1-6)
+要求テスト → [合格条件・担当ケース・不足](#req-1-5)
 
 - **初回セットアップで保存先（Vault）を選択**：初回起動時にフォルダ選択ダイアログを出し、選んだ場所をベースフォルダとして保存する〔要求：§2.2 REQ_LF_02〕
   - 実画面：初回セットアップ画面
 
+### 要求1-6　手が離せないときは、声で送りたい
+
+要求テスト → [合格条件・担当ケース・不足](#req-1-6)
+
+- **Siri から PC に付箋を送る**（未完成・実験的：Siri→PC表示の通し確認は未了）：iOSショートカットが Vercel API 経由で Drive の中継ファイルを更新し、PC が30秒ポーリングで受け取って付箋として表示する（約30秒以内）〔仕様：200_SIRI_SETUP／コード：app/api/siri-send〕
+  - 実画面：PC の付箋ウィンドウ（iPhone 側の PWA 一覧には残らない）
 ---
 
 ## コンセプト2：強調できる
@@ -361,7 +361,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 
 |合格条件|担当する既存ケース|テスト環境|最後に必要になる実機確認|確認範囲・不足|
 |---|---|---|---|---|
-|声で作ったメモが指定PCで読める|不足：対応ケース未同定|自動の上位ケースなし|[PC＋実iPhone](#manual-m07)・[実サービス接続](#manual-m10)（該当変更だけ）|不足：実Siri→中継→PC表示の受入がない。API単体で代替しない|
+|名前を入力しなくても内容に応じたファイルが作られ、改名後も失わない|不足：対応ケース未同定|自動の上位ケースなし|[Windows実データ](#manual-m03)（該当変更だけ）|不足：命名/改名の単体はあるが利用者操作からの受入がない|
 
 <a id="req-1-5"></a>
 
@@ -371,7 +371,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 
 |合格条件|担当する既存ケース|テスト環境|最後に必要になる実機確認|確認範囲・不足|
 |---|---|---|---|---|
-|名前を入力しなくても内容に応じたファイルが作られ、改名後も失わない|不足：対応ケース未同定|自動の上位ケースなし|[Windows実データ](#manual-m03)（該当変更だけ）|不足：命名/改名の単体はあるが利用者操作からの受入がない|
+|自分で選んだ保存先へ残り、不適切な場所は安全に拒否される|[保存先を表示](#case-b-vault)|[PC画面（Tauriモック）](#env-e-pc)|[Windows実データ](#manual-m03)（該当変更だけ）|一部：現在の場所の表示だけ。初回選択と実保存/切替利用は不足|
 
 <a id="req-1-6"></a>
 
@@ -381,7 +381,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 
 |合格条件|担当する既存ケース|テスト環境|最後に必要になる実機確認|確認範囲・不足|
 |---|---|---|---|---|
-|自分で選んだ保存先へ残り、不適切な場所は安全に拒否される|[保存先を表示](#case-b-vault)|[PC画面（Tauriモック）](#env-e-pc)|[Windows実データ](#manual-m03)（該当変更だけ）|一部：現在の場所の表示だけ。初回選択と実保存/切替利用は不足|
+|声で作ったメモが指定PCで読める|不足：対応ケース未同定|自動の上位ケースなし|[PC＋実iPhone](#manual-m07)・[実サービス接続](#manual-m10)（該当変更だけ）|不足：実Siri→中継→PC表示の受入がない。API単体で代替しない|
 
 <a id="req-2-1"></a>
 
@@ -526,30 +526,30 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 |変更の自動保存<br>合格：編集後に保存され、失敗時も未保存本文と原本を守る|[編集終了→保存呼出](#case-b-save)<br>[保存成功/失敗・直列化](#case-c-file-save)|[storage.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/storage.rs)<br>[logic.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/logic.rs)|機能：[PC画面（Tauriモック）](#env-e-pc)・[部品・フック（jsdom）](#env-e-ui)<br>単体：[Rust単体](#env-e-rust)|[Windows実データ](#manual-m03)（条件付き）<br>一部。実ディスク保存・終了後復元の通し確認は別|
 |明示保存 Ctrl+S<br>合格：Ctrl+Sで現在の内容を保存し、失敗を成功扱いしない|[保存成功/失敗・直列化](#case-c-file-save)|[useNoteFile.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useNoteFile.test.tsx)|機能：[部品・フック（jsdom）](#env-e-ui)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[Windows実データ](#manual-m03)（条件付き）<br>一部。共通保存経路まで。Ctrl+S起点の専用ケースは未同定|
 
-### 要求1-4　手が離せないときは、声で送りたい
+### 要求1-4　ファイル名を考えたくない
 
 表3-4：機能とソースの確認
-
-|機能・合格条件|担当する機能ケース|ソース単体の入口|テスト環境|実機候補・未確認範囲|
-|---|---|---|---|---|
-|Siri から PC に付箋を送る<br>合格：声から作った本文が指定PCに付箋として届く|不足：対応ケース未同定|[route.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/api/siri-send/route.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[実サービス接続](#manual-m10)（条件付き）<br>不足。API拒否/制限の単体だけで実Siri→PC到着を保証しない|
-
-### 要求1-5　ファイル名を考えたくない
-
-表3-5：機能とソースの確認
 
 |機能・合格条件|担当する機能ケース|ソース単体の入口|テスト環境|実機候補・未確認範囲|
 |---|---|---|---|---|
 |ファイル名の自動生成<br>合格：初回入力だけで有効なファイル名を生成・保存する|不足：対応ケース未同定|[logic.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/logic.rs)<br>[storage.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/storage.rs)|機能：自動の上位ケースなし<br>単体：[Rust単体](#env-e-rust)|[Windows実データ](#manual-m03)（条件付き）<br>不足。生成/保存の単体をつないだ新規作成の確認が必要|
 |ファイル名の本文連動<br>合格：本文先頭を変えると名前が変わり、旧名で再保存しない|[保存成功/失敗・直列化](#case-c-file-save)|[logic.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/logic.rs)<br>[storage.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/storage.rs)|機能：[部品・フック（jsdom）](#env-e-ui)<br>単体：[Rust単体](#env-e-rust)|[Windows実データ](#manual-m03)（条件付き）<br>一部。遅延保存の呼出順を確認。実ファイルの改名・再起動は別|
 
-### 要求1-6　保存場所は自分で決めたい
+### 要求1-5　保存場所は自分で決めたい
+
+表3-5：機能とソースの確認
+
+|機能・合格条件|担当する機能ケース|ソース単体の入口|テスト環境|実機候補・未確認範囲|
+|---|---|---|---|---|
+|初回セットアップで保存先（Vault）を選択<br>合格：選んだ場所に保存し、不適切な場所を拒否する|[保存先を表示](#case-b-vault)|[storage.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/storage.rs)<br>[settings-store.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/settings-store.test.ts)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[Rust単体](#env-e-rust)・[部品・フック（jsdom）](#env-e-ui)|[Windows実データ](#manual-m03)（条件付き）<br>一部。既存E2Eは現在の保存先表示のみ。初回選択→実保存は未確認|
+
+### 要求1-6　手が離せないときは、声で送りたい
 
 表3-6：機能とソースの確認
 
 |機能・合格条件|担当する機能ケース|ソース単体の入口|テスト環境|実機候補・未確認範囲|
 |---|---|---|---|---|
-|初回セットアップで保存先（Vault）を選択<br>合格：選んだ場所に保存し、不適切な場所を拒否する|[保存先を表示](#case-b-vault)|[storage.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/storage.rs)<br>[settings-store.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/settings-store.test.ts)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[Rust単体](#env-e-rust)・[部品・フック（jsdom）](#env-e-ui)|[Windows実データ](#manual-m03)（条件付き）<br>一部。既存E2Eは現在の保存先表示のみ。初回選択→実保存は未確認|
+|Siri から PC に付箋を送る<br>合格：声から作った本文が指定PCに付箋として届く|不足：対応ケース未同定|[route.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/api/siri-send/route.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[実サービス接続](#manual-m10)（条件付き）<br>不足。API拒否/制限の単体だけで実Siri→PC到着を保証しない|
 
 ### 要求2-1　大事な一文を、ひと目で目立たせたい
 
@@ -736,14 +736,14 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 - 変更の自動保存 — storage.rs（条件付き書き込み・復旧下書き・世代バックアップ）、logic.rs（リネーム後の遅延保存で旧ファイルを再作成しない検証） — ●
 - 明示保存 Ctrl+S — 自動保存と同一経路 — ◐（専用検証なし、低リスク）
 
-### 要求1-4 声で送りたい
-- Siri → PC 付箋 — app/api/siri-send/route.test.ts — ◐（API 側のみ。PC のポーリング受信→付箋化の結合は薄い。実験的機能のため優先度低）
-
-### 要求1-5 ファイル名を考えたくない
+### 要求1-4 ファイル名を考えたくない
 - ファイル名自動生成・本文連動リネーム — logic.rs（sanitize／parse_filename／select_context_line 群）、storage.rs（rename 系） — ●
 
-### 要求1-6 保存場所は自分で決めたい
+### 要求1-5 保存場所は自分で決めたい
 - 初回セットアップで Vault 選択 — storage.rs（validate_storage_path／check_storage_health）、lib/settings-store.test.ts — ◐（初回セットアップ画面自体の E2E なし）
+
+### 要求1-6 声で送りたい
+- Siri → PC 付箋 — app/api/siri-send/route.test.ts — ◐（API 側のみ。PC のポーリング受信→付箋化の結合は薄い。実験的機能のため優先度低）
 
 ---
 

@@ -57,40 +57,40 @@
 |1-3.2|↳ 機能|明示保存 Ctrl+S|[app/hooks/useNoteFile.test.tsx](../app/hooks/useNoteFile.test.tsx)<br>概要：保存成功/失敗・直列化<br>確認範囲：一部。共通保存経路まで。Ctrl+S起点の専用ケースは未同定|
 |1-3.2.1|　↳ ソース|**未確認**（対応テスト：[app/hooks/useNoteFile.test.tsx](../app/hooks/useNoteFile.test.tsx)）|[app/hooks/useNoteFile.test.tsx](../app/hooks/useNoteFile.test.tsx)<br>概要（代表ケース）：returns false without writing when an existing note has not loaded ／ returns true only after the actual write succeeds and propagates write failure|
 
-## 要求1-4　手が離せないときは、声で送りたい
+## 要求1-4　ファイル名を考えたくない
 
 表1-4：要求・機能・ソースとテスト
 
 |番号|階層|対象|テストファイル・不足|
 |---|---|---|---|
-|1-4|要求|要求1-4　手が離せないときは、声で送りたい|**不足：対応テスト未確認**<br>確認範囲：不足：実Siri→中継→PC表示の受入がない。API単体で代替しない|
-|1-4.1|↳ 機能|Siri から PC に付箋を送る|**不足：対応テスト未確認**<br>確認範囲：不足。API拒否/制限の単体だけで実Siri→PC到着を保証しない|
-|1-4.1.1|　↳ ソース|[app/api/siri-send/route.ts](../app/api/siri-send/route.ts)|[app/api/siri-send/route.test.ts](../app/api/siri-send/route.test.ts)<br>概要（代表ケース）：rejects requests larger than 16KB before calling Google ／ rejects text longer than the note limit|
+|1-4|要求|要求1-4　ファイル名を考えたくない|**不足：対応テスト未確認**<br>確認範囲：不足：命名/改名の単体はあるが利用者操作からの受入がない|
+|1-4.1|↳ 機能|ファイル名の自動生成|**不足：対応テスト未確認**<br>確認範囲：不足。生成/保存の単体をつないだ新規作成の確認が必要|
+|1-4.1.1|　↳ ソース|[src-tauri/src/logic.rs](../src-tauri/src/logic.rs)|[src-tauri/src/logic.rs 内のテスト](../src-tauri/src/logic.rs)<br>概要（代表ケース）：sanitize_basic ／ sanitize_removes_all_forbidden_chars|
+|1-4.1.2|　↳ ソース|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|[src-tauri/src/storage.rs 内のテスト](../src-tauri/src/storage.rs)<br>概要（代表ケース）：legacy_settings_default_reconfirmation_marker_without_changing_denial ／ conditional_note_write_preserves_newer_content|
+|1-4.2|↳ 機能|ファイル名の本文連動|[app/hooks/useNoteFile.test.tsx](../app/hooks/useNoteFile.test.tsx)<br>概要：保存成功/失敗・直列化<br>確認範囲：一部。遅延保存の呼出順を確認。実ファイルの改名・再起動は別|
+|1-4.2.1|　↳ ソース|[src-tauri/src/logic.rs](../src-tauri/src/logic.rs)|[src-tauri/src/logic.rs 内のテスト](../src-tauri/src/logic.rs)<br>概要（代表ケース）：sanitize_basic ／ sanitize_removes_all_forbidden_chars|
+|1-4.2.2|　↳ ソース|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|[src-tauri/src/storage.rs 内のテスト](../src-tauri/src/storage.rs)<br>概要（代表ケース）：legacy_settings_default_reconfirmation_marker_without_changing_denial ／ conditional_note_write_preserves_newer_content|
 
-## 要求1-5　ファイル名を考えたくない
+## 要求1-5　保存場所は自分で決めたい
 
 表1-5：要求・機能・ソースとテスト
 
 |番号|階層|対象|テストファイル・不足|
 |---|---|---|---|
-|1-5|要求|要求1-5　ファイル名を考えたくない|**不足：対応テスト未確認**<br>確認範囲：不足：命名/改名の単体はあるが利用者操作からの受入がない|
-|1-5.1|↳ 機能|ファイル名の自動生成|**不足：対応テスト未確認**<br>確認範囲：不足。生成/保存の単体をつないだ新規作成の確認が必要|
-|1-5.1.1|　↳ ソース|[src-tauri/src/logic.rs](../src-tauri/src/logic.rs)|[src-tauri/src/logic.rs 内のテスト](../src-tauri/src/logic.rs)<br>概要（代表ケース）：sanitize_basic ／ sanitize_removes_all_forbidden_chars|
-|1-5.1.2|　↳ ソース|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|[src-tauri/src/storage.rs 内のテスト](../src-tauri/src/storage.rs)<br>概要（代表ケース）：legacy_settings_default_reconfirmation_marker_without_changing_denial ／ conditional_note_write_preserves_newer_content|
-|1-5.2|↳ 機能|ファイル名の本文連動|[app/hooks/useNoteFile.test.tsx](../app/hooks/useNoteFile.test.tsx)<br>概要：保存成功/失敗・直列化<br>確認範囲：一部。遅延保存の呼出順を確認。実ファイルの改名・再起動は別|
-|1-5.2.1|　↳ ソース|[src-tauri/src/logic.rs](../src-tauri/src/logic.rs)|[src-tauri/src/logic.rs 内のテスト](../src-tauri/src/logic.rs)<br>概要（代表ケース）：sanitize_basic ／ sanitize_removes_all_forbidden_chars|
-|1-5.2.2|　↳ ソース|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|[src-tauri/src/storage.rs 内のテスト](../src-tauri/src/storage.rs)<br>概要（代表ケース）：legacy_settings_default_reconfirmation_marker_without_changing_denial ／ conditional_note_write_preserves_newer_content|
+|1-5|要求|要求1-5　保存場所は自分で決めたい|[e2e/sticky-note.spec.ts](../e2e/sticky-note.spec.ts)<br>概要：保存先を表示<br>確認範囲：一部：現在の場所の表示だけ。初回選択と実保存/切替利用は不足|
+|1-5.1|↳ 機能|初回セットアップで保存先（Vault）を選択|[e2e/sticky-note.spec.ts](../e2e/sticky-note.spec.ts)<br>概要：保存先を表示<br>確認範囲：一部。既存E2Eは現在の保存先表示のみ。初回選択→実保存は未確認|
+|1-5.1.1|　↳ ソース|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|[src-tauri/src/storage.rs 内のテスト](../src-tauri/src/storage.rs)<br>概要（代表ケース）：legacy_settings_default_reconfirmation_marker_without_changing_denial ／ conditional_note_write_preserves_newer_content|
+|1-5.1.2|　↳ ソース|[lib/settings-store.ts](../lib/settings-store.ts)|[lib/settings-store.test.ts](../lib/settings-store.test.ts)<br>概要（代表ケース）：loads default settings initially ／ loads settings from localStorage if available|
 
-## 要求1-6　保存場所は自分で決めたい
+## 要求1-6　手が離せないときは、声で送りたい
 
 表1-6：要求・機能・ソースとテスト
 
 |番号|階層|対象|テストファイル・不足|
 |---|---|---|---|
-|1-6|要求|要求1-6　保存場所は自分で決めたい|[e2e/sticky-note.spec.ts](../e2e/sticky-note.spec.ts)<br>概要：保存先を表示<br>確認範囲：一部：現在の場所の表示だけ。初回選択と実保存/切替利用は不足|
-|1-6.1|↳ 機能|初回セットアップで保存先（Vault）を選択|[e2e/sticky-note.spec.ts](../e2e/sticky-note.spec.ts)<br>概要：保存先を表示<br>確認範囲：一部。既存E2Eは現在の保存先表示のみ。初回選択→実保存は未確認|
-|1-6.1.1|　↳ ソース|[src-tauri/src/storage.rs](../src-tauri/src/storage.rs)|[src-tauri/src/storage.rs 内のテスト](../src-tauri/src/storage.rs)<br>概要（代表ケース）：legacy_settings_default_reconfirmation_marker_without_changing_denial ／ conditional_note_write_preserves_newer_content|
-|1-6.1.2|　↳ ソース|[lib/settings-store.ts](../lib/settings-store.ts)|[lib/settings-store.test.ts](../lib/settings-store.test.ts)<br>概要（代表ケース）：loads default settings initially ／ loads settings from localStorage if available|
+|1-6|要求|要求1-6　手が離せないときは、声で送りたい（未完成）|**不足：対応テスト未確認**<br>確認範囲：不足：実Siri→中継→PC表示の受入がない。API単体で代替しない|
+|1-6.1|↳ 機能|Siri から PC に付箋を送る|**不足：対応テスト未確認**<br>確認範囲：不足。API拒否/制限の単体だけで実Siri→PC到着を保証しない|
+|1-6.1.1|　↳ ソース|[app/api/siri-send/route.ts](../app/api/siri-send/route.ts)|[app/api/siri-send/route.test.ts](../app/api/siri-send/route.test.ts)<br>概要（代表ケース）：rejects requests larger than 16KB before calling Google ／ rejects text longer than the note limit|
 
 ## 要求2-1　大事な一文を、ひと目で目立たせたい
 
