@@ -10,7 +10,7 @@ outline: deep
 </p>
 
 <p class="version-info">
-設計書 v1.7 / 2026-11-15
+設計書 v1.8 / 2026-11-17
 </p>
 
 ---
@@ -22,11 +22,11 @@ outline: deep
 <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin:24px auto;max-width:600px;">
   <div style="width:38%;background:#7c3aed;color:#fff;display:flex;flex-direction:column;align-items:center;padding:12px 20px;border-radius:6px;font-weight:700;font-size:0.95em;text-align:center;">
     🎭 E2E テスト（Playwright）
-    <span style="font-size:0.78em;font-weight:400;margin-top:4px;opacity:0.9;">3 ファイル / ブラウザ + Tauri 実アプリ</span>
+    <span style="font-size:0.78em;font-weight:400;margin-top:4px;opacity:0.9;">ブラウザーの実画面 / Tauri・通信はケースごとにモック</span>
   </div>
   <div style="width:64%;background:#2563eb;color:#fff;display:flex;flex-direction:column;align-items:center;padding:12px 20px;border-radius:6px;font-weight:700;font-size:0.95em;text-align:center;">
     ⚡ ユニットテスト（Vitest）
-    <span style="font-size:0.78em;font-weight:400;margin-top:4px;opacity:0.9;">13+ ファイル / jsdom 環境</span>
+    <span style="font-size:0.78em;font-weight:400;margin-top:4px;opacity:0.9;">部品・関数 / jsdom 環境</span>
   </div>
   <div style="width:90%;background:#059669;color:#fff;display:flex;flex-direction:column;align-items:center;padding:12px 20px;border-radius:6px;font-weight:700;font-size:0.95em;text-align:center;">
     🦀 Rust ユニットテスト（cargo test）
@@ -37,40 +37,56 @@ outline: deep
 <Note type="info">
 <strong>テスト方針：</strong>
 ユニットテストは純粋関数・データ変換ロジック・ストレージ操作を対象とする。
-E2E テストはユーザー操作シナリオを実際のアプリで検証する。
-フロントエンドの UI コンポーネント単体テストは現状では最小限に留める。
+E2E テストはブラウザー上で操作シナリオを確認する。Tauri/OS/通信をモックにする試験は、その先の実動作を保証しない。
+部品・関数・接続のうち、変更した結果を確認できる必要な試験だけ選ぶ。
 </Note>
 
-### 1.1 要求からテストを選び、候補全体は1回確認する
+<div class="test-policy">
 
-要求・テスト対応の正本は[機能ツリー](000_FEATURE_TREE.md)。「すぐ書ける」「強調できる」「そこにある」→要求→機能/画面/モジュール→テストの順で整理する。既存の基盤・発展も、支える要求に接続する。別の製品分類を作らない。
+<a id="test-policy"></a>
 
-<p class="table-caption">表 1.1-1 テストの実行分担（移行後）</p>
+### 1.1 テスト方針：通常は機能単位、全要求・全機能はリリース時
 
-|No|段階と確認内容|
+**要求は安定した基準とし、その下の機能が追加・変更・削除される。通常のデグレ試験は変更機能と影響先だけ。全要求に対応する全機能の確認は、固定したリリース候補で1回行う。**
+
+<p class="table-caption">表1.1-1　いつ・どこまで確認するか</p>
+
+|時点|確認する範囲|繰り返さないもの|
+|---|---|---|
+|機能の修正|変更機能と影響する機能のデグレ。必要なソース単体を選ぶ|無関係な機能・全要求の再試験|
+|機能の追加|追加機能と、共通処理などが変わる影響先のデグレ|未変更の既存機能一式|
+|機能の削除|残る関連機能・入口・データ契約が壊れていないか|削除した機能の全動作|
+|文書・図・文言・余白だけ|差分・対象の表示・参照|アプリ単体・結合・E2E・Rust|
+|固定リリース候補|全要求→全機能の対応をたどり、必要な単体・機能・受入を重複除去して全体確認1回|要求用/機能用という名前だけで同じケースを二重実行|
+|合格済み同一候補の再開・配布|合格記録・ソース/依存/環境・配布物の一致と、配信先の差を照合|承認待ち・PR・統合・main保存・梱包再開だけを理由にした全体試験|
+
+<p class="table-caption">表1.1-2　要求・機能・ソースとテストの関係</p>
+
+|対象|確認する目的|対応の置き場所|
+|---|---|---|
+|要求|利用者の目的を満たすか|[機能ツリー第2部](000_FEATURE_TREE.md#requirement-tests)|
+|機能|操作から結果まで、その機能が成立するか|[機能ツリー第3部](000_FEATURE_TREE.md#function-tests)|
+|ソース|個々の処理・境界・失敗時の不変条件が正しいか|[機能ツリー第4部](000_FEATURE_TREE.md#source-tests)|
+
+要求/機能/ソースは確認の目的であり、テストファイルを別々に増やす区分ではない。同じケースが複数を確認できれば、共通IDで参照して実行は1回にする。結合/E2Eなどの形式と、要求を満たしたかという判定も区別する。
+
+<p class="table-caption">表1.1-3　環境と実機の扱い</p>
+
+|記録すること|決め方|
 |---|---|
-|1|**修正ワークツリー・通常PR**：変更した要求と影響先の単体・境界/失敗・対象操作。全体試験は通常実施しない。|
-|2|**採用分をまとめたdevelop候補**：全単体・Rust・必要な型/ビルド・全体E2E・安全系と関連文書。全体試験は候補1つに1回。|
-|3|**MSIX実機**：起動・保存・再起動・今回の変更、必要な端末固有項目。CIで代替できない結果を確認。|
-|4|**同じ候補をmain/Storeへ反映**：候補・設定・exe/resourcesと合格記録の一致を同じ処理内で照合。全体試験は繰り返さない。|
+|テスト環境|ブラウザー/jsdom/Rust/Node/実端末を記載し、OS・通信・保存先のどこがモックかを残す|
+|最終実機|OS・iOS・実通信・署名/導入など、変更した未確認部分だけ選ぶ。対象は[機能ツリー第6部](000_FEATURE_TREE.md#test-environments)|
+|既存合格|同じ入力・環境で有効な結果は引き継ぐ。未変更の合格操作を本人へ再依頼しない|
+|不足|対応ケース/実機結果がないものを見えるように残す。自動スクリプト成功だけで全要求合格としない|
 
-コード・依存lock・ビルド入力が変われば以前の全体合格を新候補へ流用せず、対象修正の確認後に新候補で全体試験を1回実施する。承認待ち・記録・同じtreeの履歴変更だけではやり直さない。対象不明・選択0件・証拠欠落は合格にせず停止する。
+通常修正では機能単位の対象を選ぶ。要求の合格条件や共通契約に影響する変更だけ、その要求の該当シナリオも対象へ足す。要求の条件自体を変える場合は、要求と対応表を更新する。どちらの場合も全要求一式を通常修正の固定セットにしない。
 
-詳細は開発リポジトリの `docs/TEST_SELECTION_POLICY.md` と `docs/010_RELEASE.md`。現在のCI/hook/release-machineは未移行であり、実装と検証が完了するまで既存の必要チェックを無断で省略しない。古いテスト件数は監査時点の記録で、全量再監査済みとはしない。
+要求・機能・ソースの母集団と対応は[機能ツリー](000_FEATURE_TREE.md)。具体的なコマンド/ケースの入口は開発リポジトリの `docs/TEST_SELECTION_MATRIX.md`。リリース手順 `docs/010_RELEASE.md` は本節を参照し、テスト範囲の別規則を重ねて作らない。
 
-```mermaid
-sequenceDiagram
- participant Dev as 修正ワークツリー
- participant Candidate as develop候補
- participant Release as main・Store
- Dev->>Dev: 要求と影響範囲の対象テスト
- Dev->>Candidate: 採用する変更をまとめる
- Candidate->>Candidate: 全体テスト1回・MSIX実機確認
- Candidate->>Release: 合格した候補・exe・結果を引き継ぐ
- Release->>Release: 同じ中身か自動照合して反映
-```
+リリース候補の全体合格後にコード・依存・実行環境を変更した場合は、その変更の対象確認後、新しいリリース候補として確認する。対象不明・不足した記録・失敗を合格として扱わない。GitHub Test/MSIX検査は必要時の手動実行、コミット/push/PRだけで全件を起動しない。
 
-<p class="figure-caption">図 1.1-1 修正時の対象テストと候補全体1回の分担</p>
+
+</div>
 
 ### 1.2 変更の影響に応じて実施する端末確認
 
@@ -141,7 +157,7 @@ Rust ユニットテスト（各 `.rs` ファイルの `#[cfg(test)]` モジュ�
 ## 3 E2Eテスト一覧（Playwright）
 
 <Note type="info">
-E2E テストは Playwright で実際の Tauri アプリを起動して操作する。テスト実行には開発ビルドが必要。
+E2E テストはPlaywrightでブラウザー上の画面を操作する。PC側の多くはTauri APIをモック化し、PWA/Web側も検証データや模擬通信を使う。実OS/実端末の確認範囲は機能ツリーに分けて記録する。
 </Note>
 
 <p class="table-caption">表 3-1　E2E テスト一覧</p>
@@ -217,18 +233,13 @@ cargo test
 ### 5.3 E2E テスト（Playwright）
 
 ```bash
-# E2E テストを実行（Tauri アプリのビルドが必要）
-npx playwright test
-# 特定ファイルのみ実行
-npx playwright test e2e/sticky-note.spec.ts
-# UI モードで実行（デバッグ用）
-npx playwright test --ui
+# 通常修正：変更したシナリオだけ（隔離Nextサーバーは実行ラッパーが起動）
+npm run test:e2e -- e2e/pwa-video-local.spec.ts
+# 必要なら実在するケース名でさらに絞る
+npm run test:e2e -- e2e/sticky-note.spec.ts --grep '新しい付箋'
 ```
 
-<Note type="warning">
-<strong>注意：</strong> E2E テストは <code>npm run tauri dev</code> が起動中でないと実行できない場合がある。
-CI での実行は未整備（ローカル手動実行のみ）。
-</Note>
+ブラウザーE2Eのために、別exeや実Tauriアプリを毎回起動する必要はない。実OS/実機試験が必要な条件は機能ツリーの対応欄を参照する。ファイル指定なしの全体実行は固定リリース候補で行う。
 
 ### 5.4 リリース候補の合格ゲート
 
@@ -274,8 +285,15 @@ CI での実行は未整備（ローカル手動実行のみ）。
 | 6 | 1.5 | 26-10-08 | FileDropの選択・復元・汎用送信・連番保存・ack保護・画像動画回帰と最初のiPhone実機受け入れ試験を追加。 |
 | 7 | 1.6 | 26-10-28 | 通常開発の全件検査のCI集約、E2E分担と同一入力の統合後検証を追加。 |
 | 8 | 1.7 | 26-11-15 | Museと整理した3方針の要求・テスト対応を起点に、通常対象試験・候補全体1回・同一成果物引継ぎの手順へ改定。自動化未移行と全量監査未完了を区別。 |
+| 9 | 1.8 | 26-11-17 | 通常は機能単位のデグレ、全要求/全機能はリリース時と明記。要求/機能/ソースの共有ケースと環境/条件付き実機確認を機能ツリーへ接続。E2Eの実際のモック境界と実行方法を訂正。 |
 
 </div>
 
 
 FileDrop追加確認：Excel（xls/xlsx）、Word（doc/docx）、ZIP、音声（m4a/mp3）を選択し、元名・本文・バイト列を保持して送信・保存できること。MIME型が空でもapplication/octet-streamで扱い、同名連番と送信失敗時保持を維持する。
+
+<style>
+.test-policy table { display: table; table-layout: fixed; width: 100%; }
+.test-policy table th:first-child, .test-policy table td:first-child { width: 25% !important; min-width: 0 !important; max-width: none !important; white-space: normal !important; padding: 10px !important; text-align: left !important; }
+.test-policy td, .test-policy th { overflow-wrap: anywhere; white-space: normal; }
+</style>

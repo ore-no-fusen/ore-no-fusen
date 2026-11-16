@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": "docs-v2/000_FEATURE_TREE.md",
-  "sourceSha256": "192e858db456e4c2e4586b50191e9ac1cc8a9c085c57a66d7a086724b3a52534",
+  "sourceSha256": "31c7f38701732d798aae18724c2b82d0c21a244b8356b4057dd8e6a742c52f99",
   "families": [
     [
       "U",
@@ -1059,5 +1059,10 @@
       "feature": "OS起動とキャンセル",
       "rule": "U2"
     }
-  ]
+  ],
+  "sourceReview": {
+    "date": "2026-11-17",
+    "reason": "要求16・機能71の確認内容/担当ケース/不足を正本へ追加。元の71機能の名前と順序は同一であることを照合。",
+    "featureNamesUnchanged": true
+  }
 }
