@@ -5,6 +5,9 @@ outline: deep
 
 # 🧪 004 テスト設計
 
+[要求 → 機能 → ソースと、それぞれに紐づくテストの一覧](./TEST_TRACEABILITY_LIST.md)
+
+
 <p class="lead-text">
 テスト戦略・テスト対象一覧・実行方法・カバレッジ外領域
 </p>
