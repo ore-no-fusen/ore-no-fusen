@@ -157,7 +157,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
             onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape' && !running) { if (confirmUnused) setConfirmUnused(false); else setManageTags(false); } }}>
             <div ref={managerRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={english ? 'Manage tags' : 'タグ管理'} className="flex max-h-full w-full max-w-md flex-col gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-sm shadow-xl">
                 <h2 className="font-bold">{english ? 'Manage tags' : 'タグ管理'}</h2>
-                <p className="text-zinc-400">{english ? 'Usage counts include filed notes. Unused tags are kept until you choose to delete them.' : '使用件数にはフォルダーに保管した付箋も含みます。未使用タグは、選んで削除するまで残ります。'}</p>
+                <p className="text-zinc-400">{english ? 'Tag management includes filed notes, Q&A, terms, and recipes. Tags used only there do not appear in the launcher tag row. Unused tags remain until deleted.' : 'タグ管理には、フォルダーに保管した付箋やQA・用語集・手順のタグも表示します。それらだけで使うタグは、ランチャーのタグ列には表示されません。未使用タグは削除するまで残ります。'}</p>
                 {confirmUnused ? <div role="alertdialog" aria-label={english ? 'Confirm unused-tag deletion' : '未使用タグの削除確認'} className="min-h-0 overflow-y-auto">
                     <p>{english ? `Delete ${unusedSelection.size} selected unused tags? Notes will not be changed. Tags that are now in use will be kept.` : `選んだ${unusedSelection.size}件の未使用タグを削除します。付箋は変更しません。使用中になったタグは残します。`}</p>
                     <ul className="my-3 list-inside list-disc">{[...unusedSelection].map(tag => <li key={tag} className="break-words">{tag}</li>)}</ul>
