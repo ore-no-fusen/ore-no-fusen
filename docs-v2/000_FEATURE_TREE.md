@@ -42,6 +42,8 @@ pageClass: feature-traceability-page
 
 ## テストの対応を見る場所
 
+**[要求 → 機能 → ソースとテストの一覧](./TEST_TRACEABILITY_LIST.md)**：番号・テストファイル・日本語概要・不足を同じ表で確認する。
+
 |段階|確認すること|このファイルの参照先|
 |---|---|---|
 |要求|利用者の目的を満たすか|[第2部・受入/E2E](#requirement-tests)|

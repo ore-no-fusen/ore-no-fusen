@@ -1,6 +1,6 @@
 # 修正結果のキャプチャ報告
 
-画面・設計書の修正結果は、追加依頼を待たずキャプチャと固定リンクで返す。
+画面・設計書の修正結果は、追加依頼を待たずキャプチャと固定リンクで返す。証拠として出す画像は実際に起動した対象ページ・アプリをそのまま撮影する。別ファイルへの抜粋・見出し追加・HTML再構成を、実画面の証拠として使わない。
 
 表1：標準手順
 
@@ -16,15 +16,15 @@
 ```powershell
 # 直近の確認済みリンクを即座に再提示（通信・再撮影なし）
 node scripts/capture-result.cjs --last
-# 文書の実際の内容を単体プレビューして撮影（アプリ実画面と呼ばない）
-node scripts/capture-result.cjs --file docs-v2/TEST_TRACEABILITY_LIST.md
+# 設計書は既存のVitePressで実ページを開いて撮影
+node scripts/capture-result.cjs --url http://127.0.0.1:5173/ore-no-fusen/TEST_TRACEABILITY_LIST
 # アプリは既存の起動方法で開いた実画面を撮影
 node scripts/capture-result.cjs --url http://localhost:3002
 # 目視済み・公開可能なPNGを共有。最後に返信用Markdownを出力
 node scripts/capture-result.cjs --image "撮影されたPNGの絶対パス" --share
 ```
 
-`--selector CSS`で変更箇所を絞り、`--height 1120`で縦幅を指定する。PNGの隣に撮影元・版・日時、共有後は返信文を保存する。画像は内容ハッシュで命名し同じ画像を再登録しない。
+`--selector CSS`で変更箇所を絞り、`--height 1120`で縦幅を指定する。単体プレビュー用の`--file`は下書き確認用に限り、実画面の証拠には使わない。PNGの隣に撮影元・版・日時、共有後は返信文を保存する。画像は内容ハッシュで命名し同じ画像を再登録しない。
 
 表2：繰り返さない失敗
 

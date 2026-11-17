@@ -272,3 +272,12 @@
 .store-ls h4  { color: #9333ea; }
 .store-drive  { border: 1.5px solid #22c55e; }
 .store-drive h4 { color: #16a34a; }
+
+/* 階層番号を切らず、実際の文書内の表を4列で表示する */
+.test-traceability-list table{display:table!important;table-layout:fixed;width:100%;font-size:14px}
+.vp-doc .test-traceability-list table th,.vp-doc .test-traceability-list table td{padding:8px!important;vertical-align:top;overflow-wrap:anywhere}
+.vp-doc .test-traceability-list table th:nth-child(1),.vp-doc .test-traceability-list table td:nth-child(1){width:105px!important;min-width:105px!important;max-width:105px!important;white-space:nowrap}
+.vp-doc .test-traceability-list table th:nth-child(2),.vp-doc .test-traceability-list table td:nth-child(2){width:70px!important;white-space:nowrap}
+.vp-doc .test-traceability-list table th:nth-child(3),.vp-doc .test-traceability-list table td:nth-child(3){width:30%!important}
+.test-traceability-list strong{color:var(--vp-c-danger-1)}
+@media(max-width:767px){.test-traceability-list table{display:block!important;overflow-x:auto}.vp-doc .test-traceability-list table th:nth-child(3),.vp-doc .test-traceability-list table td:nth-child(3){min-width:210px}.vp-doc .test-traceability-list table th:nth-child(4),.vp-doc .test-traceability-list table td:nth-child(4){min-width:330px}}
