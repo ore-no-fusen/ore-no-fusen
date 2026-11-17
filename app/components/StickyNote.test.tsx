@@ -12,6 +12,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, assert } from 'vitest';
 import { emit as emitEvent } from '@tauri-apps/api/event';
 import StickyNote from './StickyNote';
+import { MenuItem } from '@tauri-apps/api/menu';
 
 const { mockArchiveMenuPopup, mockEventHandlers } = vi.hoisted(() => ({
     mockArchiveMenuPopup: vi.fn(),
@@ -54,6 +55,7 @@ const mockWindow = {
 
 vi.mock('@tauri-apps/api/core', () => ({
     invoke: (...args: any[]) => mockInvoke(...args),
+    convertFileSrc: (path: string) => 'asset://localhost/' + encodeURIComponent(path),
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -143,6 +145,7 @@ describe('StickyNote Component', () => {
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
         mockWindow.isFocused.mockResolvedValue(false);
         mockArchiveMenuPopup.mockReset();
+        vi.mocked(MenuItem.new).mockClear();
 
         // Default mock responses
         mockInvoke.mockImplementation((cmd, args) => {
@@ -160,6 +163,125 @@ describe('StickyNote Component', () => {
                     return Promise.resolve(null);
             }
         });
+    });
+
+    function useStoredBody(body: string, pin = false) {
+        mockInvoke.mockImplementation((command, args) => {
+            if (command === 'fusen_read_note') return Promise.resolve({
+                meta: { path: 'd:/test/note.md', tags: [], always_on_top: pin },
+                body: '---\ntags: []\ncustom_field: keep\nalwaysOnTop: ' + pin + '\n---\n' + body,
+            });
+            if (command === 'fusen_save_note') return Promise.resolve(args.path);
+            if (command === 'fusen_get_all_tags') return Promise.resolve([]);
+            if (command === 'hotkey_get_bindings') return Promise.resolve({disabled_hotkeys: [], new_note_trigger: 'shortcut', new_note: 'ctrl+n', arrange: 'ctrl+shift+l', quick_launcher: 'ctrl+p'});
+            return Promise.resolve(null);
+        });
+    }
+
+    it.each(['-', '*', '+'])('製品のチェック操作：%s記法を切り替えて保存し、画像・他の行・属性を保持する', async (marker) => {
+        const body = '見出し\n' + marker + ' [ ] 対象\n- [X] 別の項目\n![](assets/image.png)\n通常行';
+        useStoredBody(body);
+        render(<StickyNote />);
+        const target = (await screen.findAllByTitle('完了にする'))[0];
+        fireEvent.click(target);
+        const checked = body.replace(marker + ' [ ] 対象', marker + ' [x] 対象');
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: checked, frontmatterRaw: expect.stringContaining('custom_field: keep'),
+        })), { timeout: 3000 });
+        fireEvent.click(screen.getAllByTitle('未完了にする')[0]);
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({body})), {timeout: 3000});
+        fireEvent.click(screen.getAllByTitle('未完了にする')[0]);
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: body.replace('- [X] 別の項目', '- [ ] 別の項目'),
+        })), { timeout: 3000 });
+    });
+
+    it.each([false, true])('製品のピン操作：元の設定%sを反転しOS呼出と本文を保持した保存につなぐ', async (pin) => {
+        useStoredBody('ピン留め本文', pin);
+        render(<StickyNote />);
+        await screen.findByText('ピン留め本文');
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_set_always_on_top', {enabled: pin}));
+        const buttons = screen.getByTestId('sticky-primary-actions').querySelectorAll('button');
+        fireEvent.click(buttons[buttons.length - 1]);
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_set_always_on_top', {enabled: !pin}));
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: 'ピン留め本文', frontmatterRaw: expect.stringContaining('alwaysOnTop: ' + !pin),
+        })));
+    });
+
+    it('製品のピン操作：保存に失敗したら表示とOSの最前面設定を元へ戻す', async () => {
+        useStoredBody('保存失敗でも残す本文');
+        const normal = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((command, args) => command === 'fusen_save_note'
+            ? Promise.reject(new Error('Disk full')) : normal(command, args));
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            render(<StickyNote />);
+            await screen.findByText('保存失敗でも残す本文');
+            await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_set_always_on_top', {enabled: false}));
+            mockInvoke.mockClear();
+            const buttons = screen.getByTestId('sticky-primary-actions').querySelectorAll('button');
+            fireEvent.click(buttons[buttons.length - 1]);
+            await waitFor(() => {
+                const states = mockInvoke.mock.calls.filter(([command]) => command === 'fusen_set_always_on_top').map(([, args]) => args.enabled);
+                expect(states).toEqual([true, false]);
+            });
+            expect(screen.getByText('保存失敗でも残す本文')).toBeTruthy();
+        } finally { log.mockRestore(); }
+    });
+
+    it.each([
+        ['ctx_color_blue', 'backgroundColor', '#80d8ff'],
+        ['ctx_fontsize_large', 'fontSize', '20'],
+    ])('製品の見た目メニュー：%sは対応する属性だけを保存し本文を保持する', async (id, key, value) => {
+        useStoredBody('見た目を変えても残す本文');
+        render(<StickyNote />);
+        await screen.findByText('見た目を変えても残す本文');
+        fireEvent.contextMenu(document.body);
+        await waitFor(() => expect(vi.mocked(MenuItem.new).mock.calls.some(([item]) => item.id === id)).toBe(true));
+        const item = vi.mocked(MenuItem.new).mock.calls.find(([item]) => item.id === id)![0];
+        await act(async () => { await item.action?.(id); });
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: '見た目を変えても残す本文', frontmatterRaw: expect.stringMatching(new RegExp(key + ': *"?' + value + '"?')),
+        })), {timeout: 3000});
+        const saved = mockInvoke.mock.calls.filter(([command]) => command === 'fusen_save_note').at(-1)![1];
+        expect(saved.frontmatterRaw).toContain('custom_field: keep');
+    });
+
+    it.each([
+        ['ctx_opacity_opaque', 1], ['ctx_opacity_light', 0.7], ['ctx_opacity_heavy', 0.4],
+    ])('製品の透明度メニュー：%sからOS反映成功後に選択値を保存する', async (id, opacity) => {
+        useStoredBody('透明度本文');
+        render(<StickyNote />);
+        await screen.findByText('透明度本文');
+        fireEvent.contextMenu(document.body);
+        await waitFor(() => expect(vi.mocked(MenuItem.new).mock.calls.some(([item]) => item.id === id)).toBe(true));
+        const item = vi.mocked(MenuItem.new).mock.calls.find(([item]) => item.id === id)![0];
+        await act(async () => { await item.action?.(id as string); });
+        expect(mockInvoke).toHaveBeenCalledWith('fusen_set_opacity', {windowLabel: 'main', opacity});
+        await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('fusen_save_note', expect.objectContaining({
+            body: '透明度本文', frontmatterRaw: expect.stringContaining('opacity: ' + opacity),
+        })), {timeout: 3000});
+    });
+
+    it('製品の透明度変更：OS反映が失敗したら本文属性を保存せず失敗を知らせる', async () => {
+        useStoredBody('失敗しても残す本文');
+        const normal = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((command, args) => command === 'fusen_set_opacity'
+            ? Promise.reject(new Error('OS rejected')) : normal(command, args));
+        const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            render(<StickyNote />);
+            await screen.findByText('失敗しても残す本文');
+            fireEvent.contextMenu(document.body);
+            await waitFor(() => expect(vi.mocked(MenuItem.new).mock.calls.some(([item]) => item.id === 'ctx_opacity_light')).toBe(true));
+            const item = vi.mocked(MenuItem.new).mock.calls.find(([item]) => item.id === 'ctx_opacity_light')![0];
+            await act(async () => { await item.action?.('ctx_opacity_light'); });
+            expect(alert).toHaveBeenCalled();
+            expect(mockInvoke.mock.calls.filter(([command]) => command === 'fusen_save_note')).toHaveLength(0);
+            expect(screen.getByText('失敗しても残す本文')).toBeTruthy();
+        } finally { alert.mockRestore(); log.mockRestore(); }
     });
 
     it('タグなしではアーカイブへの移動と表示する', async () => {

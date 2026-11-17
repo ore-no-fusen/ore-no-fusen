@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NoteListStep } from './NoteListStep';
+import { PWA_VERSION } from '@/lib/pwa-version.mjs';
 
 describe('NoteListStep language button', () => {
   it('requests English when the current PWA language is Japanese', () => {
@@ -28,6 +29,7 @@ describe('NoteListStep language button', () => {
       />,
     );
 
+    expect(screen.getByText((content) => content.includes('PWA ' + PWA_VERSION))).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'pwa.language.switch' }));
     expect(onLanguageChange).toHaveBeenCalledWith('en');
   });
