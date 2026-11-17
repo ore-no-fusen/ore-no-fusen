@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": "docs-v2/000_FEATURE_TREE.md",
-  "sourceSha256": "167d89f8059d18909498045b09f6609e37116abe517e27446d5ef115196781f0",
+  "sourceSha256": "8013b65e056f518b628d7889fbc3d6ae771aee990008edaffac06fb7b61f0e06",
   "families": [
     [
       "U",
@@ -65,6 +65,10 @@
         {
           "when": "結晶本文の生成",
           "file": "app/utils/crystalFormat.test.ts"
+        },
+        {
+          "when": "PCチェックの実操作と保存（-tで対象を絞る）",
+          "file": "app/components/StickyNote.test.tsx"
         }
       ],
       "extra": [
@@ -154,7 +158,7 @@
           "file": "lib/i18n.test.ts"
         },
         {
-          "when": "PWA言語切替",
+          "when": "PWA言語切替・版表示",
           "file": "app/viewer/NoteListStep.language.test.tsx"
         },
         {
@@ -534,6 +538,10 @@
         {
           "when": "タグで並べる関連関数",
           "file": "src-tauri/src/arrange.rs"
+        },
+        {
+          "when": "ピン/色/文字サイズ/透明度の操作と保存（-tで該当操作だけ）",
+          "file": "app/components/StickyNote.test.tsx"
         }
       ],
       "extra": [],

@@ -590,7 +590,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 |機能・合格条件|担当する機能ケース|ソース単体の入口|テスト環境|実機候補・未確認範囲|
 |---|---|---|---|---|
 |見出し<br>合格：見出し記法を階層表示し、編集時も内容を保つ|[編集/表示の折畳保持](#case-b-outline)|[MarkdownRenderer.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/__tests__/MarkdownRenderer.test.tsx)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。全見出しレベルは部品試験。全操作の通し確認ではない|
-|チェックリスト<br>合格：チェックを切り替え、その状態が保存・再表示される|[Webチェック保存・失敗復帰](#case-c-check)|[checkboxToggle.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/checkboxToggle.test.ts)<br>[RichTextEditor.checkboxDecoration.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/RichTextEditor.checkboxDecoration.test.ts)|機能：[部品・フック（jsdom）](#env-e-ui)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。Web共有の操作と保存呼出/失敗復帰。PCの実保存/再起動は別|
+|チェックリスト<br>合格：チェックを切り替え、その状態が保存・再表示される|[Webチェック保存・失敗復帰](#case-c-check)|[StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>[RichTextEditor.checkboxDecoration.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/RichTextEditor.checkboxDecoration.test.ts)|機能：[部品・フック（jsdom）](#env-e-ui)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。Web共有の操作と保存呼出/失敗復帰。PCの実保存/再起動は別|
 |テーブル<br>合格：選択した文章から表を作り、表として表示する|[選択文字→表記法](#case-b-table)|[MarkdownRenderer.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/__tests__/MarkdownRenderer.test.tsx)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。E2Eは表記法への変換まで。完成表の表示/再保存は未確認|
 |Mermaid 図<br>合格：選択から図を作り、安全に図として表示・保存する|[選択文字→図の記法](#case-b-diagram)|[mermaid.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/mermaid.test.ts)<br>[mermaidSecurity.browser.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/mermaidSecurity.browser.test.ts)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。ブロック変換と描画安全性は別試験。編集→保存→再表示の全体は不足|
 |日付・時刻の挿入<br>合格：メニューの選択で期待する日時文字列が現在位置に入る|不足：対応ケース未同定|[useStickyNoteContextMenu.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useStickyNoteContextMenu.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>不足。該当操作を通す専用ケースは未同定|
@@ -601,10 +601,10 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 
 |機能・合格条件|担当する機能ケース|ソース単体の入口|テスト環境|実機候補・未確認範囲|
 |---|---|---|---|---|
-|最前面に固定（ピン留め）<br>合格：ONで他アプリの上に残り、OFFで解除する|不足：対応ケース未同定|[noteAppearance.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[Windowsの窓](#manual-m05)（条件付き）<br>不足。値/別窓のモック試験を、付箋の実OS最前面の成立にしない|
-|色分け（背景色5色）<br>合格：選んだ色が付箋へ反映され保存後も保たれる|不足：対応ケース未同定|[noteAppearance.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[Windowsの窓](#manual-m05)（条件付き）<br>不足。色の定義の単体だけでは画面と保存までを確認できない|
-|透明度3段階<br>合格：選んだ透明度が実窓に反映され、保存/復元できる|不足：対応ケース未同定|専用試験未同定|機能：自動の上位ケースなし<br>単体：専用単体未同定|[Windowsの窓](#manual-m05)（条件付き）<br>不足。lib.rsの実OS反映と保持は未確認|
-|文字サイズ<br>合格：選んだ文字サイズが本文に反映され保存後も保たれる|不足：対応ケース未同定|[noteAppearance.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[Windowsの窓](#manual-m05)（条件付き）<br>不足。サイズの定義の単体だけでは画面と保存までを確認できない|
+|最前面に固定（ピン留め）<br>合格：ONで他アプリの上に残り、OFFで解除する|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>実際のピンボタンからON/OFF・保存へ接続し、保存失敗時に表示とOS設定要求が元へ戻ることを確認。|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)|製品部品（jsdom）/OSと保存はモック|一部：OS・実保存・配信照合は実機。既存の条件付き実機候補を使用。|
+|色分け（背景色5色）<br>合格：選んだ色が付箋へ反映され保存後も保たれる|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>実際の色メニューから選択色を保存し、本文と他の属性を保持することを確認。|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)|製品部品（jsdom）/OSと保存はモック|一部：OS・実保存・配信照合は実機。既存の条件付き実機候補を使用。|
+|透明度3段階<br>合格：選んだ透明度が実窓に反映され、保存/復元できる|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>実際の透明度メニュー3段階をOS要求と保存へ接続し、OS失敗時は保存せず通知することを確認。|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)|製品部品（jsdom）/OSと保存はモック|一部：OS・実保存・配信照合は実機。既存の条件付き実機候補を使用。|
+|文字サイズ<br>合格：選んだ文字サイズが本文に反映され保存後も保たれる|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>実際の文字サイズメニューから選択値を保存し、本文と他の属性を保持することを確認。|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)|製品部品（jsdom）/OSと保存はモック|一部：OS・実保存・配信照合は実機。既存の条件付き実機候補を使用。|
 
 ### 要求2-6　時刻になったら知らせてほしい
 
@@ -677,7 +677,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 |デスクトップショートカット<br>合格：正しい対象のショートカットからいつものアプリが開く|不足：対応ケース未同定|[desktop_shortcut.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/desktop_shortcut.rs)|機能：自動の上位ケースなし<br>単体：[Rust単体](#env-e-rust)|[Windows起動・キー](#manual-m01)（条件付き）<br>不足。名前/起動先の単体のみ。OSから開く実操作は別|
 |設定画面<br>合格：設定を変更・保存し、対象動作へ反映する|[PC設定の英語表示](#case-b-pc-lang)|[settingsPageText.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/settingsPageText.test.ts)<br>[settings-store.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/settings-store.test.ts)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。既存参照は言語表示。全設定の保存/実動作を確認した意味ではない|
 |ログと診断<br>合格：必要な診断を出せ、本文や秘密値を不用意に含めない|不足：対応ケース未同定|[diagnostic-log.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/viewer/lib/diagnostic-log.test.ts)|機能：自動の上位ケースなし<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>不足。PWA診断の単体はあるがPC loggerを含む全経路ではない|
-|PWAの版表示<br>合格：画面の版と配信されたSW/プログラムの版が一致する|不足：対応ケース未同定|専用試験未同定|機能：自動の上位ケースなし<br>単体：専用単体未同定|[PC＋実iPhone](#manual-m07)（条件付き）<br>不足。リリース時の配信照合は運用手順。版表示の専用自動機能試験は未同定|
+|PWAの版表示<br>合格：画面の版と配信されたSW/プログラムの版が一致する|[app/viewer/NoteListStep.language.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/viewer/NoteListStep.language.test.tsx)<br>実際のPWA一覧に共有定義の版が表示されることを、既存の画面試験内で確認。|[app/viewer/NoteListStep.language.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/viewer/NoteListStep.language.test.tsx)|製品部品（jsdom）/OSと保存はモック|一部：OS・実保存・配信照合は実機。既存の条件付き実機候補を使用。|
 
 ### 補助ブランチB：発展
 
@@ -766,7 +766,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 - 本文の一部分の折りたたみ — editorOutline.test.ts、outline.test.ts、e2e/editor-outline.spec.ts（CI外） — ●
 
 ### 要求2-4 構造を整理して見せたい
-- 見出し／チェックリスト／テーブル — MarkdownRenderer.test.tsx、checkboxToggle.test.ts、RichTextEditor.checkboxDecoration.test.ts — ●
+- 見出し／チェックリスト／テーブル — MarkdownRenderer.test.tsx、StickyNote.test.tsx、RichTextEditor.checkboxDecoration.test.ts — ●
 - Mermaid 図 — app/utils/mermaid.test.ts、mermaidSecurity.browser.test.ts — ●
 - 日付・時刻の挿入 — useStickyNoteContextMenu.test.ts に内包 — ◐
 

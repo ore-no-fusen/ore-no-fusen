@@ -16,6 +16,7 @@
 
 |中項目|直す箇所|最初に選ぶテスト|
 |---|---|---|
+|本文・書式・構造|PCチェックの操作→保存（`-t 製品のチェック操作`）|[StickyNote.test.tsx](../app/components/StickyNote.test.tsx)|
 |本文・書式・構造|PC本文の表示|[MarkdownRenderer.test.tsx](../app/components/__tests__/MarkdownRenderer.test.tsx)|
 |本文・書式・構造|PCの書式ボタン|[FloatingFormatBar.test.tsx](../app/components/FloatingFormatBar.test.tsx)|
 |本文・書式・構造|PWAの一覧表示|[NoteListStep.rendering.test.tsx](../app/viewer/NoteListStep.rendering.test.tsx)|
@@ -58,6 +59,8 @@
 |設定・言語・画面表示|文言/余白だけなら対象表示だけ。PC logger自体は専用単体なし：該当ログの出力を確認。診断の保存先や秘密値処理を変えればD1/C3も判断する。|
 
 </details>
+
+PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote.test.tsx -t 製品` の該当ケースだけを選ぶ。OSそのものの変更では実機の該当操作も確認する。
 
 ## 保存・管理系
 
