@@ -82,6 +82,8 @@ E2E テストはブラウザー上で操作シナリオを確認する。Tauri/O
 |既存合格|同じ入力・環境で有効な結果は引き継ぐ。未変更の合格操作を本人へ再依頼しない|
 |不足|対応ケース/実機結果がないものを見えるように残す。自動スクリプト成功だけで全要求合格としない|
 
+テストは製品コードを呼び出して確認する。OS・通信・保存先のモックは境界を分離するために使い、その先の実動作は確認範囲に含めない。製品処理をテスト内に複製するだけの試験は避ける。
+
 通常修正では機能単位の対象を選ぶ。要求の合格条件や共通契約に影響する変更だけ、その要求の該当シナリオも対象へ足す。要求の条件自体を変える場合は、要求と対応表を更新する。どちらの場合も全要求一式を通常修正の固定セットにしない。
 
 要求・機能・ソースの母集団と対応は[機能ツリー](000_FEATURE_TREE.md)。具体的なコマンド/ケースの入口は開発リポジトリの `docs/TEST_SELECTION_MATRIX.md`。リリース手順 `docs/010_RELEASE.md` は本節を参照し、テスト範囲の別規則を重ねて作らない。
@@ -456,22 +458,6 @@ APNs Push、Service Worker、OAuth、Google Drive 権限、PWA インストー�
 |補助B.7|↳ 機能|アップデート確認|[app/hooks/useUpdateCheck.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useUpdateCheck.test.tsx)<br>概要：配布方式別の更新確認<br>確認範囲：一部。更新サービスと導入はモック。Store取得/導入/再起動は別|
 |補助B.7.1|　↳ ソース|[app/hooks/useUpdateCheck.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useUpdateCheck.ts)|[app/hooks/useUpdateCheck.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useUpdateCheck.test.tsx#L29)<br>概要：Store版と通常版の更新経路を分け、判定失敗時に別方式へ進まず、通常版は本人確認後に導入する。|
 |補助B.7.2|　↳ ソース|[src-tauri/src/distribution.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/distribution.rs)|[src-tauri/src/distribution.rs 内のテスト](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/distribution.rs#L53)<br>概要：Store更新の有無、配布形式の判定、旧自動起動設定を一度だけ無効にする移行を確認する。|
-
-#### テストを追加・削除する判断
-
-表1.3-1：不足として挙げた30機能への処置
-
-|区分|機能数|処置|理由|
-|---|---|---|---|
-|自動試験を追加・強化|5|ピン・色・透明度・文字サイズ・PWA版表示|製品UIからOS要求/保存へつながる検証が不足|
-|既存試験を流用|11|単体・部品・実一時ファイルの試験を使う|同じ検証のモック一式を増やさない。未確認境界は不足のまま残す|
-|実機で確認|12|変更したOSとの接続だけを確認|実キー・窓・撮影・音を、模擬だけで合格にしない|
-|低リスクの表示操作|1|日付・時刻の文字挿入は共通編集/保存を流用|当該操作の変更時に対象表示だけ確認|
-|未完成|1|Siri送信の受入は完成時|未完成の動作をモックで成立させない|
-
-チェック切替の複製ロジックを試す旧9件は削除し、製品の付箋を直接描画・操作する試験へ置換。チェック3記法、ピンON/OFFと保存失敗、透明度3段階とOS失敗、色・文字サイズを計12件で確認する。PWA版表示は既存の画面試験に確認を加え、単独の重複試験を作らない。ケース数は差引3件増。
-
-同じ製品テストを要求・機能・ソースから共用し、実行は1回。OSや実サービスをモックするための試験データ・呼出し記録は残す。今回確認した複製処理の試験は削除した。全テストケースの複製有無を網羅監査した結果ではない。
 
 #### 根拠
 
