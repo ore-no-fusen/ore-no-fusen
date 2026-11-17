@@ -42,7 +42,9 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
     const [catalogTags, setCatalogTags] = useState<string[]>([]);
     const [tagCounts, setTagCounts] = useState<Record<string, number>>({});
     const [createdOrder, setCreatedOrder] = useState<Record<string, number>>({});
-    const [unusedOnly, setUnusedOnly] = useState(false);
+    const [viewFilter, setViewFilter] = useState<'all' | 'used' | 'unused'>('all');
+    const [search, setSearch] = useState('');
+    const unusedOnly = viewFilter === 'unused';
     const [unusedSelection, setUnusedSelection] = useState<Set<string>>(new Set());
     const [confirmUnused, setConfirmUnused] = useState(false);
     const [cleanupMessage, setCleanupMessage] = useState('');
@@ -71,7 +73,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
                 const p = view.pending;
                 setDialog({ mode: p.new === null ? 'delete' : 'rename', tag: p.old, value: p.new ?? '', count: view.counts[p.old] ?? 0 });
             } else if (mode === 'manage') {
-                setUnusedOnly(false); setUnusedSelection(new Set()); setConfirmUnused(false); setCleanupMessage('');
+                setViewFilter('all'); setSearch(''); setUnusedSelection(new Set()); setConfirmUnused(false); setCleanupMessage('');
                 setDialog(null); setManageTags(true);
             } else {
                 setManageTags(false);
@@ -134,6 +136,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
         : dialog?.mode === 'rename' ? (english ? 'Rename tag' : 'タグ名を変更')
         : (english ? 'Delete tag' : 'タグを削除');
     return <>
+        <button type="button" disabled={disabled || running} onClick={() => void open('manage')} className="shrink-0 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-200 disabled:opacity-50">{english ? 'Manage tags' : 'タグ管理'}</button>
         <button type="button" disabled={disabled || running} aria-label={english ? 'Create tag' : 'タグを追加'}
             title={english ? 'Create or manage tags' : 'タグの追加・管理（付箋への割り当ては後からできます）'}
             className="shrink-0 rounded-full bg-zinc-800 px-2 py-1 text-sm text-zinc-200 disabled:opacity-50"
@@ -160,16 +163,17 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
                     <ul className="my-3 list-inside list-disc">{[...unusedSelection].map(tag => <li key={tag} className="break-words">{tag}</li>)}</ul>
                     <div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={running} onClick={() => setConfirmUnused(false)}>{english ? 'Cancel' : 'キャンセル'}</button><button type="button" disabled={running} className="rounded bg-red-900 px-3 py-2" onClick={() => void cleanUnused()}>{english ? `Delete ${unusedSelection.size} unused tags` : `${unusedSelection.size}件の未使用タグを削除`}</button></div>
                 </div> : <>
-                <div className="flex flex-wrap gap-3"><button type="button" disabled={running} aria-pressed={!unusedOnly} onClick={() => { setUnusedOnly(false); setUnusedSelection(new Set()); }}>{english ? 'In use' : '使用中'}</button><button type="button" disabled={running} aria-pressed={unusedOnly} onClick={() => { setUnusedOnly(true); setUnusedSelection(new Set()); }}>{english ? 'Clean up unused tags' : '未使用タグを整理'} ({catalogTags.filter(tag => !tagCounts[tag]).length})</button></div>
+                <input aria-label={english ? 'Search tags' : 'タグを検索'} placeholder={english ? 'Search tags' : 'タグを検索'} value={search} onChange={e => setSearch(e.target.value)} className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2" />
+                <div className="flex flex-wrap gap-3">{(['all', 'used', 'unused'] as const).map(filter => <button key={filter} type="button" disabled={running} aria-pressed={viewFilter === filter} onClick={() => { setViewFilter(filter); setUnusedSelection(new Set()); }} className={viewFilter === filter ? 'text-sky-300 underline' : ''}>{filter === 'all' ? (english ? 'All' : 'すべて') : filter === 'used' ? (english ? 'In use' : '使用中') : (english ? 'Clean up unused tags' : '未使用タグを整理')} ({filter === 'all' ? catalogTags.length : catalogTags.filter(tag => filter === 'used' ? !!tagCounts[tag] : !tagCounts[tag]).length})</button>)}</div>
                 {unusedOnly && <button type="button" disabled={running} className="text-left text-sky-300" onClick={() => setUnusedSelection(new Set(catalogTags.filter(tag => !tagCounts[tag])))}>{english ? 'Select all unused tags' : '未使用タグをすべて選択'}</button>}
                 <div className="min-h-0 overflow-y-auto">
-                    {catalogTags.filter(tag => unusedOnly ? !tagCounts[tag] : tagCounts[tag] > 0).sort((a, b) => unusedOnly ? (createdOrder[b] ?? 0) - (createdOrder[a] ?? 0) || a.localeCompare(b) : (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0) || a.localeCompare(b)).map(tag => <div key={tag} className="flex flex-wrap items-center gap-2 border-b border-zinc-700 py-2">
+                    {catalogTags.filter(tag => (viewFilter === 'all' || (unusedOnly ? !tagCounts[tag] : !!tagCounts[tag])) && tag.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).sort((a, b) => unusedOnly ? (createdOrder[b] ?? 0) - (createdOrder[a] ?? 0) || a.localeCompare(b) : (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0) || a.localeCompare(b)).map(tag => <div key={tag} className="flex flex-wrap items-center gap-2 border-b border-zinc-700 py-2">
                         {unusedOnly && <input type="checkbox" disabled={running} aria-label={english ? `Select unused tag ${tag}` : `未使用タグ${tag}を選択`} checked={unusedSelection.has(tag)} onChange={() => setUnusedSelection(current => { const next = new Set(current); if (next.has(tag)) next.delete(tag); else next.add(tag); return next; })} />}
                         <span className="min-w-0 flex-1 break-words">{tag} <span className="text-zinc-400">({tagCounts[tag] ?? 0}{english ? ' notes' : '件'})</span></span>
                         <button type="button" disabled={running} aria-label={english ? `Rename tag ${tag}` : `${tag}のタグ名を変更`} className="rounded border border-zinc-600 px-2 py-1" onClick={() => void open('rename', tag)}>{english ? 'Rename' : '名前変更'}</button>
-                        <button type="button" disabled={running} aria-label={english ? `Delete tag ${tag}` : `${tag}のタグを削除`} className="rounded border border-zinc-600 px-2 py-1 text-red-200" onClick={() => { if (unusedOnly) { setUnusedSelection(new Set([tag])); setConfirmUnused(true); } else void open('delete', tag); }}>{english ? 'Delete tag' : 'タグを削除'}</button>
+                        <button type="button" disabled={running} aria-label={english ? `Delete tag ${tag}` : `${tag}のタグを削除`} className="rounded border border-zinc-600 px-2 py-1 text-red-200" onClick={() => { if (!tagCounts[tag]) { setUnusedSelection(new Set([tag])); setConfirmUnused(true); } else void open('delete', tag); }}>{english ? 'Delete tag' : 'タグを削除'}</button>
                     </div>)}
-                    {!catalogTags.some(tag => unusedOnly ? !tagCounts[tag] : tagCounts[tag] > 0) && <p>{english ? 'No tags in this view.' : '該当するタグはありません。'}</p>}
+                    {!catalogTags.some(tag => (viewFilter === 'all' || (unusedOnly ? !tagCounts[tag] : !!tagCounts[tag])) && tag.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) && <p>{english ? 'No tags in this view.' : '該当するタグはありません。'}</p>}
                 </div>
                 <div className="flex flex-wrap justify-end gap-3">{unusedOnly && <button type="button" disabled={running || !unusedSelection.size} className="text-red-200" onClick={() => setConfirmUnused(true)}>{english ? 'Delete selected unused tags' : '選んだ未使用タグを削除'}</button>}<button type="button" disabled={running} onClick={() => void open('create')}>{english ? 'Create tag' : 'タグを追加'}</button><button type="button" disabled={running} onClick={() => setManageTags(false)}>{english ? 'Close' : '閉じる'}</button></div>
                 </>}

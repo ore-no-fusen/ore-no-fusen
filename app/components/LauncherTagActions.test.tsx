@@ -15,6 +15,19 @@ function setup(menu: boolean) {
     return { changed, error };
 }
 describe('launcher tag management', () => {
+    it('opens all tags directly, searches and separates used and unused tags', async () => {
+        api.catalog.mockResolvedValue({ tags: ['保管中', '未使用'], counts: { 保管中: 1 }, pending: null });
+        setup(false);
+        fireEvent.click(screen.getByRole('button', { name: 'タグ管理' }));
+        expect(await screen.findByText('保管中')).toBeTruthy();
+        expect(screen.getByText('未使用')).toBeTruthy();
+        fireEvent.change(screen.getByRole('textbox', { name: 'タグを検索' }), { target: { value: '保管' } });
+        expect(screen.queryByText('未使用')).toBeNull();
+        fireEvent.change(screen.getByRole('textbox', { name: 'タグを検索' }), { target: { value: '' } });
+        fireEvent.click(screen.getByRole('button', { name: /未使用タグを整理/ }));
+        expect(screen.queryByText('保管中')).toBeNull();
+        expect(screen.getByText('未使用')).toBeTruthy();
+    });
     it('creates an unused tag and refreshes without assigning it to any note', async () => {
         api.create.mockResolvedValue(undefined);
         const { changed } = setup(false);
