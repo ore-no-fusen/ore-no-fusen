@@ -74,7 +74,6 @@ export default withMermaid(defineConfig({
             { text: '002 PC版設計', link: '/002_PC' },
             { text: '003 iPhone版設計', link: '/003_IPHONE' },
             { text: '004 テスト仕様', link: '/004_TEST' },
-            { text: '要求・機能・ソースとテスト', link: '/TEST_TRACEABILITY_LIST' },
             { text: '005 用語集', link: '/005_GLOSSARY' },
             { text: '006 アーキテクチャ', link: '/006_ARCHITECTURE' },
             { text: '007 コミュニケーション設計', link: '/007_COMMUNICATION' },

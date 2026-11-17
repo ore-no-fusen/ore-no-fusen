@@ -17,7 +17,7 @@
 # 直近の確認済みリンクを即座に再提示（通信・再撮影なし）
 node scripts/capture-result.cjs --last
 # 設計書は既存のVitePressで実ページを開いて撮影
-node scripts/capture-result.cjs --url http://127.0.0.1:5173/ore-no-fusen/TEST_TRACEABILITY_LIST
+node scripts/capture-result.cjs --url http://127.0.0.1:5173/ore-no-fusen/004_TEST#test-traceability
 # アプリは既存の起動方法で開いた実画面を撮影
 node scripts/capture-result.cjs --url http://localhost:3002
 # 目視済み・公開可能なPNGを共有。最後に返信用Markdownを出力
