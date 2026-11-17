@@ -32,6 +32,8 @@ describe('launcher tag management', () => {
         api.create.mockResolvedValue(undefined);
         const { changed } = setup(false);
         fireEvent.click(screen.getByRole('button', { name: 'タグを追加' }));
+        expect(await screen.findByRole('dialog', { name: 'タグを追加' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'タグの名前変更・削除・未使用整理' })).toBeNull();
         fireEvent.change(await screen.findByRole('textbox'), { target: { value: '旅行' } });
         fireEvent.click(screen.getByRole('button', { name: '保存' }));
         await waitFor(() => expect(api.create).toHaveBeenCalledWith('旅行'));
@@ -82,8 +84,7 @@ describe('launcher tag management', () => {
 });
 
 async function openUnusedManager() {
-    fireEvent.click(screen.getByRole('button', { name: 'タグを追加' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'タグの名前変更・削除・未使用整理' }));
+    fireEvent.click(screen.getByRole('button', { name: 'タグ管理' }));
     fireEvent.click(await screen.findByRole('button', { name: /未使用タグを整理/ }));
 }
 describe('unused tag cleanup', () => {

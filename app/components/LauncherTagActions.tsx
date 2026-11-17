@@ -138,7 +138,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
     return <>
         <button type="button" disabled={disabled || running} onClick={() => void open('manage')} className="shrink-0 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-200 disabled:opacity-50">{english ? 'Manage tags' : 'タグ管理'}</button>
         <button type="button" disabled={disabled || running} aria-label={english ? 'Create tag' : 'タグを追加'}
-            title={english ? 'Create or manage tags' : 'タグの追加・管理（付箋への割り当ては後からできます）'}
+            title={english ? 'Create tag' : 'タグを追加（付箋への割り当ては後からできます）'}
             className="shrink-0 rounded-full bg-zinc-800 px-2 py-1 text-sm text-zinc-200 disabled:opacity-50"
             onClick={() => void open('create')}>＋</button>
         {pending && <button type="button" disabled={disabled || running} onClick={() => void open('rename')}
@@ -186,7 +186,6 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
             <form role="dialog" aria-modal="true" aria-label={title} className="flex max-h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-sm shadow-xl"
                 onSubmit={e => { e.preventDefault(); void submit(); }}>
                 <h2 className="font-bold">{title}</h2>
-                {dialog.mode === 'create' && <button type="button" className="text-left text-sky-300 underline" onClick={() => void open('manage')}>{english ? 'Manage existing tags' : 'タグの名前変更・削除・未使用整理'}</button>}
                 {dialog.mode === 'delete' ? <p>{english ? `Delete “${dialog.tag}” and remove it from ${dialog.count} notes? Notes and launcher registrations will remain.`
                     : `「${dialog.tag}」を削除し、${dialog.count}件の付箋から外します。付箋本体とランチャー登録は残ります。`}</p>
                     : <label className="flex flex-col gap-2">{dialog.mode === 'rename' ? (english ? `New name for “${dialog.tag}”` : `「${dialog.tag}」の新しい名前`) : (english ? 'Tag name' : 'タグ名')}
