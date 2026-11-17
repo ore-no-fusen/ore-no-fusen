@@ -268,8 +268,8 @@ APNs Push、Service Worker、OAuth、Google Drive 権限、PWA インストー�
 |2-4|要求|要求2-4　構造を整理して見せたい|[e2e/sticky-note.spec.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/e2e/sticky-note.spec.ts)<br>[e2e/editor-outline.spec.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/e2e/editor-outline.spec.ts)<br>概要：選択文字→表記法・選択文字→図の記法・編集/表示の折畳保持<br>確認範囲：一部：生成操作と部分折りたたみ。全形式の保存/完成表示を通した受入は不足|
 |2-4.1|↳ 機能|見出し|[e2e/editor-outline.spec.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/e2e/editor-outline.spec.ts)<br>概要：編集/表示の折畳保持<br>確認範囲：一部。全見出しレベルは部品試験。全操作の通し確認ではない|
 |2-4.1.1|　↳ ソース|[app/components/MarkdownRenderer.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/MarkdownRenderer.tsx)|[app/components/__tests__/MarkdownRenderer.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/__tests__/MarkdownRenderer.test.tsx#L105)<br>概要：6段階の見出しを記号なしで表示し、通常行の番号や折りたたみの本文を保持する。|
-|2-4.2|↳ 機能|チェックリスト|[app/shared/page.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/shared/page.test.tsx)<br>概要：Webチェック保存・失敗復帰<br>確認範囲：一部。Web共有の操作と保存呼出/失敗復帰。PCの実保存/再起動は別|
-|2-4.2.1|　↳ ソース|[app/components/StickyNote.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/StickyNote.tsx)|[app/utils/checkboxToggle.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/checkboxToggle.test.ts)<br>概要：テスト内に複製したチェック切替処理を確認する。<br>**不足：製品ソースを直接読み込む試験ではない。**|
+|2-4.2|↳ 機能|チェックリスト|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際の表示チェックをクリックし、3種類の記法・大文字Xの切替、本文・画像・他の行・属性を保持した保存を確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
+|2-4.2.1|　↳ ソース|[app/components/StickyNote.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/StickyNote.tsx)|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際の表示チェックをクリックし、3種類の記法・大文字Xの切替、本文・画像・他の行・属性を保持した保存を確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
 |2-4.2.2|　↳ ソース|[app/components/RichTextEditor.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/RichTextEditor.tsx)|[app/components/RichTextEditor.checkboxDecoration.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/RichTextEditor.checkboxDecoration.test.ts#L5)<br>概要：チェック・箇条書きの装飾範囲を正しく取り、設定したキーを編集用の形式へ変換する。|
 |2-4.3|↳ 機能|テーブル|[e2e/sticky-note.spec.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/e2e/sticky-note.spec.ts)<br>概要：選択文字→表記法<br>確認範囲：一部。E2Eは表記法への変換まで。完成表の表示/再保存は未確認|
 |2-4.3.1|　↳ ソース|[app/components/MarkdownRenderer.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/MarkdownRenderer.tsx)|[app/components/__tests__/MarkdownRenderer.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/__tests__/MarkdownRenderer.test.tsx#L62)<br>概要：表の横スクロールを継続し、縦スクロールを妨げず、畳んだ見出し内の表を隠す。表の全編集操作は対象外。|
@@ -285,14 +285,14 @@ APNs Push、Service Worker、OAuth、Google Drive 権限、PWA インストー�
 
 |番号|階層|対象|テストファイル・概要・不足|
 |---|---|---|---|
-|2-5|要求|要求2-5　付箋そのものを目立たせたい（他の窓に埋もれたくない）|**不足：対応テスト未確認**<br>確認範囲：不足：値の定義/OS呼出のモックでは実際の目立ち方を判定できない|
-|2-5.1|↳ 機能|最前面に固定（ピン留め）|**不足：対応テスト未確認**<br>確認範囲：不足。値/別窓のモック試験を、付箋の実OS最前面の成立にしない|
-|2-5.1.1|　↳ ソース|[app/components/StickyNote.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/StickyNote.tsx)|**不足：ピン留めの専用ソーステスト未確認**<br>確認範囲：以前のnoteAppearance.test.tsは色と文字サイズのみで、ピン留めを確認しないため除外。|
-|2-5.2|↳ 機能|色分け（背景色5色）|**不足：対応テスト未確認**<br>確認範囲：不足。色の定義の単体だけでは画面と保存までを確認できない|
+|2-5|要求|要求2-5　付箋そのものを目立たせたい（他の窓に埋もれたくない）|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：ピン・色・透明度・文字サイズの操作と保存、ピン/透明度失敗時の保持を確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
+|2-5.1|↳ 機能|最前面に固定（ピン留め）|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際のピンボタンからON/OFF・保存へ接続し、保存失敗時に表示とOS設定要求が元へ戻ることを確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
+|2-5.1.1|　↳ ソース|[app/components/StickyNote.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/StickyNote.tsx)|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際のピンボタンからON/OFF・保存へ接続し、保存失敗時に表示とOS設定要求が元へ戻ることを確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
+|2-5.2|↳ 機能|色分け（背景色5色）|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際の色メニューから選択色を保存し、本文と他の属性を保持することを確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
 |2-5.2.1|　↳ ソース|[app/utils/noteAppearance.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.ts)|[app/utils/noteAppearance.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.test.ts#L5)<br>概要：付箋で共有する5色の値が変わらないことを確認する。実際の窓への色反映は別確認。|
-|2-5.3|↳ 機能|透明度3段階|**不足：対応テスト未確認**<br>確認範囲：不足。lib.rsの実OS反映と保持は未確認|
-|2-5.3.1|　↳ ソース|[app/hooks/useStickyNoteContextMenu.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useStickyNoteContextMenu.ts)<br>[src-tauri/src/lib.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/lib.rs)|**不足：専用ソーステスト未確認**|
-|2-5.4|↳ 機能|文字サイズ|**不足：対応テスト未確認**<br>確認範囲：不足。サイズの定義の単体だけでは画面と保存までを確認できない|
+|2-5.3|↳ 機能|透明度3段階|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際の透明度メニュー3段階をOS要求と保存へ接続し、OS失敗時は保存せず通知することを確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
+|2-5.3.1|　↳ ソース|[app/hooks/useStickyNoteContextMenu.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useStickyNoteContextMenu.ts)<br>[src-tauri/src/lib.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/lib.rs)|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際の透明度メニュー3段階をOS要求と保存へ接続し、OS失敗時は保存せず通知することを確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
+|2-5.4|↳ 機能|文字サイズ|[app/components/StickyNote.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/components/StickyNote.test.tsx)<br>概要：実際の文字サイズメニューから選択値を保存し、本文と他の属性を保持することを確認。<br>確認範囲：PC上の製品コンポーネント。Tauri/保存先はモック。実OS・実ディスク・再起動保持は別。|
 |2-5.4.1|　↳ ソース|[app/utils/noteAppearance.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.ts)|[app/utils/noteAppearance.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/noteAppearance.test.ts#L11)<br>概要：付箋で共有する文字サイズの選択値を確認する。画面での反映は別確認。|
 
 #### 要求2-6　時刻になったら知らせてほしい
@@ -425,8 +425,8 @@ APNs Push、Service Worker、OAuth、Google Drive 権限、PWA インストー�
 |補助A.14.2|　↳ ソース|[lib/settings-store.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/settings-store.ts)|[lib/settings-store.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/settings-store.test.ts#L43)<br>概要：初期設定と保存済み設定を読み、設定変更を端末保存へ反映する。|
 |補助A.15|↳ 機能|ログと診断|**不足：対応テスト未確認**<br>確認範囲：不足。PWA診断の単体はあるがPC loggerを含む全経路ではない|
 |補助A.15.1|　↳ ソース|[app/viewer/lib/diagnostic-log.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/viewer/lib/diagnostic-log.ts)|[app/viewer/lib/diagnostic-log.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/viewer/lib/diagnostic-log.test.ts#L9)<br>概要：通知調査に必要な項目だけを記録し、本文や例外内容をコピー対象に含めない。|
-|補助A.16|↳ 機能|PWAの版表示|**不足：対応テスト未確認**<br>確認範囲：不足。リリース時の配信照合は運用手順。版表示の専用自動機能試験は未同定|
-|補助A.16.1|　↳ ソース|[lib/pwa-version.mjs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/pwa-version.mjs)<br>[app/viewer/NoteListStep.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/viewer/NoteListStep.tsx)|**不足：専用ソーステスト未確認**|
+|補助A.16|↳ 機能|PWAの版表示|[app/viewer/NoteListStep.language.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/viewer/NoteListStep.language.test.tsx)<br>概要：実際のPWA一覧に共有定義の版が表示されることを、既存の画面試験内で確認。<br>確認範囲：PC上のPWA製品コンポーネント。配信版とSWの一致は実機・配信時に確認。|
+|補助A.16.1|　↳ ソース|[lib/pwa-version.mjs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/lib/pwa-version.mjs)<br>[app/viewer/NoteListStep.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/viewer/NoteListStep.tsx)|[app/viewer/NoteListStep.language.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/51d2f3a0739c6bf705671cc7b8724647caaf8070/app/viewer/NoteListStep.language.test.tsx)<br>概要：一覧に共有定義の版が表示されることを確認。配信版とSWの一致は実機・配信時の確認。|
 
 #### 補助ブランチB：発展
 
@@ -457,13 +457,29 @@ APNs Push、Service Worker、OAuth、Google Drive 権限、PWA インストー�
 |補助B.7.1|　↳ ソース|[app/hooks/useUpdateCheck.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useUpdateCheck.ts)|[app/hooks/useUpdateCheck.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useUpdateCheck.test.tsx#L29)<br>概要：Store版と通常版の更新経路を分け、判定失敗時に別方式へ進まず、通常版は本人確認後に導入する。|
 |補助B.7.2|　↳ ソース|[src-tauri/src/distribution.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/distribution.rs)|[src-tauri/src/distribution.rs 内のテスト](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/distribution.rs#L53)<br>概要：Store更新の有無、配布形式の判定、旧自動起動設定を一度だけ無効にする移行を確認する。|
 
+#### テストを追加・削除する判断
+
+表1.3-1：不足として挙げた30機能への処置
+
+|区分|機能数|処置|理由|
+|---|---|---|---|
+|自動試験を追加・強化|5|ピン・色・透明度・文字サイズ・PWA版表示|製品UIからOS要求/保存へつながる検証が不足|
+|既存試験を流用|11|単体・部品・実一時ファイルの試験を使う|同じ検証のモック一式を増やさない。未確認境界は不足のまま残す|
+|実機で確認|12|変更したOSとの接続だけを確認|実キー・窓・撮影・音を、模擬だけで合格にしない|
+|低リスクの表示操作|1|日付・時刻の文字挿入は共通編集/保存を流用|当該操作の変更時に対象表示だけ確認|
+|未完成|1|Siri送信の受入は完成時|未完成の動作をモックで成立させない|
+
+チェック切替の複製ロジックを試す旧9件は削除し、製品の付箋を直接描画・操作する試験へ置換。チェック3記法、ピンON/OFFと保存失敗、透明度3段階とOS失敗、色・文字サイズを計12件で確認する。PWA版表示は既存の画面試験に確認を加え、単独の重複試験を作らない。ケース数は差引3件増。
+
+同じ製品テストを要求・機能・ソースから共用し、実行は1回。OSや実サービスをモックするための試験データ・呼出し記録は残す。今回確認した複製処理の試験は削除した。全テストケースの複製有無を網羅監査した結果ではない。
+
 #### 根拠
 
 機能マスターの16要求・71機能を対象に、要求・機能は実在する担当ケース、ソースはテスト内の対象モジュール参照と確認内容を照合。概要は日本語で記載し、ファイル内に別機能の試験があっても対象機能を確認した扱いにしない。
 
 テストがないと確定できない場合は「不足：対応テスト未確認」とする。部分確認と未確認範囲は各行に残す。補助A/Bは既存16要求内の親要求が未定義であることを不足として明示。同じテストは共用し、要求・機能・ソース別に重複実行しない。
 
-テスト名・実装へのリンクは、今回の対象コードと一致する固定版74d9f8c1の公開ソースを参照。テストの内容を照合した一覧であり、今回これらのアプリ試験を実行した結果ではない。
+テスト名・実装へのリンクは、今回の対象コードと一致する固定版74d9f8c1、追加・変更テストは51d2f3a0の公開ソースを参照。テストの内容を照合した一覧であり、今回これらのアプリ試験を実行した結果ではない。
 
 </div>
 
@@ -477,9 +493,8 @@ APNs Push、Service Worker、OAuth、Google Drive 権限、PWA インストー�
 
 | No | ファイル | 種別 | テスト対象 | 主なテスト内容 |
 |:---|:---|:---|:---|:---|
-| 1 | `app/components/StickyNote.test.tsx` | <span class="badge badge-vitest">Vitest</span> | 付箋ウィンドウ（StickyNote.tsx） | レンダリング・モード切り替え・保存トリガー・アラームチェック等 |
+| 1 | `app/components/StickyNote.test.tsx` | <span class="badge badge-vitest">Vitest</span> | 付箋ウィンドウ（StickyNote.tsx） | レンダリング・保存、実チェック操作・ピン・透明度・色・文字サイズ・失敗時保持（OS/通信はモック） |
 | 2 | `app/hooks/useStickyNoteContextMenu.test.ts` | <span class="badge badge-vitest">Vitest</span> | 右クリックメニューフック | メニュー項目の生成ロジック |
-| 3 | `app/utils/checkboxToggle.test.ts` | <span class="badge badge-vitest">Vitest</span> | チェックボックストグルユーティリティ | `[ ]` ↔ `[x]` のトグル処理・Markdown 変換 |
 | 4 | `app/utils/splitFrontMatter.test.ts` | <span class="badge badge-vitest">Vitest</span> | Frontmatter パーサー | YAML frontmatter の分離・パース・再組み立て |
 | 5 | `lib/i18n.test.ts` | <span class="badge badge-vitest">Vitest</span> | 国際化（i18n） | 日本語・英語キーの解決・フォールバック |
 | 6 | `lib/settings-store.test.ts` | <span class="badge badge-vitest">Vitest</span> | 設定ストア | 設定の読み書き・デフォルト値 |
