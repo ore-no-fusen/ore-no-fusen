@@ -1,9 +1,11 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NoteListStep } from './NoteListStep';
 import { hydrateEditor, serializeEditor } from './editor-helpers';
 import { PWA_VERSION } from '@/lib/pwa-version.mjs';
+
+afterEach(cleanup);
 
 describe('実際のPWA表示と保存', () => {
   it('一覧の受信本文を朱の太字にし、元のMarkdownを開く処理へ渡す', () => {
@@ -20,6 +22,20 @@ describe('実際のPWA表示と保存', () => {
     fireEvent.click(getByRole('listitem'));
     expect(onOpen).toHaveBeenCalledWith(note);
     expect(note.body).toBe('前 **強調** 後');
+  });
+
+  it.each(['draft', 'sent'] as const)('製品一覧の%s付箋をタップすると元のノートを開く処理へ渡す', (status) => {
+    const note = {id:status,title:'タイトル',body:'本文',status,created_at:''};
+    const onOpen = vi.fn();
+    const {getByRole, unmount} = render(<NoteListStep notes={[note]} isLoading={false}
+      thumbnailUrls={new Map()} lockedNoteIds={[]} isLockPermissionPending={false}
+      t={key=>key} language="ja" runtimeOrigin="https://example.com" runtimeKind="Vercel"
+      onNew={vi.fn()} onOpen={onOpen} onDelete={vi.fn()} onLockToggle={vi.fn()}
+      onReRegisterPush={vi.fn()} onLanguageChange={vi.fn()} />);
+    fireEvent.click(getByRole('listitem'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(note);
+    unmount();
   });
 
   it('編集中の太字とチェック項目を表示し、保存時に強調記号を保持する', () => {

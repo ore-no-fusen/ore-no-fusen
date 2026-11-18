@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectReadyInvisibleNote, shouldEditPromotedPoolNote } from './invisibleNotePool';
+import { selectReadyInvisibleNote, shouldEditPromotedPoolNote, releaseInvisibleNote } from './invisibleNotePool';
 
 describe('初回用の見えない付箋', () => {
     it('準備済みかつ未使用のPool窓だけを選ぶ', () => {
@@ -39,4 +39,17 @@ describe('Pool昇格後の表示モード', () => {
         expect(shouldEditPromotedPoolNote(false)).toBe(false);
         expect(shouldEditPromotedPoolNote(undefined)).toBe(false);
     });
+});
+
+it('製品のプール解放：対象窓と永続フラグだけ解除し、再利用できる', () => {
+    const used = new Set(['pool-window-1','pool-window-2']);
+    localStorage.setItem('promoted_pool-window-1','true');
+    localStorage.setItem('promoted_pool-window-2','true');
+    releaseInvisibleNote(used, 'pool-window-1', localStorage);
+    releaseInvisibleNote(used, 'pool-window-missing', localStorage);
+    expect([...used]).toEqual(['pool-window-2']);
+    expect(localStorage.getItem('promoted_pool-window-1')).toBeNull();
+    expect(localStorage.getItem('promoted_pool-window-2')).toBe('true');
+    expect(selectReadyInvisibleNote([{label:'pool-window-1'},{label:'pool-window-2'}],new Set(['pool-window-1','pool-window-2']),used,label=>localStorage.getItem('promoted_'+label)==='true')?.label).toBe('pool-window-1');
+    localStorage.removeItem('promoted_pool-window-2');
 });

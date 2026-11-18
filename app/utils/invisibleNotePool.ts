@@ -17,3 +17,8 @@ export function selectReadyInvisibleNote<T extends InvisibleWindowCandidate>(
         && !isPersistedAsPromoted(window.label),
     );
 }
+
+export function releaseInvisibleNote(usedLabels: Set<string>, label: string, storage: Pick<Storage, 'removeItem'>): void {
+    usedLabels.delete(label);
+    storage.removeItem(`promoted_${label}`);
+}

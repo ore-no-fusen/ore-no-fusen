@@ -174,3 +174,43 @@ describe('useNoteList', () => {
   });
 
 });
+
+
+describe('製品の履歴取得と受信データ', () => {
+  it('日時順の最新20件を表示し、送信済み・PC受信・下書きの状態を製品処理で判定する', async () => {
+    const drafts = Array.from({length: 23}, (_, i) => ({id: String(i), title: String(i), body: '', images: [],
+      created_at: new Date(Date.UTC(2026,0,i+1)).toISOString(),
+      ...(i===22 ? {sent_at:'sent',received_pc:true as const} : i===21 ? {received_pc:true as const} : {})}));
+    mocks.loadAllDrafts.mockResolvedValue(drafts);
+    mocks.loadDeletedDraftIds.mockResolvedValue([]);
+    const publish = vi.fn();
+    const {unmount} = renderHook(() => useNoteList({step:'list',accessToken:null,setHistoryNotes:publish,
+      setIsHistoryLoading:vi.fn(),setThumbnailUrls:vi.fn(),initLockedNoteIds:vi.fn()}));
+    await waitFor(() => expect(publish).toHaveBeenCalled());
+    const notes = publish.mock.calls.at(-1)![0];
+    expect(notes).toHaveLength(20);
+    expect(notes.map((n: any)=>n.id)).toEqual(Array.from({length:20},(_,i)=>String(22-i)));
+    expect(notes.slice(0,3).map((n: any)=>n.status)).toEqual(['sent','received_pc','draft']);
+    unmount();
+  });
+
+  it('PC受信itemsを保存し、空の受信配列では余計なノートを作らない', async () => {
+    mocks.loadDeletedDraftIds.mockResolvedValue([]);
+    mocks.loadAllDrafts.mockResolvedValue([]);
+    mocks.saveDraft.mockResolvedValue(undefined);
+    mocks.downloadWithAutoRefresh.mockResolvedValue({items:[{id:'a',title:'A',body:'本文A'},{id:'b',title:'B',body:'本文B'}]});
+    const props = {step:'list' as const,accessToken:'token',setHistoryNotes:vi.fn(),
+      setIsHistoryLoading:vi.fn(),setThumbnailUrls:vi.fn(),initLockedNoteIds:vi.fn()};
+    const first = renderHook(() => useNoteList(props));
+    await waitFor(() => expect(mocks.saveDraft).toHaveBeenCalledWith(expect.objectContaining({id:'b',body:'本文B',received_pc:true})));
+    expect(mocks.saveDraft).toHaveBeenCalledWith(expect.objectContaining({id:'a',body:'本文A',received_pc:true}));
+    first.unmount();
+    mocks.saveDraft.mockClear();
+    mocks.downloadWithAutoRefresh.mockResolvedValue({items:[]});
+    const loading = vi.fn();
+    const second = renderHook(() => useNoteList({...props,setIsHistoryLoading:loading}));
+    await waitFor(() => expect(loading).toHaveBeenLastCalledWith(false));
+    expect(mocks.saveDraft).not.toHaveBeenCalled();
+    second.unmount();
+  });
+});

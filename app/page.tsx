@@ -44,7 +44,7 @@ import { completeAnalyticsConsentChoice } from './utils/analyticsConsentCompleti
 import { useDiscordReplyIngest } from './hooks/useDiscordReplyIngest';
 import { safeUnlisten, safeUnlistenWhenResolved } from './utils/safeUnlisten';
 import { isDuplicateWindowCreationRequest } from './utils/windowCreation';
-import { selectReadyInvisibleNote } from './utils/invisibleNotePool';
+import { selectReadyInvisibleNote, releaseInvisibleNote } from './utils/invisibleNotePool';
 import { physicalCrystalWindowPosition, physicalCrystalWindowSize } from './utils/crystalWindowSize';
 import {
   partitionStartupLabels,
@@ -1040,9 +1040,8 @@ function OrchestratorContent() {
     let unlisten: (() => void) | undefined;
     listen<{ label: string }>('fusen:pool_slot_released', (event) => {
       const label = event.payload.label;
-      usedPoolWindowsRef.current.delete(label);
-      // localStorage フラグもクリア（次回 createNewNote でこの pool を再利用できるようにする）
-      localStorage.removeItem(`promoted_${label}`);
+      // 使用済み集合と永続フラグの両方を解除する。
+      releaseInvisibleNote(usedPoolWindowsRef.current, label, localStorage);
       console.log(`[POOL] pool_slot_released: label=${label} removed from usedPoolWindowsRef`);
     }).then((u) => { unlisten = u; });
     return () => { safeUnlisten(unlisten); };

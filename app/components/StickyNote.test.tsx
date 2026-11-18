@@ -14,19 +14,24 @@ import { emit as emitEvent } from '@tauri-apps/api/event';
 import StickyNote from './StickyNote';
 import { MenuItem } from '@tauri-apps/api/menu';
 
-const { mockArchiveMenuPopup, mockEventHandlers } = vi.hoisted(() => ({
+const { mockArchiveMenuPopup, mockEventHandlers, mockPlatformEmit, mockCloseHandlers } = vi.hoisted(() => ({
     mockArchiveMenuPopup: vi.fn(),
+    mockPlatformEmit: vi.fn().mockResolvedValue(undefined),
+    mockCloseHandlers: [] as Array<(event:any)=>any>,
     mockEventHandlers: new Map<string, (event: any) => void>(),
 }));
 
 // Mock Next.js hooks
 let mockStartupRestore = false;
+let mockPoolMode = false;
+let mockFirstChar: (() => Promise<string | null>) | undefined;
 let mockNoteTags: string[] = [];
 let mockNoteFolded = false;
 vi.mock('next/navigation', () => ({
     useSearchParams: () => ({
         get: (key: string) => {
-            if (key === 'path') return 'd:/test/note.md';
+            if (key === 'path') return mockPoolMode ? null : 'd:/test/note.md';
+            if (key === 'isPool') return mockPoolMode ? 'true' : null;
             if (key === 'startupRestore') return mockStartupRestore ? '1' : null;
             return null;
         },
@@ -43,7 +48,7 @@ const mockWindow = {
     label: 'main',
     listen: vi.fn().mockReturnValue(Promise.resolve(() => { })),
     close: vi.fn(),
-    emit: vi.fn(),
+    emit: mockPlatformEmit,
     isFocused: vi.fn().mockResolvedValue(false),
     setFocus: vi.fn().mockResolvedValue(undefined),
     outerPosition: vi.fn().mockResolvedValue({ x: 120, y: 240 }),
@@ -59,16 +64,16 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
-    emit: vi.fn(),
+    emit: mockPlatformEmit,
     listen: vi.fn(async (name: string, handler: (event: any) => void) => {
-        mockEventHandlers.set(name, handler);
+        mockEventHandlers.set(name, handler); if (name === 'tauri://close-requested') mockCloseHandlers.push(handler);
         return () => mockEventHandlers.delete(name);
     }),
     // Ensure dynamic import finds these
     default: {
-        emit: vi.fn(),
+        emit: mockPlatformEmit,
         listen: vi.fn(async (name: string, handler: (event: any) => void) => {
-            mockEventHandlers.set(name, handler);
+            mockEventHandlers.set(name, handler); if (name === 'tauri://close-requested') mockCloseHandlers.push(handler);
             return () => mockEventHandlers.delete(name);
         })
     }
@@ -78,10 +83,12 @@ vi.mock('@tauri-apps/api/window', () => ({
     getCurrentWindow: () => mockWindow,
 }));
 
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-    WebviewWindow: mockWebviewWindow,
-    getCurrentWebviewWindow: () => ({ label: 'note-startup' }),
-}));
+vi.mock('@tauri-apps/api/webviewWindow', () => {
+    const getCurrentWebviewWindow = () => ({ ...mockWindow, label: mockPoolMode ? 'pool-window-1' : 'note-startup',
+        listen: async (name: string, handler: (event: any) => void) => { mockEventHandlers.set(name, handler); if (name === 'tauri://close-requested') mockCloseHandlers.push(handler); return () => mockEventHandlers.delete(name); } });
+    return { WebviewWindow: mockWebviewWindow, getCurrentWebviewWindow,
+        default: { WebviewWindow: mockWebviewWindow, getCurrentWebviewWindow } };
+});
 
 vi.mock('@tauri-apps/api/menu', () => {
     const Menu = { new: vi.fn().mockResolvedValue({ popup: mockArchiveMenuPopup }) };
@@ -102,6 +109,7 @@ vi.mock('@tauri-apps/api/menu', () => {
 vi.mock('./RichTextEditor', () => {
     const React = require('react');
     class MockEditor extends React.Component<any> {
+        focusAndSelectFirstLine() {}
         focus() {
             // Mock focus
         }
@@ -114,6 +122,7 @@ vi.mock('./RichTextEditor', () => {
 
         render() {
             const { value, onChange, onKeyDown } = this.props;
+            mockFirstChar = this.props.onFirstChar;
             return (
                 <textarea
                     data-testid="rich-text-editor"
@@ -128,18 +137,31 @@ vi.mock('./RichTextEditor', () => {
 });
 
 describe('StickyNote Component', () => {
-    afterEach(() => {
+    afterEach(async () => {
         cleanup();
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     });
 
     beforeEach(() => {
         vi.clearAllMocks();
         Object.defineProperty(window, '__TAURI_INTERNALS__', {
-            value: {},
+            value: {
+                metadata: { currentWindow: {label: 'pool-window-1'}, currentWebview: {label:'pool-window-1'} },
+                transformCallback: (callback: (event: any) => void) => { const key = mockEventHandlers.size + 100; mockEventHandlers.set(String(key), callback); return key; },
+                unregisterCallback: vi.fn(),
+                invoke: async (command: string, args: any) => {
+                    if (command === 'plugin:event|listen') { const handler = mockEventHandlers.get(String(args.handler))!; mockEventHandlers.set(args.event, handler); if (args.event === 'tauri://close-requested') mockCloseHandlers.push(handler); return 1; }
+                    if (command === 'plugin:event|unlisten') return;
+                    return mockInvoke(command, args);
+                },
+            },
             configurable: true,
         });
         mockStartupRestore = false;
+        mockPoolMode = false;
+        mockFirstChar = undefined;
         mockEventHandlers.clear();
+        mockCloseHandlers.length = 0;
         mockNoteTags = [];
         mockNoteFolded = false;
         mockWebviewWindow.getByLabel.mockResolvedValue(null);
@@ -163,6 +185,55 @@ describe('StickyNote Component', () => {
                     return Promise.resolve(null);
             }
         });
+    });
+
+
+    async function promoteEmptyPool() {
+        mockPoolMode = true;
+        render(<StickyNote />);
+        await waitFor(() => expect(mockEventHandlers.has('fusen:promote_from_pool')).toBe(true));
+        await act(async () => { await mockEventHandlers.get('fusen:promote_from_pool')!({ payload: { isNew: true, folderPath: 'd:/test', content: '', frontmatter: '' } }); });
+        await waitFor(() => expect(mockFirstChar).toBeTypeOf('function'));
+        await waitFor(() => expect(emitEvent).toHaveBeenCalledWith('fusen:pool_window_ready', expect.anything()));
+    }
+
+    it('製品のプール生成：未入力で閉じるとスロットを解放し、ファイルを作らない', async () => {
+        await promoteEmptyPool();
+        await waitFor(() => expect(mockEventHandlers.has('tauri://close-requested')).toBe(true));
+        await act(async () => { await Promise.all(mockCloseHandlers.map(handler => handler({payload:{},preventDefault:vi.fn()})));  });
+        await waitFor(() => expect(emitEvent).toHaveBeenCalledWith('fusen:pool_slot_released', {label:'pool-window-1'}));
+        expect(mockInvoke.mock.calls.filter(([name])=>name==='fusen_create_note_lazy')).toHaveLength(0);
+    });
+
+    it('製品のプール生成：同時入力でもファイル作成は一回、成功後も増やさない', async () => {
+        let finish!: (value: any) => void;
+        const pending = new Promise(resolve => { finish = resolve; });
+        const original = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((command, args) => command === 'fusen_create_note_lazy' ? pending : original(command, args));
+        await promoteEmptyPool();
+        const callback = mockFirstChar!;
+        let a!: Promise<string | null>, b!: Promise<string | null>;
+        await act(async () => { a = callback(); b = callback(); });
+        expect(mockInvoke.mock.calls.filter(([name]) => name === 'fusen_create_note_lazy')).toHaveLength(1);
+        await act(async () => { finish({meta: {path: 'd:/test/new.md'}, body: '', frontmatter: ''}); await Promise.all([a,b]); });
+        expect(await a).toBe('d:/test/new.md');
+        expect(await b).toBe('d:/test/new.md');
+        await act(async () => { expect(await callback()).toBe('d:/test/new.md'); });
+        expect(mockInvoke.mock.calls.filter(([name]) => name === 'fusen_create_note_lazy')).toHaveLength(1);
+        expect(mockInvoke).toHaveBeenCalledWith('fusen_register_open_note_window', {path: 'd:/test/new.md', label:'pool-window-1'});
+    });
+
+    it('製品のプール生成：作成失敗後は再試行して保存先を確保できる', async () => {
+        let attempts = 0;
+        const original = mockInvoke.getMockImplementation()!;
+        mockInvoke.mockImplementation((command,args) => command === 'fusen_create_note_lazy'
+            ? (++attempts === 1 ? Promise.reject(new Error('disk failure')) : Promise.resolve({meta: {path:'d:/test/retry.md'}, body:'', frontmatter:''}))
+            : original(command,args));
+        await promoteEmptyPool();
+        const callback = mockFirstChar!;
+        await act(async () => { expect(await callback()).toBeNull(); });
+        await act(async () => { expect(await callback()).toBe('d:/test/retry.md'); });
+        expect(attempts).toBe(2);
     });
 
     function useStoredBody(body: string, pin = false) {
