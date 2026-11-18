@@ -90,5 +90,5 @@ flowchart LR
 |Store提出物|`D:\Users\uck\Documents\俺の付箋-Store提出\<バージョン>\ore-no-fusen.msix`|
 |Store申請|[Partner Center](https://partner.microsoft.com/ja-jp/dashboard/products/9N4MW0V2MVVG/overview)|
 |テスト方針|[004 テスト設計 §1.1](../docs-v2/004_TEST.md#test-policy)|
-|具体的な対象テスト|[修正箇所→テスト一覧](TEST_SELECTION_MATRIX.md)|
-|公開マニュアル|[更新手順](PUBLIC_GUIDE_MAINTENANCE.md)|
+|具体的な対象テスト|[修正箇所→テスト一覧](200_TEST_SELECTION_MATRIX.md)|
+|公開マニュアル|[更新手順](302_PUBLIC_GUIDE_MAINTENANCE.md)|

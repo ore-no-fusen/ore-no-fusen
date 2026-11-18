@@ -1,8 +1,8 @@
 # 自動化の待機・再開・証拠の運用
 
-2026-11-15：新方式は[3工程のリリース](010_RELEASE.md)と[要求から選ぶテスト](TEST_SELECTION_POLICY.md)。通常修正は対象試験、全体試験は固定候補に1回、main反映後は合格記録の照合とする。以降の全件実行/統合後再利用の説明は移行前の実装記録。待機上限・原本保全・停止時の復旧規則は維持する。実装検証前に旧チェックを省略しない。
+2026-11-15：新方式は[3工程のリリース](010_RELEASE.md)と[要求から選ぶテスト](201_TEST_SELECTION_POLICY.md)。通常修正は対象試験、全体試験は固定候補に1回、main反映後は合格記録の照合とする。以降の全件実行/統合後再利用の説明は移行前の実装記録。待機上限・原本保全・停止時の復旧規則は維持する。実装検証前に旧チェックを省略しない。
 
-2026-10-26改定。CI統合条件は[CI_MERGE_POLICY.md](CI_MERGE_POLICY.md)、正式リリースは[010_RELEASE.md](010_RELEASE.md)を正本とする。今回の変更はdevelop向けの実装で、main・Store版・Gatewayの本番有効化を自動的に変更しない。
+2026-10-26改定。CI統合条件は[014_CI_MERGE_POLICY.md](014_CI_MERGE_POLICY.md)、正式リリースは[010_RELEASE.md](010_RELEASE.md)を正本とする。今回の変更はdevelop向けの実装で、main・Store版・Gatewayの本番有効化を自動的に変更しない。
 
 ## 入力待ちを始める前に止める
 
@@ -36,7 +36,7 @@ status JSONはrun ID・attempt・SHAごとの成果物へ保存する。必須�
 
 ### PR成功証跡を使う統合後検証
 
-develop統合後のfrontend・rustは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全条件は [CI_MERGE_POLICY.md](CI_MERGE_POLICY.md) に従う。
+develop統合後のfrontend・rustは、現在SHAで同じrepoの最新成功PR、親base/head、ソースtree全体、OS image版・Node/Rust・関連環境設定、24時間以内の証跡を照合する。artifactのdigestと単一JSONを検証し、gateも参照元の最新成功を再確認する。欠落・期限切れ・不一致・API障害は通常の全検査に戻る。再利用後に参照元が変わればgateを失敗させる。main・PR・手動実行・2回目以降のattemptは全検査を行う。正式提出物・実機確認は従来どおり実施する。全条件は [014_CI_MERGE_POLICY.md](014_CI_MERGE_POLICY.md) に従う。
 
 ログの `Verified ... identical tree/parents/environment` と参照元run、gateの `Audited ... remains successful` を確認する。参照元が変われば全ジョブを再実行する。
 

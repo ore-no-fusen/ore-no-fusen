@@ -9,4 +9,4 @@
 |リリース候補|PCで候補を固定し全体確認。合格記録と同じexeをStoreへ引き継ぐ|
 |履歴保護|main/developの削除・force push防止を維持。PR/CI必須を統合の条件にしない|
 
-[リリース手順](010_RELEASE.md)／[対象テストの選び方](TEST_SELECTION_POLICY.md)
+[リリース手順](010_RELEASE.md)／[対象テストの選び方](201_TEST_SELECTION_POLICY.md)

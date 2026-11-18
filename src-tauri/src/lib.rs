@@ -7199,7 +7199,7 @@ mod term_note_tests {
 }
 
 /// Pool 窓 Win32 テスト
-/// 実ウィンドウの可視性・表示位置は docs/manual-verify-phase19.md の実機確認で扱う。
+/// 実ウィンドウの可視性・表示位置は docs/206_MANUAL_VERIFY_PHASE19.md の実機確認で扱う。
 /// pool_lazy_create は tempfile を使うためすべての OS で動作する。
 #[cfg(test)]
 mod pool_tests {

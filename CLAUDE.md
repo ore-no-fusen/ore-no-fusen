@@ -56,7 +56,7 @@ iPhone → Drive（notes_from_iphone.json + 画像）→ PC が受信・付箋�
 
 ### PRとCIの必須手順（2026-10-25）
 
-`docs/CI_MERGE_POLICY.md`に従う。独立ブランチで修正・対象テスト・型検査→PR作成→CI確認→失敗原因の修正→全適用対象CI成功→最新head/base SHA・競合・保護条件の最終確認→developへマージ→マージ後CIと反映確認の順を守る。
+`docs/014_CI_MERGE_POLICY.md`に従う。独立ブランチで修正・対象テスト・型検査→PR作成→CI確認→失敗原因の修正→全適用対象CI成功→最新head/base SHA・競合・保護条件の最終確認→developへマージ→マージ後CIと反映確認の順を守る。
 
 失敗・未完了・キャンセル・結果不明を残してマージしない。無関係に見える失敗も解決する。古いコミットの成功、admin merge、直接push、force push、CI無効化で回避しない。PR作成はマージ承認ではない。条件付きMSIXはCI gateで集約し、必須対象のskipを正常扱いしない。mainへの統合は別途リリース手順に従い、CI改善を理由に再リリースしない。
 

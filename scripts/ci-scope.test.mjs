@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { classifyScope, gatePasses, needsMsix } from './ci-scope.mjs';
 
 test('dashboard and documentation changes do not build installers', () => {
-  assert.equal(needsMsix(['scripts/member-stats.mjs', 'scripts/member-usage-analysis.test.mjs', 'docs/CI_MERGE_POLICY.md']), false);
+  assert.equal(needsMsix(['scripts/member-stats.mjs', 'scripts/member-usage-analysis.test.mjs', 'docs/014_CI_MERGE_POLICY.md']), false);
 });
 test('GitHub does not build MSIX for app, dependencies, configuration or unknown paths', () => {
   for (const path of ['app/shared/page.tsx', 'components/ui/button.tsx', 'worker/index.js', 'public/icon.png', 'package-lock.json', 'src-tauri/Cargo.lock', 'next.config.mjs', 'vitest.config.ts', '.github/workflows/test.yml', 'scripts/ci-msix-certificate.ps1', 'unknown']) {
