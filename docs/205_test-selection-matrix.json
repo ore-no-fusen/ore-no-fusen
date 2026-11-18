@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": "docs-v2/000_FEATURE_TREE.md",
-  "sourceSha256": "42475a27a79a32c771a2a9b78642f18c1482850357ebd5597465a3eee999c348",
+  "sourceSha256": "e0c672861d7ec9d82dccfe5a834f7902fd1b0802e3569d62b2e921fe7fdc86e7",
   "families": [
     [
       "U",
@@ -135,6 +135,14 @@
         {
           "when": "ランチャー一覧",
           "file": "app/components/QuickLauncher.test.ts"
+        },
+        {
+          "when": "タグ名変更・統合・保管フォルダーとの整合",
+          "file": "src-tauri/src/user_tags.rs"
+        },
+        {
+          "when": "タグ統合の承認をPC側へ渡す",
+          "file": "app/api/tags.test.ts"
         }
       ],
       "extra": [
@@ -226,6 +234,14 @@
         {
           "when": "ランチャーで隠す/戻す",
           "file": "app/components/QuickLauncher.storage.test.tsx"
+        },
+        {
+          "when": "タグ削除に伴うArchive移動・同名保護",
+          "file": "src-tauri/src/user_tags.rs"
+        },
+        {
+          "when": "保管付箋と画像の復元（関連関数）",
+          "file": "src-tauri/src/storage.rs"
         }
       ],
       "extra": [

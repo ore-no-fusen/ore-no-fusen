@@ -654,7 +654,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 |---|---|---|---|---|
 |全文検索<br>合格：本文の語から目的の既存付箋を見つけ、同じ窓を開く|[検索からメモを選択](#case-b-search)|[lib.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/lib.rs)<br>[SearchOverlay.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/SearchOverlay.test.tsx)|機能：[PC画面（Tauriモック）](#env-e-pc)<br>単体：[Rust単体](#env-e-rust)・[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。検索/前面化のモック。実Vault全体と応答時間は別|
 |クイックランチャー<br>合格：登録した付箋を検索・タグで選び、開ける|[狭い一覧のタグ選択](#case-b-tags)<br>[隠す操作・失敗時保持](#case-c-storage)|[launcher.rs](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/src-tauri/src/launcher.rs)<br>[QuickLauncher.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/QuickLauncher.test.ts)|機能：[PC画面（Tauriモック）](#env-e-pc)・[部品・フック（jsdom）](#env-e-ui)<br>単体：[Rust単体](#env-e-rust)・[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。タグ/保管操作。実OSで開くこと・全タブの受入は別|
-|タグ付けとタグフォルダ<br>合格：タグ追加/変更/削除が反映され、誤って本文を失わない|[タグ管理・部分失敗保持](#case-c-tag)|[reservedTags.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/reservedTags.test.ts)<br>[LauncherTagActions.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/LauncherTagActions.test.tsx)<br>[useTagManager.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useTagManager.test.ts)|機能：[部品・フック（jsdom）](#env-e-ui)<br>単体：[部品・フック（jsdom）](#env-e-ui)|[PCの実画面](#manual-m04)（条件付き）<br>一部。管理部品の追加/部分失敗まで。PCのタグフォルダを通す専用試験は未同定|
+|タグ付けとタグフォルダ<br>合格：タグ追加/変更/削除が反映され、誤って本文を失わない|[タグ管理・部分失敗保持](#case-c-tag)|[reservedTags.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/utils/reservedTags.test.ts)<br>[LauncherTagActions.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/LauncherTagActions.test.tsx)<br>[useTagManager.test.ts](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/hooks/useTagManager.test.ts)<br>`src-tauri/src/user_tags.rs` 内のテスト<br>`app/api/tags.test.ts`|機能：[部品・フック（jsdom）](#env-e-ui)<br>単体：[部品・フック（jsdom）](#env-e-ui)・[Rust単体](#env-e-rust)|[PCの実画面](#manual-m04)（条件付き）<br>一部。画面はモック、Rustは隔離保存先で名前変更・統合・Archive移動・同名画像・復旧を確認。実Tauri接続と利用者実機の一連操作は別|
 
 ### 補助ブランチA：基盤（土台）
 
@@ -1176,7 +1176,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 - 実在するケース名：`creates an unused tag and refreshes without assigning it to any note`／`keeps the current filter on partial rename and offers recovery`
 - 形式：部品結合
 - 環境：[部品・フック（jsdom）](#env-e-ui)
-- 範囲：部品を描画・操作。呼出先やOS/通信をモック化している範囲は実動作を保証しない。共通タグ管理の操作。PCの実タグフォルダ移動は対象外
+- 範囲：画面部品の操作は呼出先をモック化する。保管フォルダーの変更・統合・Archive移動・衝突/復旧は `src-tauri/src/user_tags.rs` のRust単体テストを隔離保存先で確認する。実Tauri接続はこの2層の結果だけでは保証しない。
 
 <a id="case-c-backup"></a>
 

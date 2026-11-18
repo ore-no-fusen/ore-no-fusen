@@ -36,6 +36,8 @@
 |一覧・検索・タグ操作|検索|[SearchOverlay.test.tsx](../app/components/SearchOverlay.test.tsx)|
 |一覧・検索・タグ操作|タグ絞り込み|[LauncherTagFilter.test.tsx](../app/components/LauncherTagFilter.test.tsx)|
 |一覧・検索・タグ操作|タグ操作|[LauncherTagActions.test.tsx](../app/components/LauncherTagActions.test.tsx)|
+|一覧・検索・タグ操作|タグ統合の承認をPC側へ渡す|[tags.test.ts](../app/api/tags.test.ts)|
+|一覧・検索・タグ操作|タグ名変更・統合・保管フォルダーとの整合|[user_tags.rs](../src-tauri/src/user_tags.rs) 内の該当テスト（隔離保存先）|
 |一覧・検索・タグ操作|ランチャー一覧|[QuickLauncher.test.ts](../app/components/QuickLauncher.test.ts)|
 |設定・言語・画面表示|一般設定の選択|[settingsPageText.test.ts](../app/utils/settingsPageText.test.ts)|
 |設定・言語・画面表示|翻訳処理|[i18n.test.ts](../lib/i18n.test.ts)|
@@ -77,6 +79,7 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 |削除・保管・復元|削除履歴（関連関数）|[trash_history.rs](../src-tauri/src/trash_history.rs) 内の該当テスト|
 |削除・保管・復元|90日整理（関連関数）|[trash_cleanup.rs](../src-tauri/src/trash_cleanup.rs) 内の該当テスト|
 |削除・保管・復元|保管から戻す|[archiveRestore.test.ts](../app/utils/archiveRestore.test.ts)|
+|削除・保管・復元|タグ削除に伴うArchive移動・同名保護|[user_tags.rs](../src-tauri/src/user_tags.rs) 内の該当テストと [storage.rs](../src-tauri/src/storage.rs) の保管復元テスト|
 |削除・保管・復元|ランチャーで隠す/戻す|[QuickLauncher.storage.test.tsx](../app/components/QuickLauncher.storage.test.tsx)|
 |バックアップ・インポート|バックアップ保存の関連関数|[storage.rs](../src-tauri/src/storage.rs) 内の該当テスト|
 |バックアップ・インポート|月次処理はmonthly_backup_tests、復旧はrestore_backup_testsで絞る|[lib.rs](../src-tauri/src/lib.rs) 内の該当テスト|

@@ -372,7 +372,12 @@ fn has_asset_collisions(source: &Path, destination: &Path, in_assets: bool) -> R
         let target = destination.join(entry.file_name());
         if meta.is_dir() {
             if has_asset_collisions(&path, &target, in_assets || entry.file_name().to_string_lossy().eq_ignore_ascii_case("assets"))? { return Ok(true); }
-        } else if in_assets && optional_metadata(&target)?.is_some() { return Ok(true); }
+        } else if in_assets {
+            if let Some(target_meta) = optional_metadata(&target)? {
+                if is_link_or_reparse(&target_meta) || !target_meta.is_file() { return Err("同名の添付が通常のファイルではありません".into()); }
+                return Ok(true);
+            }
+        }
     }
     Ok(false)
 }
@@ -465,6 +470,17 @@ fn is_safe_asset_path(path: &Path) -> bool {
     let mut parts = path.components();
     matches!(parts.next(), Some(std::path::Component::Normal(x)) if x == "assets")
         && parts.all(|part| matches!(part, std::path::Component::Normal(_)))
+}
+
+fn checked_source_asset(root: &Path, relative: &Path) -> Result<PathBuf, String> {
+    if !is_safe_asset_path(relative) { return Err("元の添付パスが不正です".into()); }
+    let mut current = root.to_path_buf();
+    for part in relative.components() {
+        current.push(part);
+        let meta = optional_metadata(&current)?.ok_or("元の添付がありません")?;
+        if is_link_or_reparse(&meta) { return Err("元の添付にリンクがあるため移動できません".into()); }
+    }
+    Ok(current)
 }
 
 fn copy_asset_without_overwrite(source: &Path, root: &Path, relative: &Path, hash: &str) -> Result<(), String> {
@@ -583,7 +599,7 @@ fn move_note_to_folder(destination_dir: &Path, source: &Path, plan: &ArchiveMove
         let old = Path::new(&asset.from);
         let new = Path::new(&asset.to);
         if !is_safe_asset_path(old) || !is_safe_asset_path(new) { return Err("添付の移動記録が不正です".into()); }
-        let original = source_dir.join(old);
+        let original = checked_source_asset(source_dir, old)?;
         copy_asset_without_overwrite(&original, &archive, new, &asset.hash)?;
         if old != new { copy_asset_without_overwrite(&original, source_dir, new, &asset.hash)?; }
     }
@@ -1185,6 +1201,84 @@ mod tests {
             assert_ne!(image, "assets/photo.png");
             assert_eq!(std::fs::read(base.join("tags/業務").join(image)).unwrap(), b"source image");
         }
+    }
+
+    #[test]
+    fn archive_collision_skips_existing_two_and_keeps_each_image_reference() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("vault");
+        let registry = dir.path().join("catalog.json");
+        let old = base.join("tags/仕事/note.md");
+        std::fs::create_dir_all(base.join("tags/仕事/assets")).unwrap();
+        std::fs::create_dir_all(base.join("Archive/assets")).unwrap();
+        std::fs::write(base.join("tags/仕事/assets/a.png"), b"original").unwrap();
+        std::fs::write(base.join("Archive/assets/a.png"), b"existing 1").unwrap();
+        std::fs::write(base.join("Archive/assets/a（2）.png"), b"existing 2").unwrap();
+        std::fs::write(base.join("Archive/note.md"), "first").unwrap();
+        std::fs::write(base.join("Archive/note（2）.md"), "second").unwrap();
+        std::fs::write(&old, "---\ntags: [仕事, 旅行]\n---\n本文 ![画像](assets/a.png)").unwrap();
+        let result = change_at(&registry, &base, "仕事", None).unwrap();
+        assert!(result.failed.is_empty(), "{:?}", result.failed);
+        let moved = std::fs::read_to_string(base.join("Archive/note（3）.md")).unwrap();
+        assert_eq!(tags_in(&moved), vec!["旅行"]);
+        assert!(moved.contains("(assets/a（3）.png)"));
+        assert_eq!(std::fs::read(base.join("Archive/assets/a（3）.png")).unwrap(), b"original");
+        assert_eq!(std::fs::read_to_string(base.join("Archive/note.md")).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(base.join("Archive/note（2）.md")).unwrap(), "second");
+        assert_eq!(std::fs::read(base.join("Archive/assets/a.png")).unwrap(), b"existing 1");
+        assert_eq!(std::fs::read(base.join("Archive/assets/a（2）.png")).unwrap(), b"existing 2");
+    }
+
+    #[test]
+    fn folder_merge_rejects_unhandled_links_before_editing_any_tags() {
+        let dir = tempfile::tempdir().unwrap(); let base = dir.path().join("vault"); let registry = dir.path().join("catalog.json");
+        for folder in ["仕事", "業務"] { std::fs::create_dir_all(base.join("tags").join(folder).join("assets")).unwrap(); }
+        std::fs::write(base.join("tags/仕事/assets/a.png"), b"source").unwrap();
+        std::fs::write(base.join("tags/業務/assets/a.png"), b"destination").unwrap();
+        let note = base.join("tags/仕事/note.md"); let text = "---\ntags: [仕事]\n---\n[関連](../other.md)";
+        std::fs::write(&note, text).unwrap();
+        assert!(change_at(&registry, &base, "仕事", Some("業務")).is_err());
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), text);
+        assert_eq!(std::fs::read(base.join("tags/業務/assets/a.png")).unwrap(), b"destination");
+    }
+
+    #[test]
+    fn folder_merge_recovers_when_note_moved_before_journal_was_updated() {
+        let dir = tempfile::tempdir().unwrap(); let base = dir.path().join("vault"); let registry = dir.path().join("catalog.json");
+        for folder in ["仕事", "業務"] { std::fs::create_dir_all(base.join("tags").join(folder).join("assets")).unwrap(); }
+        std::fs::write(base.join("tags/仕事/assets/a.png"), b"source").unwrap();
+        std::fs::write(base.join("tags/業務/assets/a.png"), b"destination").unwrap();
+        let old = base.join("tags/仕事/note.md");
+        std::fs::write(&old, "---\ntags: [業務]\n---\n本文 ![画像](assets/a.png)").unwrap();
+        let destination = base.join("tags/業務"); let plan = prepare_note_move(&destination, &old).unwrap();
+        move_note_to_folder(&destination, &old, &plan).unwrap();
+        let key = vault_key(&base); let path = old.to_string_lossy().to_string();
+        let mut state = Registry::default();
+        state.vaults.insert(key.clone(), Catalog { tags: BTreeSet::from(["仕事".into()]), created_order: BTreeMap::new(),
+            pending: Some(Pending { old: "仕事".into(), new: Some("業務".into()), targets: vec![path.clone()], completed: BTreeSet::from([path]), archive_moved: BTreeSet::new(), archive_moving: None, folder_expected: true, folder_moving: Some(plan) }), interrupted: Vec::new() });
+        write_registry(&registry, &state).unwrap();
+        let result = change_at_with_merge(&registry, &base, "仕事", Some("業務"), true).unwrap();
+        assert!(result.failed.is_empty(), "{:?}", result.failed);
+        assert!(!base.join("tags/仕事").exists());
+        let text = std::fs::read_to_string(destination.join("note.md")).unwrap();
+        let image = text.split("![画像](").nth(1).unwrap().split(')').next().unwrap();
+        assert_eq!(std::fs::read(destination.join(image)).unwrap(), b"source");
+        assert_eq!(std::fs::read(destination.join("assets/a.png")).unwrap(), b"destination");
+        assert!(read_registry(&registry).unwrap().vaults[&key].pending.is_none());
+    }
+
+    #[test]
+    fn folder_merge_rejects_directory_at_image_destination_before_tag_edits() {
+        let dir = tempfile::tempdir().unwrap(); let base = dir.path().join("vault"); let registry = dir.path().join("catalog.json");
+        let source_assets = base.join("tags/仕事/assets"); let destination_assets = base.join("tags/業務/assets");
+        std::fs::create_dir_all(&source_assets).unwrap(); std::fs::create_dir_all(destination_assets.join("a.png")).unwrap();
+        std::fs::write(source_assets.join("a.png"), b"source").unwrap();
+        let note = base.join("tags/仕事/note.md"); let before = "---\ntags: [仕事]\n---\n![画像](assets/a.png)";
+        std::fs::write(&note, before).unwrap();
+        assert!(change_at(&registry, &base, "仕事", Some("業務")).is_err());
+        assert_eq!(std::fs::read_to_string(note).unwrap(), before);
+        assert_eq!(std::fs::read(source_assets.join("a.png")).unwrap(), b"source");
+        assert!(destination_assets.join("a.png").is_dir());
     }
 
     #[test]

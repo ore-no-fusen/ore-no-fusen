@@ -194,8 +194,8 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
                         <input autoFocus value={dialog.value} disabled={running || !!pending || confirmMerge} maxLength={80} onChange={e => setDialog({ ...dialog, value: e.target.value })}
                             className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-zinc-100" />
                     </label>}
-                {dialog.mode === 'rename' && <p className="text-xs text-zinc-400">{english ? 'The matching filed-note folder is renamed too. If the destination exists, its contents are combined without overwriting files.' : '同じ名前の保管フォルダーも変更します。変更先がある場合は、ファイルを上書きせず中身をまとめます。'}</p>}
-                {dialog.mode === 'delete' && <p className="text-xs text-zinc-400">{english ? 'Notes filed in the matching tag folder move to Archive; other tags and the note remain.' : '同じ名前の保管フォルダーにある対象付箋は、ほかのタグを残してArchiveに移します。'}</p>}
+                {dialog.mode === 'rename' && <p className="text-xs text-zinc-400">{english ? 'The matching filed-note folder is renamed too. If the destination exists, its contents are combined and duplicate names receive a number.' : '同じ名前の保管フォルダーも変更します。変更先がある場合は中身をまとめ、同名ファイルには「（2）」などを付けます。'}</p>}
+                {dialog.mode === 'delete' && <p className="text-xs text-zinc-400">{english ? 'Notes filed in the matching tag folder move to Archive; other tags remain and duplicate names receive a number.' : '同じ名前の保管フォルダーにある対象付箋は、ほかのタグを残してArchiveに移します。同名ファイルには「（2）」などを付けます。'}</p>}
                 {dialog.mode === 'create' && <p className="text-xs text-zinc-400">{english ? 'The tag stays available even when no notes use it.' : '付箋に付けなくても作成できます。使用0件でも残ります。'}</p>}
                 {pending && <>
                     <p className="text-amber-200">{english ? 'Resume the unfinished change.' : '前回の未完了分を再試行します。'}</p>
@@ -208,7 +208,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
                     }}>{english ? 'Stop retrying (keep completed changes and failure records)' : '再試行を終了（変更済みの付箋と未完了の記録を残す）'}</button>
                 </>}
                 {confirmMerge && <div role="alertdialog" aria-label={english ? 'Confirm tag merge' : 'タグ統合の確認'} className="rounded border border-amber-600 p-3">
-                    <p>{english ? `“${dialog.value.trim()}” already exists. Merge “${dialog.tag}” into it? The notes and tag folders will be combined without overwriting files.` : `「${dialog.value.trim()}」は既にあります。「${dialog.tag}」を統合しますか？ 付箋のタグと保管フォルダーをまとめ、同名ファイルは上書きしません。`}</p>
+                    <p>{english ? `“${dialog.value.trim()}” already exists. Merge “${dialog.tag}” into it? The notes and tag folders will be combined without overwriting files.` : `「${dialog.value.trim()}」は既にあります。「${dialog.tag}」を統合しますか？ 付箋のタグと保管フォルダーをまとめ、同名ファイルは別名で残します。`}</p>
                     <div className="mt-3 flex justify-end gap-2"><button type="button" disabled={running} onClick={() => setConfirmMerge(false)}>{english ? 'Back' : '戻る'}</button><button type="button" disabled={running || disabled} className="rounded bg-sky-700 px-3 py-2" onClick={() => void submit(true)}>{english ? 'Merge tags' : '統合する'}</button></div>
                 </div>}
                 {error && <p role="alert" className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all text-red-200">{error}</p>}

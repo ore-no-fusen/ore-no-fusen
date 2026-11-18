@@ -281,3 +281,10 @@
 .vp-doc .test-traceability-list table th:nth-child(3),.vp-doc .test-traceability-list table td:nth-child(3){width:30%!important}
 .test-traceability-list strong{color:var(--vp-c-danger-1)}
 @media(max-width:767px){.test-traceability-list table{display:block!important;overflow-x:auto}.vp-doc .test-traceability-list table th:nth-child(3),.vp-doc .test-traceability-list table td:nth-child(3){min-width:210px}.vp-doc .test-traceability-list table th:nth-child(4),.vp-doc .test-traceability-list table td:nth-child(4){min-width:330px}}
+
+/* 保管タグの表は番号ではなく操作名を表示する。 */
+.vp-doc .tag-archive-policy-table table th:first-child,
+.vp-doc .tag-archive-policy-table table td:first-child {
+  width: 175px !important; min-width: 175px !important; max-width: 175px !important;
+  white-space: normal !important; text-align: left !important;
+}
