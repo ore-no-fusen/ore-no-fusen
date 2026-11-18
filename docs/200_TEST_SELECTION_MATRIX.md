@@ -89,7 +89,7 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 |PWA保存・草稿・容量|IndexedDB保存/削除（該当ケース）|[indexeddb.test.ts](../app/viewer/lib/indexeddb.test.ts)|
 |PWA保存・草稿・容量|送信前退避/入力保持（該当ケース）|[WriteStep.loss.test.tsx](../app/viewer/__tests__/WriteStep.loss.test.tsx)|
 |PWA保存・草稿・容量|保存失敗の復旧|[save-recovery.test.tsx](../app/viewer/hooks/save-recovery.test.tsx)|
-|PWA保存・草稿・容量|遅い非同期一覧の保護|[useNoteList.test.tsx](../app/viewer/hooks/useNoteList.test.tsx)|
+|PWA保存・草稿・容量|一覧の20件制限・状態判定・受信保存・遅い非同期一覧の保護|[useNoteList.test.tsx](../app/viewer/hooks/useNoteList.test.tsx)|
 
 <details>
 <summary>この系統の追加条件・確認の限界</summary>
@@ -168,7 +168,9 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 
 |中項目|直す箇所|最初に選ぶテスト|
 |---|---|---|
-|新規ウィンドウ・復元|作成プール|[invisibleNotePool.test.ts](../app/utils/invisibleNotePool.test.ts)|
+|新規ウィンドウ・復元|初回文字の検出|[StickyNote.pool.test.tsx](../app/components/StickyNote.pool.test.tsx)|
+|新規ウィンドウ・復元|初回ファイル作成・再入防止・失敗再試行・未入力終了（`-t 製品のプール生成`）|[StickyNote.test.tsx](../app/components/StickyNote.test.tsx)|
+|新規ウィンドウ・復元|窓の選択・解放|[invisibleNotePool.test.ts](../app/utils/invisibleNotePool.test.ts)|
 |新規ウィンドウ・復元|作成要求の順序|[freshRequestQueue.test.ts](../app/utils/freshRequestQueue.test.ts)|
 |新規ウィンドウ・復元|表示生成|[windowCreation.test.ts](../app/utils/windowCreation.test.ts)|
 |新規ウィンドウ・復元|復元順序|[startupRestore.test.ts](../app/utils/startupRestore.test.ts)|

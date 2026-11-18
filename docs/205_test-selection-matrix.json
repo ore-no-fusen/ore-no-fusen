@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": "docs-v2/000_FEATURE_TREE.md",
-  "sourceSha256": "e0c672861d7ec9d82dccfe5a834f7902fd1b0802e3569d62b2e921fe7fdc86e7",
+  "sourceSha256": "9b71c71b80112da5a3918742c5afb6f86703a369f35fa5a14cda7afce8eae111",
   "families": [
     [
       "U",
@@ -301,7 +301,7 @@
           "file": "app/viewer/hooks/save-recovery.test.tsx"
         },
         {
-          "when": "遅い非同期一覧の保護",
+          "when": "一覧の20件制限・状態判定・受信保存・遅い非同期一覧の保護",
           "file": "app/viewer/hooks/useNoteList.test.tsx"
         }
       ],
@@ -474,7 +474,7 @@
       "name": "新規ウィンドウ・復元",
       "choices": [
         {
-          "when": "作成プール",
+          "when": "窓の選択・解放",
           "file": "app/utils/invisibleNotePool.test.ts"
         },
         {
@@ -488,6 +488,14 @@
         {
           "when": "復元順序",
           "file": "app/utils/startupRestore.test.ts"
+        },
+        {
+          "when": "初回文字の検出",
+          "file": "app/components/StickyNote.pool.test.tsx"
+        },
+        {
+          "when": "初回作成/再入防止/再試行/未入力終了（-t 製品のプール生成）",
+          "file": "app/components/StickyNote.test.tsx"
         }
       ],
       "extra": [

@@ -722,7 +722,7 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 ## コンセプト1：すぐ書ける
 
 ### 要求1-1 思いついた瞬間に書ける状態
-- プールウィンドウ方式 — app/utils/invisibleNotePool.test.ts・windowCreation.test.ts、StickyNote.pool.test.tsx、freshRequestQueue.test.ts — ●
+- プールウィンドウ方式 — app/utils/invisibleNotePool.test.ts・windowCreation.test.ts、StickyNote.pool.test.tsx・StickyNote.test.tsx、freshRequestQueue.test.ts — ●
 - グローバルホットキー Ctrl+N — src-tauri/src/hotkey_manager.rs（7件、競合チェック含む）、app/utils/shortcutKey.test.ts、e2e/hotkey-disable.spec.ts（CI外） — ●
 - Ctrl／Shift 2回押しトリガー — double_tap.rs（6件） — ◐（Rust 側のみ、設定UI側の検証なし）
 - システムトレイ常駐＋新規メモ — tray.rs（3件） — ◐（メニュー表示整形のみ。本体動作は手動確認領域）
@@ -1052,11 +1052,11 @@ E2Eという形式だけで受入合格にしない。受け手・保存先・OS
 
 ### C-POOL：初回入力・プール解放
 
-- ファイル：[StickyNote.pool.test.tsx](https://github.com/ore-no-fusen/ore-no-fusen/blob/74d9f8c1c8350fd795b5e71c19f09dec19d3d333/app/components/StickyNote.pool.test.tsx#L89)
-- 実在するケース名：`1 文字目が入った時に onFirstChar コールバックが 1 回だけ呼ばれる`／`pool_slot_released イベントを受信すると usedPoolWindowsRef からラベルが削除される`
-- 形式：部品結合
+- ファイル：[製品エディタ](https://github.com/ore-no-fusen/ore-no-fusen/blob/01c031ec2b02b33ccce37d14c8d5565a1522adb7/app/components/StickyNote.pool.test.tsx)／[製品付箋](https://github.com/ore-no-fusen/ore-no-fusen/blob/01c031ec2b02b33ccce37d14c8d5565a1522adb7/app/components/StickyNote.test.tsx)／[選択・解放の製品関数](https://github.com/ore-no-fusen/ore-no-fusen/blob/01c031ec2b02b33ccce37d14c8d5565a1522adb7/app/utils/invisibleNotePool.test.ts)
+- 実在するケース名：`選択変更では通知せず、空からの入力だけ通知し、続く文字では再通知しない`／`製品のプール生成：同時入力でもファイル作成は一回、成功後も増やさない`／`製品のプール生成：作成失敗後は再試行して保存先を確保できる`／`製品のプール生成：未入力で閉じるとスロットを解放し、ファイルを作らない`
+- 形式：実CodeMirror・製品コンポーネント・製品関数。Tauri IPC/保存先はモック
 - 環境：[部品・フック（jsdom）](#env-e-ui)
-- 範囲：部品を描画・操作。呼出先やOS/通信をモック化している範囲は実動作を保証しない
+- 範囲：初回文字通知、作成の同時呼出/再試行、未入力終了、解放後の再選択。実OSの表示・フォーカス・応答時間は別確認
 
 <a id="case-c-bar"></a>
 
