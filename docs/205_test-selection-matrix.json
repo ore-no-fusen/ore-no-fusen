@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": "docs-v2/000_FEATURE_TREE.md",
-  "sourceSha256": "9b71c71b80112da5a3918742c5afb6f86703a369f35fa5a14cda7afce8eae111",
+  "sourceSha256": "404a62e756c38a5a764d64923c19d36138d9782ce2242cefce49fb6c8d18dde3",
   "families": [
     [
       "U",
@@ -566,6 +566,14 @@
         {
           "when": "ピン/色/文字サイズ/透明度の操作と保存（-tで該当操作だけ）",
           "file": "app/components/StickyNote.test.tsx"
+        },
+        {
+          "when": "読込色の表示・再読込",
+          "file": "app/hooks/useNoteStyles.test.ts"
+        },
+        {
+          "when": "ファイルから色を読む（logic::tests::extract_meta_）",
+          "file": "src-tauri/src/logic.rs"
         }
       ],
       "extra": [],

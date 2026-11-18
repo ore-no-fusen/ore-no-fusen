@@ -179,6 +179,8 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 |キー・トレイ・起動入口|二度押しの関連関数|[double_tap.rs](../src-tauri/src/double_tap.rs) 内の該当テスト|
 |キー・トレイ・起動入口|トレイ表示の関連関数|[tray.rs](../src-tauri/src/tray.rs) 内の該当テスト|
 |キー・トレイ・起動入口|ショートカット作成の関連関数|[desktop_shortcut.rs](../src-tauri/src/desktop_shortcut.rs) 内の該当テスト|
+|位置・サイズ・窓属性|読込色の表示・再読込|[useNoteStyles.test.ts](../app/hooks/useNoteStyles.test.ts)|
+|位置・サイズ・窓属性|ファイルから色を読む（`logic::tests::extract_meta_`）|[logic.rs](../src-tauri/src/logic.rs) 内の該当テスト|
 |位置・サイズ・窓属性|色/文字サイズ/最前面の値|[noteAppearance.test.ts](../app/utils/noteAppearance.test.ts)|
 |位置・サイズ・窓属性|新規位置|[newNotePosition.test.ts](../app/utils/newNotePosition.test.ts)|
 |位置・サイズ・窓属性|サイズ制御|[useMainWindowResizePolicy.test.tsx](../app/hooks/useMainWindowResizePolicy.test.tsx)|
