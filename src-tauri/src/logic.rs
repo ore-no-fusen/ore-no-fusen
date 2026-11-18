@@ -1749,6 +1749,17 @@ alwaysOnTop: true
     }
 
     #[test]
+    fn extract_meta_color_quotes_and_empty() {
+        // 保存ファイルを読む製品パーサを直接確認する。
+        for field in ["backgroundColor: #ffcdd2", "backgroundColor: \"#ffcdd2\"", "backgroundColor: '#ffcdd2'"] {
+            let content = format!("---\n{}\n---\n本文", field);
+            assert_eq!(extract_meta_from_content(&content).4.as_deref(), Some("#ffcdd2"), "{}", field);
+        }
+        assert_eq!(extract_meta_from_content("").4, None);
+        assert_eq!(extract_meta_from_content("---\nseq: 1\n---").4, None);
+    }
+
+    #[test]
     fn extract_meta_partial_fields() {
         // 一部のフィールドのみ存在する場合
         let content = r#"---

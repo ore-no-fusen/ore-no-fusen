@@ -186,39 +186,3 @@ height: 241
         expect(body).toContain('ロードマップ');
     });
 });
-
-/**
- * 再読み込み機能で使われるロジックのテスト
- * - フロントマターからbackgroundColorを抽出
- */
-describe('再読み込み機能（loadFileContent）', () => {
-
-    function extractBackgroundColor(frontmatter: string): string {
-        const colorMatch = frontmatter.match(/backgroundColor:\s*["']?([^"'\s]+)["']?/);
-        return colorMatch ? colorMatch[1] : '#f7e9b0';
-    }
-
-    it('backgroundColorを正しく抽出できる', () => {
-        const front = `---
-seq: 1
-backgroundColor: #ffcdd2
----`;
-        expect(extractBackgroundColor(front)).toBe('#ffcdd2');
-    });
-
-    it('クォート付きのbackgroundColorを抽出できる', () => {
-        const front = `backgroundColor: "#e8f5e9"`;
-        expect(extractBackgroundColor(front)).toBe('#e8f5e9');
-    });
-
-    it('backgroundColorがない場合はデフォルト値を返す', () => {
-        const front = `---
-seq: 1
----`;
-        expect(extractBackgroundColor(front)).toBe('#f7e9b0');
-    });
-
-    it('空文字列ではデフォルト値を返す', () => {
-        expect(extractBackgroundColor('')).toBe('#f7e9b0');
-    });
-});
