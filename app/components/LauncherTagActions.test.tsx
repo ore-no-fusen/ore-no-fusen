@@ -45,14 +45,32 @@ describe('launcher tag management', () => {
         const { changed } = setup(true);
         fireEvent.click(screen.getByRole('menuitem', { name: 'タグを削除（すべての付箋から外す）' }));
         expect(await screen.findByText(/3件の付箋から外します/)).toBeTruthy();
+        expect(screen.getByText(/対象付箋は、ほかのタグを残してArchiveに移します/)).toBeTruthy();
         expect(api.remove).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: '削除' }));
         await waitFor(() => expect(changed).toHaveBeenCalledWith('test', undefined));
+    });
+    it('requires confirmation before merging into an existing tag and lets the user go back', async () => {
+        api.catalog.mockResolvedValue({ tags: ['test', '既存'], counts: { test: 2, 既存: 1 }, pending: null });
+        api.rename.mockResolvedValue({ changed: 2, failed: [] });
+        setup(true);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'タグ名を変更' }));
+        fireEvent.change(await screen.findByRole('textbox'), { target: { value: '既存' } });
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        expect(await screen.findByRole('alertdialog', { name: 'タグ統合の確認' })).toBeTruthy();
+        expect(api.rename).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+        expect(screen.queryByRole('alertdialog')).toBeNull();
+        expect(api.rename).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '統合する' }));
+        await waitFor(() => expect(api.rename).toHaveBeenCalledWith('test', '既存', true));
     });
     it('keeps the current filter on partial rename and offers recovery', async () => {
         api.rename.mockResolvedValue({ changed: 2, failed: ['移動した付箋'] });
         const { changed } = setup(true);
         fireEvent.click(screen.getByRole('menuitem', { name: 'タグ名を変更' }));
+        expect(await screen.findByText(/保管フォルダーも変更します/)).toBeTruthy();
         fireEvent.change(await screen.findByRole('textbox'), { target: { value: '調査' } });
         api.catalog.mockResolvedValue({ tags: ['test', '調査'], counts: { test: 1 }, pending: { old: 'test', new: '調査', targets: [], completed: [] } });
         fireEvent.click(screen.getByRole('button', { name: '保存' }));

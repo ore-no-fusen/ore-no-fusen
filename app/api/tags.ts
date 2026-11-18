@@ -53,7 +53,7 @@ export type UserTagCatalog = { tags: string[]; counts: Record<string, number>; c
 export type TagChangeResult = { changed: number; failed: string[] };
 export const getUserTagCatalog = () => invoke<UserTagCatalog>('fusen_user_tag_catalog');
 export const createUserTag = (tag: string) => invoke<void>('fusen_create_user_tag', { tag });
-export const renameUserTag = (tag: string, name: string) => invoke<TagChangeResult>('fusen_rename_user_tag', { tag, name });
+export const renameUserTag = (tag: string, name: string, mergeExisting = false) => invoke<TagChangeResult>('fusen_rename_user_tag', { tag, name, mergeExisting });
 export const deleteUserTag = (tag: string) => invoke<TagChangeResult>('fusen_delete_user_tag', { tag });
 export const deleteUnusedUserTags = (tags: string[]) => invoke<TagChangeResult>('fusen_delete_unused_user_tags', { tags });
 export const stopUserTagChange = () => invoke<void>('fusen_stop_user_tag_change');

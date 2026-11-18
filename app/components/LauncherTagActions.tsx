@@ -36,6 +36,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
         return () => window.removeEventListener('resize', positionMenu);
     }, [menu, english]);
     const [dialog, setDialog] = useState<Dialog | null>(null);
+    const [confirmMerge, setConfirmMerge] = useState(false);
     const [manageTags, setManageTags] = useState(false);
     const managerRef = useRef<HTMLDivElement>(null);
     useEffect(() => { if (manageTags) managerRef.current?.focus(); }, [manageTags]);
@@ -61,7 +62,7 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
     const open = async (mode: Dialog['mode'] | 'manage', tag = '', value = '') => {
         if (inFlight.current || disabled) return;
         inFlight.current = true;
-        closeMenu(); setError('');
+        closeMenu(); setError(''); setConfirmMerge(false);
         try {
             const view = await getUserTagCatalog();
             setPending(view.pending);
@@ -102,13 +103,14 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
         } catch (e) { setError(String(e)); }
         finally { inFlight.current = false; setRunning(false); onBusy(false); }
     };
-    const submit = async () => {
+    const submit = async (mergeApproved = false) => {
         if (!dialog || inFlight.current || disabled) return;
+        if (dialog.mode === 'rename' && !pending && !mergeApproved && dialog.value.trim() !== dialog.tag && catalogTags.includes(dialog.value.trim())) { setConfirmMerge(true); return; }
         inFlight.current = true;
         setRunning(true); onBusy(true); setError('');
         try {
             const result = dialog.mode === 'create' ? (await createUserTag(dialog.value), null)
-                : dialog.mode === 'rename' ? await renameUserTag(dialog.tag, dialog.value)
+                : dialog.mode === 'rename' ? await renameUserTag(dialog.tag, dialog.value, mergeApproved)
                 : await deleteUserTag(dialog.tag);
             const view = await getUserTagCatalog();
             setPending(view.pending);
@@ -189,9 +191,11 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
                 {dialog.mode === 'delete' ? <p>{english ? `Delete “${dialog.tag}” and remove it from ${dialog.count} notes? Notes and launcher registrations will remain.`
                     : `「${dialog.tag}」を削除し、${dialog.count}件の付箋から外します。付箋本体とランチャー登録は残ります。`}</p>
                     : <label className="flex flex-col gap-2">{dialog.mode === 'rename' ? (english ? `New name for “${dialog.tag}”` : `「${dialog.tag}」の新しい名前`) : (english ? 'Tag name' : 'タグ名')}
-                        <input autoFocus value={dialog.value} disabled={running || !!pending} maxLength={80} onChange={e => setDialog({ ...dialog, value: e.target.value })}
+                        <input autoFocus value={dialog.value} disabled={running || !!pending || confirmMerge} maxLength={80} onChange={e => setDialog({ ...dialog, value: e.target.value })}
                             className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-zinc-100" />
                     </label>}
+                {dialog.mode === 'rename' && <p className="text-xs text-zinc-400">{english ? 'The matching filed-note folder is renamed too. If the destination exists, its contents are combined without overwriting files.' : '同じ名前の保管フォルダーも変更します。変更先がある場合は、ファイルを上書きせず中身をまとめます。'}</p>}
+                {dialog.mode === 'delete' && <p className="text-xs text-zinc-400">{english ? 'Notes filed in the matching tag folder move to Archive; other tags and the note remain.' : '同じ名前の保管フォルダーにある対象付箋は、ほかのタグを残してArchiveに移します。'}</p>}
                 {dialog.mode === 'create' && <p className="text-xs text-zinc-400">{english ? 'The tag stays available even when no notes use it.' : '付箋に付けなくても作成できます。使用0件でも残ります。'}</p>}
                 {pending && <>
                     <p className="text-amber-200">{english ? 'Resume the unfinished change.' : '前回の未完了分を再試行します。'}</p>
@@ -203,13 +207,17 @@ export default function LauncherTagActions({ english, disabled, menu, closeMenu,
                         finally { inFlight.current = false; setRunning(false); onBusy(false); }
                     }}>{english ? 'Stop retrying (keep completed changes and failure records)' : '再試行を終了（変更済みの付箋と未完了の記録を残す）'}</button>
                 </>}
+                {confirmMerge && <div role="alertdialog" aria-label={english ? 'Confirm tag merge' : 'タグ統合の確認'} className="rounded border border-amber-600 p-3">
+                    <p>{english ? `“${dialog.value.trim()}” already exists. Merge “${dialog.tag}” into it? The notes and tag folders will be combined without overwriting files.` : `「${dialog.value.trim()}」は既にあります。「${dialog.tag}」を統合しますか？ 付箋のタグと保管フォルダーをまとめ、同名ファイルは上書きしません。`}</p>
+                    <div className="mt-3 flex justify-end gap-2"><button type="button" disabled={running} onClick={() => setConfirmMerge(false)}>{english ? 'Back' : '戻る'}</button><button type="button" disabled={running || disabled} className="rounded bg-sky-700 px-3 py-2" onClick={() => void submit(true)}>{english ? 'Merge tags' : '統合する'}</button></div>
+                </div>}
                 {error && <p role="alert" className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all text-red-200">{error}</p>}
-                <div className="flex justify-end gap-2">
+                {!confirmMerge && <div className="flex justify-end gap-2">
                     <button type="button" disabled={running} onClick={() => setDialog(null)} className="rounded border border-zinc-600 px-3 py-2">{english ? 'Cancel' : 'キャンセル'}</button>
                     <button type="submit" disabled={running || disabled || (dialog.mode !== 'delete' && !dialog.value.trim())} className="rounded bg-sky-700 px-3 py-2 text-white disabled:opacity-50">
                         {running ? (english ? 'Working…' : '処理中…') : pending ? (english ? 'Retry' : '再試行') : dialog.mode === 'delete' ? (english ? 'Delete' : '削除') : (english ? 'Save' : '保存')}
                     </button>
-                </div>
+                </div>}
             </form>
         </div>}
     </>;
