@@ -120,6 +120,7 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 |PCとiPhoneの送受信|動画の送信データ/保持|[VideoAttachmentSemantics.test.tsx](../app/viewer/__tests__/VideoAttachmentSemantics.test.tsx)|
 |PCとiPhoneの送受信|汎用添付の送信データ|[FileAttachmentSemantics.test.tsx](../app/viewer/__tests__/FileAttachmentSemantics.test.tsx)|
 |PCとiPhoneの送受信|PWAのDrive通信|[drive.test.ts](../app/viewer/lib/drive.test.ts)|
+|PCとiPhoneの送受信|PC送信用画像の90日整理を実Driveで確認|[live_drive_pc_image_cleanup](../src-tauri/src/gdrive.rs)（専用フォルダーの3件だけを使用する明示実行）|
 |PCとiPhoneの送受信|PC受信時の反映選択|[IphoneReturnDialog.test.tsx](../app/components/IphoneReturnDialog.test.tsx)|
 |PCとiPhoneの送受信|PC受信内容の変換|[receiveIphoneNote.test.ts](../app/utils/receiveIphoneNote.test.ts)|
 |PCとWebの共有|共有画面の編集/保存|[page.test.tsx](../app/shared/page.test.tsx)|

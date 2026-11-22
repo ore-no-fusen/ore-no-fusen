@@ -1293,9 +1293,63 @@ pub async fn delete_file_by_name(
     Ok(())
 }
 
-/// Drive の ore-no-fusen フォルダに残った一時メディアファイルを列挙する。
+#[cfg(test)]
+#[test]
+#[ignore = "creates a dedicated temporary Drive fixture folder"]
+fn live_drive_pc_image_cleanup() -> Result<(), Box<dyn std::error::Error>> {
+    tokio::runtime::Builder::new_current_thread().enable_all().build()?
+        .block_on(run_live_drive_pc_image_cleanup())
+}
+
+#[cfg(test)]
+async fn run_live_drive_pc_image_cleanup() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::builder().timeout(std::time::Duration::from_secs(30)).build()?;
+    let token = get_access_token(&client).await?;
+    let url = "https://www.googleapis.com/drive/v3/files";
+    let folder: serde_json::Value = client.post(url).bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": format!("onf-image-cleanup-test-{}", uuid::Uuid::new_v4()),
+            "mimeType": "application/vnd.google-apps.folder"
+        })).send().await?.error_for_status()?.json().await?;
+    let folder = folder["id"].as_str().ok_or("Missing fixture folder ID")?;
+    let result = async {
+        let mut fixtures = Vec::new();
+        for (age, marked, expected) in [(91, true, true), (89, true, false), (91, false, false)] {
+            let mut metadata = serde_json::json!({
+                "name": format!("fusen_img_{}.png", uuid::Uuid::new_v4()),
+                "mimeType": "image/png",
+                "parents": [folder],
+                "modifiedTime": (chrono::Utc::now() - chrono::Duration::days(age)).to_rfc3339()
+            });
+            if marked {
+                metadata["appProperties"] = serde_json::json!({"oreNoFusenPurpose": "pc-to-iphone-image"});
+            }
+            let file: serde_json::Value = client.post(url).bearer_auth(&token)
+                .json(&metadata).send().await?.error_for_status()?.json().await?;
+            fixtures.push((file["id"].as_str().ok_or("Missing fixture ID")?.to_owned(), age, marked, expected));
+        }
+        trash_expired_pc_iphone_images_in_folder(&client, &token, folder).await?;
+        for (id, age, marked, expected) in fixtures {
+            let state: serde_json::Value = client.get(format!("{url}/{id}")).bearer_auth(&token)
+                .query(&[("fields", "trashed")]).send().await?.error_for_status()?.json().await?;
+            if state["trashed"].as_bool() != Some(expected) {
+                return Err(format!("Unexpected trash state: age={age}, marked={marked}").into());
+            }
+            println!("Drive fixture: age={age}, marked={marked}, trashed={expected}");
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    }.await;
+    client.patch(format!("{url}/{folder}")).bearer_auth(&token)
+        .json(&serde_json::json!({"trashed": true})).send().await?.error_for_status()?;
+    result
+}
+
 pub async fn trash_expired_pc_iphone_images(client: &Client, token: &str) -> Result<(), String> {
     let folder = ensure_folder(client, token).await?;
+    trash_expired_pc_iphone_images_in_folder(client, token, &folder).await
+}
+
+async fn trash_expired_pc_iphone_images_in_folder(client: &Client, token: &str, folder: &str) -> Result<(), String> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(90)).to_rfc3339();
     let query = format!(
         "'{folder}' in parents and trashed = false and modifiedTime <= '{cutoff}' and appProperties has {{ key='oreNoFusenPurpose' and value='pc-to-iphone-image' }}"
