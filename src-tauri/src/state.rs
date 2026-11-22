@@ -64,6 +64,9 @@ pub struct CreateRecipeNoteRequest {
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct AppState {
+    /// ファイル選択画面で利用者が許可した外部画像。
+    #[serde(skip)]
+    pub approved_external_images: std::collections::HashSet<std::path::PathBuf>,
     #[serde(skip)]
     pub member: Option<crate::member_identity::MemberLocal>,
     /// Runtime cache of Settings.analytics_consent; never persisted separately.
@@ -117,6 +120,8 @@ pub struct BackupRecord {
 pub struct Settings {
     #[serde(alias = "basePath")]
     pub base_path: Option<String>,
+    #[serde(default)]
+    pub approved_external_images: std::collections::HashSet<std::path::PathBuf>,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(alias = "autoStart")]
@@ -252,6 +257,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             base_path: None,
+            approved_external_images: Default::default(),
             language: default_language(),
             auto_start: default_auto_start(),
             show_startup_screen: true,

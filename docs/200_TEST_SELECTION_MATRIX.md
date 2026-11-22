@@ -30,6 +30,7 @@
 |画像・図・添付の操作|描き込み|[ImageAnnotationModal.test.ts](../app/components/ImageAnnotationModal.test.ts)|
 |画像・図・添付の操作|切り取り計算|[imageCrop.test.ts](../app/utils/imageCrop.test.ts)|
 |画像・図・添付の操作|画像の倍率操作|[ResizableImage.test.tsx](../app/components/ResizableImage.test.tsx)|
+|画像・図・添付の操作|ローカル画像の許可範囲、外部画像の選択後の再表示、公開設定|[Rustの画像プロトコル試験](../src-tauri/src/note_images.rs)、[ResizableImage.test.tsx](../app/components/ResizableImage.test.tsx)、[tauriConfig.test.ts](../app/security/tauriConfig.test.ts)。Windows実機では通常・カスタム保存先、保管プレビュー、描き込み後、外部画像の選択・再起動を確認。|
 |画像・図・添付の操作|図の生成/安全性|[mermaid.test.ts](../app/utils/mermaid.test.ts)|
 |画像・図・添付の操作|PWA動画の再生画面|[pwa-video-local.spec.ts](../e2e/pwa-video-local.spec.ts)|
 |画像・図・添付の操作|PWA添付の選択（該当ケース）|[WriteStep.loss.test.tsx](../app/viewer/__tests__/WriteStep.loss.test.tsx)|
@@ -120,6 +121,7 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 |PCとiPhoneの送受信|動画の送信データ/保持|[VideoAttachmentSemantics.test.tsx](../app/viewer/__tests__/VideoAttachmentSemantics.test.tsx)|
 |PCとiPhoneの送受信|汎用添付の送信データ|[FileAttachmentSemantics.test.tsx](../app/viewer/__tests__/FileAttachmentSemantics.test.tsx)|
 |PCとiPhoneの送受信|PWAのDrive通信|[drive.test.ts](../app/viewer/lib/drive.test.ts)|
+|PCとiPhoneの送受信|PC送信用画像の90日整理を実Driveで確認|[live_drive_pc_image_cleanup](../src-tauri/src/gdrive.rs)（専用フォルダーの3件だけを使用する明示実行）|
 |PCとiPhoneの送受信|PC受信時の反映選択|[IphoneReturnDialog.test.tsx](../app/components/IphoneReturnDialog.test.tsx)|
 |PCとiPhoneの送受信|PC受信内容の変換|[receiveIphoneNote.test.ts](../app/utils/receiveIphoneNote.test.ts)|
 |PCとWebの共有|共有画面の編集/保存|[page.test.tsx](../app/shared/page.test.tsx)|

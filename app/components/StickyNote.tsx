@@ -1555,7 +1555,7 @@ const StickyNote = memo(function StickyNote() {
 
     const handleAnnotationClick = useCallback(async (absPath: string) => {
         const { convertFileSrc } = await import('@tauri-apps/api/core');
-        setAnnotationTarget({ path: absPath, url: convertFileSrc(absPath) });
+        setAnnotationTarget({ path: absPath, url: convertFileSrc(absPath, 'note-image') });
     }, []);
 
     /**

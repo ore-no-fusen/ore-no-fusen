@@ -1312,6 +1312,26 @@ sequenceDiagram
 
 <p class="mermaid-caption">図 6.1-1　同期開始時の一覧を後から再表示しない更新</p>
 
+#### PC送信用画像の残留整理
+
+iPhoneに保存した画像は通常の受信処理でDriveから削除する。削除失敗や送信中断で残った場合に備え、PC送信用として作成時に印を付けた画像だけを、最終更新から90日経過後にDriveのごみ箱へ移す。90日が画像の受信期限となる。利用者向け設定の追加は不要。
+
+```mermaid
+sequenceDiagram
+    participant PC as PCアプリ
+    participant D as Google Drive
+    participant I as iPhone
+    PC->>D: PC送信用の印を付けて画像を作成
+    I->>D: 画像を取得し、端末保存が済んだら削除
+    alt 連携有効・Drive接続済み・前回確認から7日経過
+        PC->>D: 印付き画像の最終更新日時を確認
+        opt 90日以上経過
+            PC->>D: 対象IDをごみ箱へ移動
+        end
+    end
+```
+<p class="mermaid-caption">図 6.1-2　残ったPC送信用画像の予備整理</p>
+
 ### 6.2 ロック画面常駐（🔔）
 
 このアプリの核心機能。「消す意思がないかぎり、ロック画面から消えない」体験を実現する。

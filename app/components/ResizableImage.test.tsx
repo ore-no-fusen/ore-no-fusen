@@ -31,6 +31,21 @@ beforeEach(() => {
 });
 
 describe('ResizableImage', () => {
+    it('retries an existing external image only after the file picker approves it', async () => {
+        const path = 'C:/Pictures/old.png';
+        mockInvoke.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+        render(<ResizableImage src={path} alt="old image" />);
+        const img = screen.getByRole('img');
+        await waitFor(() => expect(img.getAttribute('src')).toBe(`asset://${path}`));
+        fireEvent.error(img);
+        fireEvent.click(screen.getByRole('button', { name: '画像ファイルを選ぶ' }));
+        const retry = await screen.findByRole('button', { name: '同じ画像ファイルを選び直す' });
+        fireEvent.click(retry);
+        await screen.findByRole('img');
+        expect(mockInvoke).toHaveBeenNthCalledWith(1, 'fusen_approve_external_image', { path });
+        expect(mockInvoke).toHaveBeenNthCalledWith(2, 'fusen_approve_external_image', { path });
+    });
+
     it('reports the reloaded crop dimensions at the saved display scale', async () => {
         const onImageLoaded = vi.fn();
         render(<ResizableImage src="C:/test/crop.png" alt="crop" scale={0.68} baseOffset={0} onResizeEnd={vi.fn()} onImageLoaded={onImageLoaded} />);

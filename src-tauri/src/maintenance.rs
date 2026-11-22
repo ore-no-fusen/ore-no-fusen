@@ -9,12 +9,17 @@ const INTERVAL_SECONDS: i64 = 24 * 60 * 60;
 #[derive(Default, Serialize, Deserialize)]
 struct State { attempts: BTreeMap<String, DateTime<Utc>> }
 
+#[cfg(test)]
 pub fn due(previous: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
     previous.map_or(true, |last| now.signed_duration_since(last).num_seconds() >= INTERVAL_SECONDS)
 }
 
 /// Persist the attempt before running. Failed attempts also wait until the next day.
 pub fn claim(path: &Path, root: &Path, kind: &str, now: DateTime<Utc>) -> Result<bool, String> {
+    claim_at_interval(path, root, kind, now, INTERVAL_SECONDS)
+}
+
+pub fn claim_at_interval(path: &Path, root: &Path, kind: &str, now: DateTime<Utc>, seconds: i64) -> Result<bool, String> {
     let _lock = crate::trash_history::lock(path)?;
     let mut state: State = if path.exists() {
         let bytes = fs::read(path).map_err(|e| e.to_string())?;
@@ -22,7 +27,7 @@ pub fn claim(path: &Path, root: &Path, kind: &str, now: DateTime<Utc>) -> Result
         serde_json::from_slice(&bytes).map_err(|e| e.to_string())?
     } else { State::default() };
     let key = format!("{}|{}", root.display(), kind);
-    if !due(state.attempts.get(&key).copied(), now) { return Ok(false); }
+    if state.attempts.get(&key).is_some_and(|last| now.signed_duration_since(*last).num_seconds() < seconds) { return Ok(false); }
     state.attempts.insert(key, now);
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     let result = (|| {
@@ -38,6 +43,17 @@ pub fn claim(path: &Path, root: &Path, kind: &str, now: DateTime<Utc>) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn weekly_claim_survives_restart_and_rejects_early_attempts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("maintenance.json");
+        let root = Path::new("drive");
+        let now = Utc::now();
+        let week = 7 * INTERVAL_SECONDS;
+        assert!(claim_at_interval(&path, root, "images", now, week).unwrap());
+        assert!(!claim_at_interval(&path, root, "images", now + chrono::Duration::days(6), week).unwrap());
+        assert!(claim_at_interval(&path, root, "images", now + chrono::Duration::days(7), week).unwrap());
+    }
     #[test]
     fn daily_boundary_and_clock_rollback_are_safe() {
         let now=Utc::now();

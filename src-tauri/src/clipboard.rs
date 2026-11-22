@@ -313,17 +313,8 @@ fn save_annotated_image_with_crop(
 pub fn read_local_image_data_url(path: &str) -> Result<String, String> {
     use base64::{engine::general_purpose, Engine as _};
 
-    let bytes = fs::read(path).map_err(|e| format!("更新画像を読み込めません: {e}"))?;
-    let format =
-        image::guess_format(&bytes).map_err(|e| format!("更新画像の形式を判定できません: {e}"))?;
-    let mime = match format {
-        ImageFormat::Png => "image/png",
-        ImageFormat::Jpeg => "image/jpeg",
-        ImageFormat::Gif => "image/gif",
-        ImageFormat::WebP => "image/webp",
-        ImageFormat::Bmp => "image/bmp",
-        _ => return Err("表示に対応していない画像形式です。".to_string()),
-    };
+    let (mime, bytes) = crate::note_images::read_image(Path::new(path))
+        .ok_or("対応する画像を読み込めません。")?;
     Ok(format!(
         "data:{mime};base64,{}",
         general_purpose::STANDARD.encode(bytes)
@@ -340,8 +331,12 @@ pub fn fusen_save_annotated_image(
 }
 
 #[tauri::command]
-pub fn fusen_read_local_image_data_url(path: String) -> Result<String, String> {
-    read_local_image_data_url(&path)
+pub fn fusen_read_local_image_data_url(
+    state: tauri::State<'_, std::sync::Mutex<crate::state::AppState>>,
+    path: String,
+) -> Result<String, String> {
+    let path = crate::note_images::authorized_path(&state, Path::new(&path))?;
+    read_local_image_data_url(path.to_str().ok_or("画像パスを読み込めません。")?)
 }
 
 #[cfg(test)]

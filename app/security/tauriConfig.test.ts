@@ -7,6 +7,7 @@ type TauriConfig = {
     security?: {
       csp?: string | null;
       devCsp?: string | null;
+      assetProtocol?: { enable: boolean; scope: string[] };
     };
   };
 };
@@ -16,6 +17,17 @@ const config = JSON.parse(
 ) as TauriConfig;
 
 describe('Tauri content security policy', () => {
+  it('uses the checked image protocol and disables the generic local asset protocol', () => {
+    const security = config.app?.security;
+    expect(security?.assetProtocol).toEqual({ enable: false, scope: [] });
+    for (const csp of [security?.csp, security?.devCsp]) {
+      const tokens = csp?.split(';').find(directive => directive.trim().startsWith('img-src '))?.trim().split(/\s+/);
+      expect(tokens).toContain('http://note-image.localhost');
+      expect(tokens).not.toContain('http://asset.localhost');
+      expect(tokens).not.toContain('asset:');
+    }
+  });
+
   it('enables a restrictive production CSP', () => {
     const csp = config.app?.security?.csp;
     expect(csp).toContain("default-src 'self'");
