@@ -64,6 +64,9 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
     const [isResizing, setIsResizing] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
     const [srcIndex, setSrcIndex] = useState(0);
+    const [approvalPending, setApprovalPending] = useState(false);
+    const [approvalFailed, setApprovalFailed] = useState(false);
+    const [reload, setReload] = useState(0);
     const imgRef = useRef<HTMLImageElement>(null);
     const startXRef = useRef<number>(0);
     const startWidthRef = useRef<number>(0);
@@ -81,6 +84,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
     // Handle Image Source (Async Convert if needed)
     const allSrcs = useMemo(() => Array.from(new Set([src, ...fallbackSrcs])), [src, fallbackSrcs]);
     const activeSrc = allSrcs[srcIndex] ?? src;
+    const isLocalPath = /^[a-zA-Z]:[\\/]|^\\\\/.test(activeSrc);
     const [displaySrc, setDisplaySrc] = useState(() => initialDisplaySrc(src));
 
     useEffect(() => {
@@ -93,17 +97,17 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
         let objectUrl: string | null = null;
 
         const loadSrc = async () => {
-            const isLocalPath = /^[a-zA-Z]:[\\\/]|^\\\\/.test(activeSrc);
             if (isLocalPath) {
                 try {
                     const { convertFileSrc } = await import('@tauri-apps/api/core');
-                    const convertedUrl = convertFileSrc(activeSrc);
+                    const convertedUrl = convertFileSrc(activeSrc, 'note-image');
                     // MSIX の asset protocol は更新直後に古い画像を返すことがある。
                     // 更新後だけ Rust から実ファイルを直接読み、asset protocol のキャッシュを通さない。
                     let assetUrl = convertedUrl;
                     if (cacheKey > 0) {
                         const { invoke } = await import('@tauri-apps/api/core');
                         const dataUrl = await invoke<string>('fusen_read_local_image_data_url', { path: activeSrc });
+                        if (!active) return;
                         objectUrl = dataUrlToObjectUrl(dataUrl);
                         assetUrl = objectUrl;
                     }
@@ -113,6 +117,10 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                     }
                 } catch (e) {
                     console.error('[IMAGE] Failed to convert src', e);
+                    if (active) {
+                        if (srcIndex < allSrcs.length - 1) setSrcIndex(srcIndex + 1);
+                        else setLoadFailed(true);
+                    }
                 }
             } else {
                 if (active) setDisplaySrc(activeSrc);
@@ -123,7 +131,7 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
             active = false;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
-    }, [activeSrc, cacheKey]);
+    }, [activeSrc, cacheKey, isLocalPath, reload, srcIndex, allSrcs.length]);
 
     const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
         const img = e.currentTarget;
@@ -191,6 +199,28 @@ export default function ResizableImage({ src, alt, scale = 1.0, onResizeEnd, onD
                 style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
             >
                 {markdownFallback ?? `![${alt}](${src})`}
+                {isLocalPath && (
+                    <button
+                        type="button"
+                        disabled={approvalPending}
+                        onClick={async () => {
+                            setApprovalPending(true);
+                            setApprovalFailed(false);
+                            try {
+                                const { invoke } = await import('@tauri-apps/api/core');
+                                const approved = await invoke<boolean>('fusen_approve_external_image', { path: activeSrc });
+                                if (approved) setReload(value => value + 1);
+                                else setApprovalFailed(true);
+                            } catch {
+                                setApprovalFailed(true);
+                            } finally {
+                                setApprovalPending(false);
+                            }
+                        }}
+                    >
+                        {approvalFailed ? '同じ画像ファイルを選び直す' : '画像ファイルを選ぶ'}
+                    </button>
+                )}
             </span>
         );
     }

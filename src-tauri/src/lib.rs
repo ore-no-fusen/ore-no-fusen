@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, State};
 mod arrange;
 mod capture; // [NEW] キャプチャ機能
 mod clipboard; // [NEW] クリップボード機能
+mod note_images;
 mod crash_guard;
 mod desktop_shortcut;
 mod distribution;
@@ -6458,6 +6459,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(std::sync::Mutex::new(state::AppState::default()))
+        .register_asynchronous_uri_scheme_protocol("note-image", |context, request, responder| {
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let state = app.state::<Mutex<AppState>>();
+                responder.respond(note_images::response(&state, request.uri().path()));
+            });
+        })
         .plugin(tauri_plugin_os::init()) // Added tauri_plugin_os::init()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if launcher::requests_quick_launcher(&argv) {
@@ -6593,6 +6601,7 @@ pub fn run() {
             clipboard::fusen_remove_dropped_images,
             clipboard::fusen_save_annotated_image,
             clipboard::fusen_read_local_image_data_url,
+            note_images::fusen_approve_external_image,
             fusen_is_sticky_note_focused,
             fusen_arrange_by_tag,
             fusen_arrange_undo,
@@ -6708,6 +6717,7 @@ pub fn run() {
                     let mut app_state = state.lock().unwrap_or_else(|p| p.into_inner());
                     app_state.base_path = settings.base_path.clone();
                     app_state.folder_path = settings.base_path.clone();
+                    app_state.approved_external_images = settings.approved_external_images;
                     
                     if settings.base_path.is_some() {
                         logger::log_info("保存先フォルダは設定済みです");

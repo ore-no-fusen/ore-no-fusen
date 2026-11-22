@@ -31,7 +31,7 @@ time = "=0.3.47"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.9.5", features = ["tray-icon", "image-ico", "image-png", "protocol-asset"] }
+tauri = { version = "2.9.5", features = ["tray-icon", "image-ico", "image-png"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"

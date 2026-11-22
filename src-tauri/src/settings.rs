@@ -91,6 +91,7 @@ pub fn save_settings<R: Runtime>(
         }
 
         settings.disabled_hotkeys = existing_settings.disabled_hotkeys.clone();
+        settings.approved_external_images = existing_settings.approved_external_images.clone();
         settings.disabled_editor_hotkeys = existing_settings.disabled_editor_hotkeys.clone();
         settings.shortcut_new_note = existing_settings.shortcut_new_note.clone();
         settings.new_note_trigger = existing_settings.new_note_trigger.clone();
