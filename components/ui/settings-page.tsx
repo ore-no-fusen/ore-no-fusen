@@ -59,6 +59,7 @@ import {
 } from "@/app/utils/crystalFormatEditor"
 import {
     ackFeedbackConversationMessages,
+    loadFeedbackReplyImage,
     getFeedbackAppVersion,
     linkFeedbackMember,
     markFeedbackConversationActive,
@@ -2691,12 +2692,46 @@ function FeedbackSection({ t, language }: { t: (key: any) => string; language: L
 type BoardMessage = {
     messageId: string;
     authorType: 'user' | 'developer';
+    replyImageIds?: string[];
     body: string;
     createdAt: string;
     readByUser: boolean;
 };
 
-function ConversationMessageBubble({ message, isEnglish, inThread = false }: { message: BoardMessage; isEnglish: boolean; inThread?: boolean }) {
+function ConversationReplyImage({ fileId, identity, isEnglish }: {
+    fileId: string; identity: { conversationId: string; secretToken: string }; isEnglish: boolean
+}) {
+    const { conversationId, secretToken } = identity
+    const [source, setSource] = useState<string | null>(null)
+    const [failed, setFailed] = useState(false)
+    useEffect(() => {
+        const controller = new AbortController()
+        let objectUrl: string | undefined
+        setSource(null)
+        setFailed(false)
+        loadFeedbackReplyImage({ conversationId, secretToken }, fileId, controller.signal).then(blob => {
+            if (controller.signal.aborted) return
+            objectUrl = URL.createObjectURL(blob)
+            setSource(objectUrl)
+        }).catch(() => {
+            if (!controller.signal.aborted) setFailed(true)
+        })
+        return () => {
+            controller.abort()
+            if (objectUrl) URL.revokeObjectURL(objectUrl)
+        }
+    }, [conversationId, secretToken, fileId])
+    if (failed) return <p className="text-xs text-gray-500">{isEnglish ? 'Image unavailable' : '画像を表示できません'}</p>
+    if (!source) return null
+    const alt = isEnglish ? 'Image from the developer' : '開発者からの画像'
+    // The object URL is fetched with the recipient's conversation credentials.
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={source} alt={alt} className="mt-2 max-h-80 max-w-full rounded object-contain" />
+}
+
+function ConversationMessageBubble({ message, isEnglish, identity, inThread = false }: {
+    message: BoardMessage; isEnglish: boolean; identity: { conversationId: string; secretToken: string }; inThread?: boolean
+}) {
     const reply = message.authorType === 'user' ? parseAnnouncementReply(message.body) : null
     const date = new Date(message.createdAt)
     return (
@@ -2711,6 +2746,9 @@ function ConversationMessageBubble({ message, isEnglish, inThread = false }: { m
                     {inThread ? (isEnglish ? '↳ Reply to this letter' : '↳ このお便りへの返信') : `↳ お便り「${reply.title}」への返信`}
                 </div>}
                 <div className="whitespace-pre-wrap break-words">{reply ? reply.reply : message.body}</div>
+                {message.authorType === 'developer' && message.replyImageIds?.map(fileId =>
+                    <ConversationReplyImage key={fileId} fileId={fileId} identity={identity} isEnglish={isEnglish} />
+                )}
                 {!Number.isNaN(date.getTime()) && <time className={`mt-1 block text-right text-xs ${message.authorType === 'user' ? 'text-gray-300' : 'text-gray-500'}`}>
                     {date.toLocaleString(isEnglish ? 'en-US' : 'ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </time>}
@@ -3014,9 +3052,9 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                             sending={sending}
                             error={Boolean(error)}
                         >
-                            {item.replies.map((message) => <ConversationMessageBubble key={message.messageId} message={message} isEnglish={isEnglish} inThread />)}
+                            {item.replies.map((message) => <ConversationMessageBubble key={message.messageId} message={message} identity={conversationIdentity} isEnglish={isEnglish} inThread />)}
                         </AnnouncementCard>
-                        ) : <ConversationMessageBubble key={item.key} message={item.message} isEnglish={isEnglish} />)
+                        ) : <ConversationMessageBubble key={item.key} message={item.message} identity={conversationIdentity} isEnglish={isEnglish} />)
                     )}
                 </div>
 

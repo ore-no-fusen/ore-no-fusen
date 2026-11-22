@@ -4,6 +4,8 @@ const { store, resolve } = vi.hoisted(() => ({
   store: { hasDiscordMessage: vi.fn(), appendMessage: vi.fn() },
   resolve: vi.fn(),
 }));
+const { put } = vi.hoisted(() => ({ put: vi.fn() }));
+vi.mock('@vercel/blob', () => ({ put }));
 vi.mock('../../lib/store', () => ({ createFeedbackConversationStore: () => store }));
 vi.mock('./resolve', () => ({ resolveDiscordConversationIdForMessage: resolve }));
 
@@ -45,6 +47,29 @@ it('新しい投稿がなければFirestoreを読まず、カーソルを維持�
   expect(store.hasDiscordMessage).not.toHaveBeenCalled();
   expect(resolve).not.toHaveBeenCalled();
   expect(result).toMatchObject({ ingested: 0, lastSeenId: '123456789012345678' });
+});
+
+it('許可された開発者の画像だけの返信を非公開で保存して会話に関連付ける', async () => {
+  vi.stubEnv('FEEDBACK_BLOB_READ_WRITE_TOKEN', 'test-only');
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const id = '123456789012345679';
+  const attachment = {
+    id, content_type: 'image/png', size: bytes.length,
+    url: `https://cdn.discordapp.com/attachments/${id}/${id}/test.png`,
+  };
+  const message = {
+    id, channel_id: 'channel-1', author: { id: 'developer-1' }, content: '',
+    message_reference: { message_id: 'old-message' },
+    attachments: [{ ...attachment, url: 'https://example.com/untrusted.png' }, attachment],
+  };
+  const request = vi.fn(async (url: string) => url === attachment.url ? new Response(bytes) : Response.json([message]));
+  vi.stubGlobal('fetch', request);
+  expect(await runDiscordIngest('123456789012345678')).toMatchObject({ ingested: 1, lastSeenId: id });
+  expect(request).toHaveBeenCalledTimes(2);
+  const [reply] = store.appendMessage.mock.calls[0];
+  expect(reply).toMatchObject({ body: '', conversationId: 'conversation-1', replyImageIds: [expect.stringMatching(/^r_[a-f0-9]{32}$/)] });
+  expect(put).toHaveBeenCalledWith(expect.stringContaining(reply.replyImageIds[0]), expect.any(Blob),
+    expect.objectContaining({ access: 'private', ttlDays: 30 }));
 });
 
 it('Discordの取得失敗時はカーソルを進めない', async () => {

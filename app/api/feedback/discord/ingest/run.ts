@@ -9,6 +9,11 @@ import {
 import { createFeedbackConversationStore } from '../../lib/store';
 import { resolveDiscordConversationIdForMessage } from './resolve';
 import type { DiscordMessage } from './resolve';
+import { saveDiscordReplyImages, selectDiscordReplyImages } from './reply-images';
+
+function replyImages(message: DiscordMessage) {
+  return process.env.FEEDBACK_BLOB_READ_WRITE_TOKEN ? selectDiscordReplyImages(message.attachments) : [];
+}
 
 export type DiscordIngestResult = {
   ingested: number;
@@ -64,9 +69,14 @@ async function ingestBatch(afterId?: string, continuation?: DiscordScan): Promis
       if(bot||!allowed.includes(message.author?.id??'')) rejected.push({discordMessageId:message.id,reason:bot?'bot_message':'author_not_allowed'});
       else {
         const mapping=await resolveDiscordConversationIdForMessage(message,botToken,store);
-        const result=evaluateDeveloperReplyEligibility({message:{id:message.id,channelId:message.channel_id,authorId:message.author?.id??'',authorIsBot:bot,content:message.content,referencedMessageId:mapping.referencedMessageId,threadId:message.thread?.id??null},allowedDiscordUserIds:allowed,mappedConversationId:mapping.conversationId,alreadyIngested:await store.hasDiscordMessage(message.id)});
+        const images = replyImages(message);
+        const result=evaluateDeveloperReplyEligibility({message:{id:message.id,channelId:message.channel_id,authorId:message.author?.id??'',authorIsBot:bot,content:message.content,hasImages:images.length>0,referencedMessageId:mapping.referencedMessageId,threadId:message.thread?.id??null},allowedDiscordUserIds:allowed,mappedConversationId:mapping.conversationId,alreadyIngested:await store.hasDiscordMessage(message.id)});
         if(!result.ok)rejected.push({discordMessageId:message.id,reason:result.reason});
-        else if(await store.appendMessage({messageId:'discord_'+message.id,conversationId:result.conversationId,authorType:'developer',body:message.content.trim(),discordMessageId:message.id,createdAt:message.timestamp&&Number.isFinite(Date.parse(message.timestamp))?message.timestamp:new Date().toISOString(),readByUser:false,shadowOnly:process.env.FEEDBACK_CONVERSATION_SHADOW_MODE==='true'}))ingested++;
+        else {
+          const ids = await saveDiscordReplyImages(result.conversationId, images);
+          if (!message.content.trim() && !ids.length) rejected.push({ discordMessageId: message.id, reason: 'empty_body' });
+          else if(await store.appendMessage({messageId:'discord_'+message.id,conversationId:result.conversationId,authorType:'developer',body:message.content.trim(),...(ids.length?{replyImageIds:ids}:{}),discordMessageId:message.id,createdAt:message.timestamp&&Number.isFinite(Date.parse(message.timestamp))?message.timestamp:new Date().toISOString(),readByUser:false,shadowOnly:process.env.FEEDBACK_CONVERSATION_SHADOW_MODE==='true'}))ingested++;
+        }
       }
       beforeId=message.id;processed++;
     } catch (error) {
@@ -87,7 +97,7 @@ export type DiscordGatewayIngestResult = {
 };
 
 export function runDiscordGatewayIngest(event: { messageId: string; channelId: string; guildId: string }) {
-  return withFeedbackBudget(4_000,()=>ingestGateway(event));
+  return withFeedbackBudget(12_000,()=>ingestGateway(event));
 }
 
 /** Fetch and validate one Gateway-notified message through the same trust boundary as REST recovery. */
@@ -119,7 +129,8 @@ async function ingestGateway(
     return { outcome: 'ignored' };
   }
   const hasReplyReference = Boolean(message.message_reference?.message_id ?? message.referenced_message?.id);
-  if (hasReplyReference && !message.content.trim()) {
+  const images = replyImages(message);
+  if (hasReplyReference && !message.content.trim() && !images.length) {
     return { error: 'Discord reply content is unavailable; check Message Content access', status: 503 };
   }
 
@@ -132,6 +143,7 @@ async function ingestGateway(
     authorId: message.author?.id ?? '',
     authorIsBot: message.author?.bot === true,
     content: message.content,
+    hasImages: images.length > 0,
     referencedMessageId,
     threadId: message.thread?.id ?? null,
   };
@@ -146,11 +158,14 @@ async function ingestGateway(
     return { outcome: 'ignored' };
   }
 
+  const ids = await saveDiscordReplyImages(eligibility.conversationId, images);
+  if (!message.content.trim() && !ids.length) return { outcome: 'ignored' };
   const saved = await store.appendMessage({
     messageId: `discord_${message.id}`,
     conversationId: eligibility.conversationId,
     authorType: 'developer',
     body: message.content.trim(),
+    ...(ids.length ? { replyImageIds: ids } : {}),
     discordMessageId: message.id,
     createdAt: message.timestamp && Number.isFinite(Date.parse(message.timestamp))
       ? message.timestamp

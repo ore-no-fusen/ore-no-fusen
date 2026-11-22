@@ -1,6 +1,39 @@
 import { expect, test } from '@playwright/test';
 import { mockTauriAPI } from './mock-tauri';
 
+test('開発者からの画像だけの返信を会話に表示する', async ({ page }, testInfo) => {
+  await mockTauriAPI(page);
+  const fileId = 'r_' + 'a'.repeat(32);
+  await page.route('**/conversation/poll', route => route.fulfill({ json: { messages: [{
+    messageId: 'developer-image', authorType: 'developer', body: '',
+    replyImageIds: [fileId], createdAt: '2026-11-23T00:00:00Z', readByUser: true,
+  }] } }));
+  await page.goto('/');
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 480;
+    canvas.height = 150;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#2563eb';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#ffffff';
+    context.font = '27px sans-serif';
+    context.fillText('Discord reply image test', 28, 82);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.route('**/conversation/reply-image', route => {
+    const body = route.request().postDataJSON();
+    expect(body).toMatchObject({ fileId, conversationId: expect.any(String), secretToken: expect.any(String) });
+    return route.fulfill({ contentType: 'image/png', body: Buffer.from(png, 'base64') });
+  });
+  await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));
+  await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' }));
+  const image = page.getByRole('img', { name: '開発者からの画像' });
+  await expect(image).toBeVisible();
+  await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(480);
+  await page.locator('[data-conversation-message="developer-image"]').screenshot({ path: testInfo.outputPath('discord-reply.png') });
+});
+
 test('画像の準備が失敗しても本文を送信し画像未送信を知らせる', async ({ page }) => {
   await mockTauriAPI(page);
   await page.route('**/conversation/poll', route => route.fulfill({ json: { messages: [] } }));

@@ -45,9 +45,23 @@ export type FeedbackConversationMessage = {
   messageId: string;
   authorType: 'user' | 'developer';
   body: string;
+  replyImageIds?: string[];
   createdAt: string;
   readByUser: boolean;
 };
+
+export async function loadFeedbackReplyImage(
+  identity: FeedbackConversationIdentity,
+  fileId: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/reply-image`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...identity, fileId }), signal,
+  });
+  if (!response.ok) throw new Error('Reply image unavailable');
+  return response.blob();
+}
 
 let feedbackConversationBoardOpen = false;
 

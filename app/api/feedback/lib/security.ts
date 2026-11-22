@@ -120,7 +120,7 @@ export function evaluateDeveloperReplyEligibility(
     return { ok: false, reason: 'author_not_allowed' };
   }
 
-  if (!message.content.trim()) {
+  if (!message.content.trim() && !message.hasImages) {
     return { ok: false, reason: 'empty_body' };
   }
 

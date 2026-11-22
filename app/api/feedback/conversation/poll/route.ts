@@ -40,6 +40,8 @@ export async function POST(req: Request) {
           messageId: message.messageId,
           authorType: message.authorType,
           body: message.body,
+          ...(message.authorType === 'developer' && message.replyImageIds?.length
+            ? { replyImageIds: message.replyImageIds } : {}),
           createdAt: message.createdAt,
           readByUser: message.readByUser,
         })),

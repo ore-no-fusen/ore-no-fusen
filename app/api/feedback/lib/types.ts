@@ -18,6 +18,7 @@ export type FeedbackConversationMessage = {
   conversationId: string;
   authorType: ConversationMessageAuthor;
   body: string;
+  replyImageIds?: string[];
   createdAt: string;
   discordMessageId?: string;
   readByUser: boolean;
@@ -30,6 +31,7 @@ export type DiscordCandidateMessage = {
   authorId: string;
   authorIsBot: boolean;
   content: string;
+  hasImages?: boolean;
   referencedMessageId?: string | null;
   threadId?: string | null;
 };

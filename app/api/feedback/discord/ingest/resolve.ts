@@ -2,6 +2,7 @@ import { discordFetch as fetchWithDeadline } from './http';
 import { extractConversationIdFromDiscordEmbeds } from '../../lib/security';
 import { feedbackEnvironment } from '../../lib/environment';
 import type { FeedbackConversationStore } from '../../lib/store';
+import type { DiscordReplyAttachment } from './reply-images';
 
 type DiscordEmbed = {
   fields?: Array<{
@@ -14,6 +15,7 @@ export type DiscordMessage = {
   id: string;
   channel_id: string;
   content: string;
+  attachments?: DiscordReplyAttachment[];
   timestamp?: string;
   embeds?: DiscordEmbed[];
   author?: {
