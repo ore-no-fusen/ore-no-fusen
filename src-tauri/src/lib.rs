@@ -4579,6 +4579,24 @@ mod file_drop_cleanup_tests {
     }
 }
 
+async fn check_expired_pc_iphone_images() -> Result<(), String> {
+    let token_path = gdrive::get_token_path();
+    if !storage::load_settings()?.iphone_send_enabled || !token_path.is_file() {
+        return Ok(());
+    }
+    let state_path = token_path.with_file_name("maintenance-drive-images.json");
+    if !maintenance::claim_at_interval(
+        &state_path, &token_path, "drive-images", chrono::Utc::now(), 7 * 24 * 3600,
+    )? {
+        return Ok(());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build().map_err(|e| e.to_string())?;
+    let token = gdrive::get_access_token(&client).await?;
+    gdrive::trash_expired_pc_iphone_images(&client, &token).await
+}
+
 async fn drive_referenced_temp_names(
     client: &reqwest::Client,
     token: &str,
@@ -6855,6 +6873,16 @@ pub fn run() {
                 });
             }
 
+            tauri::async_runtime::spawn(async {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    interval.tick().await;
+                    if let Err(error) = check_expired_pc_iphone_images().await {
+                        logger::log_warn(&format!("[drive cleanup] {error}"));
+                    }
+                }
+            });
             let maintenance_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(3600)).await;

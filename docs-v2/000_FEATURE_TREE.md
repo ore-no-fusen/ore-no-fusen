@@ -219,6 +219,7 @@ pageClass: feature-traceability-page
 要求テスト → [合格条件・担当ケース・不足](#req-3-2)
 
 - **iPhone に送る（PC → iPhone）**：付箋の内容を自分の Google Drive 経由で送り、Web Push で iPhone のロック画面へ通知する。受信したメモは端末内に保存され、PWA でオフラインでも読める。登録済みの複数端末へ同報送信する〔要求：§9.1 REQ_IP_01／仕様：003_IPHONE §4.1・§6.1／コード：lib.rs `fusen_send_to_iphone`・webpush.rs・gdrive.rs〕
+- **PC送信用画像の残留整理**：iPhoneで保存後に通常削除し、残った識別済みの一時画像は90日後にDriveのごみ箱へ移す。連携有効・接続済みのPCで週1回確認する〔仕様：003_IPHONE §6.1〕
   - 実画面：付箋の右クリック「iPhoneに送る」／iPhone PWA のメモ一覧画面
 - **通知常駐（ロックだぜ）**：重要なメモは 🔔 を ON にすると、タップして確認した後も通知が再表示され、意図的に消すまでロック画面に残り続ける〔要求：§9.3・§9.4／仕様：003_IPHONE §6.2〕
   - 実画面：iPhone のロック画面／PWA メモ一覧の 🔔 ボタン

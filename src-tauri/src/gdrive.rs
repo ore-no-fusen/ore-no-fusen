@@ -1110,7 +1110,10 @@ pub async fn upload_binary(
             return Err(format!("Drive binary update failed: {}", resp.status()));
         }
     } else {
-        let metadata = serde_json::json!({ "name": filename, "parents": [folder_id] });
+        let metadata = serde_json::json!({
+            "name": filename, "parents": [folder_id],
+            "appProperties": { "oreNoFusenPurpose": "pc-to-iphone-image" }
+        });
         let resp = client
             .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
             .bearer_auth(access_token)
@@ -1291,6 +1294,47 @@ pub async fn delete_file_by_name(
 }
 
 /// Drive の ore-no-fusen フォルダに残った一時メディアファイルを列挙する。
+pub async fn trash_expired_pc_iphone_images(client: &Client, token: &str) -> Result<(), String> {
+    let folder = ensure_folder(client, token).await?;
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(90)).to_rfc3339();
+    let query = format!(
+        "'{folder}' in parents and trashed = false and modifiedTime <= '{cutoff}' and appProperties has {{ key='oreNoFusenPurpose' and value='pc-to-iphone-image' }}"
+    );
+    let url = "https://www.googleapis.com/drive/v3/files";
+    let mut ids = Vec::new();
+    let mut page = String::new();
+    loop {
+        let mut request = client.get(url).bearer_auth(token)
+            .query(&[("q", query.as_str()), ("fields", "nextPageToken,incompleteSearch,files(id)")]);
+        if !page.is_empty() {
+            request = request.query(&[("pageToken", page.as_str())]);
+        }
+        let result: serde_json::Value = request.send().await
+            .and_then(|response| response.error_for_status()).map_err(|e| e.to_string())?
+            .json().await.map_err(|e| e.to_string())?;
+        if result["incompleteSearch"].as_bool() == Some(true) {
+            return Err("Incomplete Drive image search".into());
+        }
+        for file in result["files"].as_array().ok_or("Missing Drive file list")? {
+            let id = file["id"].as_str().ok_or("Missing Drive file ID")?;
+            ids.push(id.to_owned());
+        }
+        match result["nextPageToken"].as_str() {
+            Some(next) if !next.is_empty() && next != page => page = next.to_owned(),
+            Some(_) => return Err("Invalid Drive page token".into()),
+            None => break,
+        }
+    }
+    for id in ids {
+        let response = client.patch(format!("{url}/{id}")).bearer_auth(token)
+            .json(&serde_json::json!({"trashed": true})).send().await.map_err(|e| e.to_string())?;
+        if !response.status().is_success() && response.status().as_u16() != 404 {
+            return Err(format!("Drive trash failed: {}", response.status()));
+        }
+    }
+    Ok(())
+}
+
 pub async fn list_temp_media_files(
     client: &Client,
     access_token: &str,
