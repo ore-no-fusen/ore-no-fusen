@@ -49,25 +49,13 @@ export type FeedbackConversationMessage = {
   readByUser: boolean;
 };
 
-type FeedbackImageSession = {
-  endpoint: string; projectId: string; bucketId: string; userId: string; jwt: string; expiresAt: string;
-};
-let cachedImageSession: { conversationId: string; value: FeedbackImageSession } | null = null;
 let feedbackConversationBoardOpen = false;
 
-async function feedbackImageSession(identity: FeedbackConversationIdentity, fetchImpl: typeof fetch): Promise<FeedbackImageSession> {
-  if (cachedImageSession?.conversationId === identity.conversationId
-    && Date.parse(cachedImageSession.value.expiresAt) > Date.now() + 60_000) return cachedImageSession.value;
-  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/session`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(identity),
-  });
-  if (!response.ok) throw new Error(`Server error: ${response.status}`);
-  const value = await response.json() as FeedbackImageSession;
-  if (!value.endpoint?.startsWith('https://') || !value.projectId || !value.bucketId || !value.userId || !value.jwt || !value.expiresAt) {
-    throw new Error('Invalid image session');
-  }
-  cachedImageSession = { conversationId: identity.conversationId, value };
-  return value;
+function feedbackImageForm(identity: FeedbackConversationIdentity): FormData {
+  const form = new FormData();
+  form.set('conversationId', identity.conversationId);
+  form.set('secretToken', identity.secretToken);
+  return form;
 }
 
 export async function uploadFeedbackAttachment(
@@ -76,22 +64,17 @@ export async function uploadFeedbackAttachment(
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
   const prepared = await compressFeedbackImage(file);
-  const session = await feedbackImageSession(identity, fetchImpl);
-  const fileId = crypto.randomUUID();
-  const form = new FormData();
-  form.set('fileId', fileId);
-  form.set('file', prepared, prepared.name);
-  form.append('permissions[]', `read(\"user:${session.userId}\")`);
-  form.append('permissions[]', `delete(\"user:${session.userId}\")`);
-  const response = await fetchImpl(`${session.endpoint}/storage/buckets/${encodeURIComponent(session.bucketId)}/files`, {
-    method: 'POST',
-    headers: { 'X-Appwrite-Project': session.projectId, 'X-Appwrite-JWT': session.jwt },
-    body: form,
+  const form = feedbackImageForm(identity);
+  form.set('image', prepared, 'image');
+  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/image`, {
+    method: 'POST', body: form,
   });
   if (!response.ok) throw new Error(`Image storage error: ${response.status}`);
-  const result = await response.json().catch(() => null) as { $id?: string } | null;
-  if (result?.$id !== fileId) throw new Error('Invalid upload response');
-  return fileId;
+  const result = await response.json().catch(() => null) as { fileId?: string } | null;
+  if (typeof result?.fileId !== 'string' || !/^b_[a-f0-9]{32}$/.test(result.fileId)) {
+    throw new Error('Invalid upload response');
+  }
+  return result.fileId;
 }
 
 export async function deleteFeedbackUploadedAttachment(
@@ -99,14 +82,13 @@ export async function deleteFeedbackUploadedAttachment(
   fileId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
-  const session = await feedbackImageSession(identity, fetchImpl);
-  const response = await fetchImpl(`${session.endpoint}/storage/buckets/${encodeURIComponent(session.bucketId)}/files/${encodeURIComponent(fileId)}`, {
-    method: 'DELETE',
-    headers: { 'X-Appwrite-Project': session.projectId, 'X-Appwrite-JWT': session.jwt },
+  const form = feedbackImageForm(identity);
+  form.set('fileId', fileId);
+  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/image`, {
+    method: 'DELETE', body: form,
   });
   return response.ok || response.status === 404;
 }
-
 function getStorage(storage?: StorageLike): StorageLike | null {
   if (storage) return storage;
   if (typeof window === 'undefined') return null;
@@ -177,7 +159,6 @@ export function clearFeedbackConversationIdentity(storage?: StorageLike): void {
   target.removeItem(ACTIVE_CONVERSATION_UNTIL_KEY);
   target.removeItem(LAST_UNREAD_ATTEMPT_AT_KEY);
   target.removeItem(LAST_NOTIFIED_REPLY_KEY);
-  cachedImageSession = null;
 }
 
 export function getFeedbackConversationUnreadState(storage?: StorageLike): boolean {

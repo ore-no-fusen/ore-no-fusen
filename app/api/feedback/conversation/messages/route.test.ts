@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
   store: null as ReturnType<typeof createMemoryFeedbackConversationStore> | null,
   getPrivateImageFileMetadata: vi.fn(),
   createPrivateImageViewUrl: vi.fn(),
+  readFeedbackImage: vi.fn(),
+}));
+vi.mock('../../lib/blob-storage', async (original) => ({
+  ...await original<typeof import('../../lib/blob-storage')>(),
+  readFeedbackImage: mocks.readFeedbackImage,
 }));
 vi.mock('../../lib/store', async (original) => {
   const actual = await original<typeof import('../../lib/store')>();
@@ -96,6 +101,33 @@ describe('conversation messages attachments', () => {
   it('rejects more than three images', async () => {
     const response = await POST(request({ content: '本文', fileIds: ['a', 'b', 'c', 'd'] }));
     expect(response.status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('attaches private Blob bytes to Discord without sending a storage URL', async () => {
+    const fileId = 'b_' + 'a'.repeat(32);
+    mocks.readFeedbackImage.mockResolvedValueOnce({
+      file: new Blob(['test image'], { type: 'image/png' }), extension: 'png',
+    });
+    const response = await POST(request({
+      conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: [fileId],
+    }));
+    expect(response.status).toBe(200);
+    expect(mocks.readFeedbackImage).toHaveBeenCalledWith('conversation-a', fileId);
+    const form = vi.mocked(fetch).mock.calls[0][1]?.body as FormData;
+    expect(form.get('files[0]')).toMatchObject({ size: 10, type: 'image/png' });
+    expect(JSON.parse(String(form.get('payload_json')))).toMatchObject({
+      attachments: [{ id: 0, filename: 'image-1.png' }],
+    });
+  });
+
+  it('rejects a Blob absent from the authenticated conversation, even with fallback enabled', async () => {
+    mocks.readFeedbackImage.mockResolvedValueOnce(null);
+    const response = await POST(request({
+      conversationId: 'conversation-b', secretToken: 'secret-b', content: '本文',
+      fileIds: ['b_' + 'a'.repeat(32)], allowTextOnlyOnImageFailure: true,
+    }));
+    expect(response.status).toBe(404);
     expect(fetch).not.toHaveBeenCalled();
   });
 

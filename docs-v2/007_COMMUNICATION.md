@@ -192,7 +192,9 @@ feedback_conversations/{conversation_id}/messages/{message_id}
   shadow_only
 ```
 
-<p class="table-caption">表 5-5　掲示板へ添付した画像の保存情報</p>
+Blob 対応版では、PCは圧縮した画像を1枚ずつ（上限4 MiB）会話IDと秘密トークン付きで `POST /api/feedback/conversation/image` へ送る。APIは会話の所有者を確認し、環境と会話ごとに分けた非公開の Vercel Blob へ有効期限30日で保存する。送信時はAPIが保存した画像を読み、Discordへファイルとして添付する。Discord上の添付にはBlob側の保存期限は適用されない。旧版が使う Appwrite 経路は切り替え期間中に限り並行して利用する。以下の表と直接アップロード経路は旧版に適用する。
+
+<p class="table-caption">表 5-5　旧版が掲示板へ添付した画像の保存情報</p>
 
 | No | 情報 | 保存場所 | 用途 |
 |:---|:---|:---|:---|

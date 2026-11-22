@@ -4,7 +4,11 @@ import { mockTauriAPI } from './mock-tauri';
 test('画像の準備が失敗しても本文を送信し画像未送信を知らせる', async ({ page }) => {
   await mockTauriAPI(page);
   await page.route('**/conversation/poll', route => route.fulfill({ json: { messages: [] } }));
-  await page.route('**/conversation/session', route => route.fulfill({ status: 503, json: { error: 'unavailable' } }));
+  let uploads = 0;
+  await page.route('**/conversation/image', route => {
+    uploads++;
+    return route.fulfill({ status: 503, json: { error: 'unavailable' } });
+  });
   let sent: any;
   await page.route('**/conversation/messages', route => {
     sent = route.request().postDataJSON();
@@ -14,11 +18,20 @@ test('画像の準備が失敗しても本文を送信し画像未送信を知�
   await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));
   await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' }));
   await page.getByPlaceholder('開発者に伝えたいことを書いてください').fill('本文を届ける');
-  await page.getByLabel('画像を添付').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=', 'base64') });
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 8;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#2563eb';
+    context.fillRect(0, 0, 8, 8);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.getByLabel('画像を添付').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect(page.getByText('本文は送信しましたが、画像は送信できませんでした。画像は選択したまま残っています。')).toBeVisible();
   expect(sent.content).toBe('本文を届ける');
   expect(sent.fileIds).toEqual([]);
+  expect(uploads).toBe(1);
   await expect(page.getByText('test.png', { exact: false })).toBeVisible();
 });
 

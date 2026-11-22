@@ -12,6 +12,7 @@ import {
 import { createFeedbackConversationStore } from '../../lib/store';
 import { feedbackEnvironment, feedbackDiscordConversationFieldName } from '../../lib/environment';
 import { conversationMemberNumber } from '../../../members/lib/conversation-number';
+import { BLOB_IMAGE_ID, readFeedbackImage } from '../../lib/blob-storage';
 import {
   createPrivateImageViewUrl,
   FeedbackImageStorageError,
@@ -83,10 +84,17 @@ export async function POST(req: Request) {
     });
     const conversation = await store.getConversation(conversationId);
     const verifiedFileIds: string[] = [];
+    const blobImages: NonNullable<Awaited<ReturnType<typeof readFeedbackImage>>>[] = [];
     let discordImageUrls: string[] = [];
     let imagesOmitted = false;
     try {
       for (const fileId of providedFileIds) {
+        if (BLOB_IMAGE_ID.test(fileId)) {
+          const image = await readFeedbackImage(conversationId, fileId);
+          if (!image) throw new FeedbackRequestError('Image not found', 404);
+          blobImages.push(image);
+          continue;
+        }
         if (!conversation?.appwriteUserId) throw new FeedbackRequestError('Image not found', 404);
         const metadata = await getPrivateImageFileMetadata(fileId);
         const expectedRead = `read("user:${conversation.appwriteUserId}")`;
@@ -106,6 +114,7 @@ export async function POST(req: Request) {
       if (body.allowTextOnlyOnImageFailure !== true || error instanceof FeedbackRequestError) throw error;
       imagesOmitted = true;
       discordImageUrls = [];
+      blobImages.length = 0;
     }
     const recentMessages = await store.listLatestMessages(conversationId, 5);
     const memberNumber = await conversationMemberNumber(conversationId).catch(() => null);
@@ -134,12 +143,22 @@ export async function POST(req: Request) {
     };
     const discordUrl = new URL(webhookUrl);
     discordUrl.searchParams.set('wait', 'true');
+    const payload = {
+      embeds: [embed, ...discordImageUrls.map((url) => ({ image: { url } }))],
+    };
+    const form = blobImages.length ? new FormData() : null;
+    if (form) {
+      const attachments = blobImages.map(({ file, extension }, id) => {
+        const filename = `image-${id + 1}.${extension}`;
+        form.append(`files[${id}]`, file, filename);
+        return { id, filename };
+      });
+      form.set('payload_json', JSON.stringify({ ...payload, attachments }));
+    }
     const discordResponse = await fetchWithDeadline(discordUrl.toString(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        embeds: [embed, ...discordImageUrls.map((url) => ({ image: { url } }))],
-      }),
+      headers: form ? undefined : { 'Content-Type': 'application/json' },
+      body: form ?? JSON.stringify(payload),
       signal: discordFetchSignal(),
     });
     if (!discordResponse.ok) {

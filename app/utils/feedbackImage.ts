@@ -1,6 +1,7 @@
 export const MAX_FEEDBACK_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_FEEDBACK_IMAGE_COUNT = 3;
 export const MAX_FEEDBACK_IMAGE_EDGE = 2048;
+export const MAX_FEEDBACK_UPLOAD_BYTES = 4 * 1024 * 1024;
 const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export function assertFeedbackImages(files: File[]): void {
@@ -33,8 +34,10 @@ export async function compressFeedbackImage(file: File): Promise<File> {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Image compression unavailable');
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const compressed = await canvasBlob(canvas, 0.88);
-    if (scale === 1 && compressed.size >= file.size) return file;
+    let compressed = await canvasBlob(canvas, 0.88);
+    if (scale === 1 && compressed.size >= file.size && file.size <= MAX_FEEDBACK_UPLOAD_BYTES) return file;
+    if (compressed.size > MAX_FEEDBACK_UPLOAD_BYTES) compressed = await canvasBlob(canvas, 0.65);
+    if (compressed.size > MAX_FEEDBACK_UPLOAD_BYTES) throw new Error('Image is too large after compression');
     const stem = file.name.replace(/\.[^.]+$/, '') || 'image';
     return new File([compressed], `${stem}.webp`, { type: 'image/webp', lastModified: file.lastModified });
   } finally {

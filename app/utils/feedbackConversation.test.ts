@@ -217,46 +217,34 @@ describe('feedback conversation identity', () => {
     });
   });
 
-  it('uploads image bytes directly to Appwrite with a short-lived conversation JWT', async () => {
+  it('uploads compressed images through the feedback API with conversation credentials', async () => {
     const identity = { conversationId: 'conversation-1', secretToken: 'secret' };
     const original = new File(['original'], 'image.png', { type: 'image/png' });
     const prepared = new File(['prepared'], 'image.webp', { type: 'image/webp' });
     imageMocks.compressFeedbackImage.mockResolvedValue(prepared);
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        endpoint: 'https://example.appwrite.io/v1', projectId: 'project', bucketId: 'bucket',
-        userId: 'fb_user', jwt: 'short-jwt', expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-      })))
-      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
-        const body = init.body as FormData;
-        return new Response(JSON.stringify({ $id: body.get('fileId') }), { status: 201 });
-      });
-    const fetchImpl = fetchMock as unknown as typeof fetch;
-
-    await expect(uploadFeedbackAttachment(identity, original, fetchImpl)).resolves.toMatch(/^[0-9a-f-]{36}$/);
-    expect(fetchImpl).toHaveBeenNthCalledWith(1, `${window.location.origin}/api/feedback/conversation/session`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(identity),
-    });
-    const [storageUrl, storageInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
-    expect(String(storageUrl)).toContain('/storage/buckets/bucket/files');
-    expect(storageInit.headers).toEqual({ 'X-Appwrite-Project': 'project', 'X-Appwrite-JWT': 'short-jwt' });
-    expect(storageInit.body).toBeInstanceOf(FormData);
+    const fileId = 'b_' + 'a'.repeat(32);
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({ fileId }), { status: 201 }));
+    await expect(uploadFeedbackAttachment(identity, original, fetchMock as typeof fetch)).resolves.toBe(fileId);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(window.location.origin + '/api/feedback/conversation/image');
+    expect(init.method).toBe('POST');
+    const form = init.body as FormData;
+    expect(form.get('conversationId')).toBe(identity.conversationId);
+    expect(form.get('secretToken')).toBe(identity.secretToken);
+    expect(form.get('image')).toMatchObject({ size: prepared.size, type: prepared.type });
   });
 
-  it('deletes an unfinished direct upload with the short-lived conversation JWT', async () => {
+  it('deletes an unfinished upload through the feedback API', async () => {
     const identity = { conversationId: 'conversation-1', secretToken: 'secret' };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        endpoint: 'https://example.appwrite.io/v1', projectId: 'project', bucketId: 'bucket',
-        userId: 'fb_user', jwt: 'short-jwt', expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-      })))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    const fetchImpl = fetchMock as unknown as typeof fetch;
-
-    await expect(deleteFeedbackUploadedAttachment(identity, 'upload-a', fetchImpl)).resolves.toBe(true);
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://example.appwrite.io/v1/storage/buckets/bucket/files/upload-a', {
-      method: 'DELETE', headers: { 'X-Appwrite-Project': 'project', 'X-Appwrite-JWT': 'short-jwt' },
-    });
+    const fileId = 'b_' + 'a'.repeat(32);
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(null, { status: 204 }));
+    await expect(deleteFeedbackUploadedAttachment(identity, fileId, fetchMock as typeof fetch)).resolves.toBe(true);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(window.location.origin + '/api/feedback/conversation/image');
+    expect(init.method).toBe('DELETE');
+    expect((init.body as FormData).get('fileId')).toBe(fileId);
+    expect((init.body as FormData).get('secretToken')).toBe(identity.secretToken);
   });
 
   it('uses the current web origin for hosted browser pages', () => {
