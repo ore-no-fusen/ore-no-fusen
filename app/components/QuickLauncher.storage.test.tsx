@@ -85,7 +85,7 @@ describe('launcher tag row', () => {
         await screen.findByRole('button', { name: '多数' });
         fireEvent.click(screen.getByRole('button', { name: 'すべてのタグ ▾' }));
         const group = screen.getByLabelText('タグ区分');
-        expect([...group.querySelectorAll('button')].map(x => x.textContent)).toEqual(['すべて', '多数', '少数', '新しい未使用', '古い未使用', '折りたたむ ▴', '＋']);
+        expect([...group.querySelectorAll('button')].map(x => x.textContent)).toEqual(['すべて', '多数', '少数', '新しい未使用', '古い未使用', '折りたたむ ▴', 'タグ管理', '＋']);
     });
     it('resets a removed filter only after a successful new snapshot', async () => {
         render(<QuickLauncher/>);
