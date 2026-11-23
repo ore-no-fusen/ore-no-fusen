@@ -80,7 +80,7 @@ async function setupPage(page: Page, notes: object[] = []) {
 
 /** IndexedDB の全件を取得する（page.evaluate 経由） */
 function getAllDrafts(page: Page) {
-  return page.evaluate((): Promise<Array<{ id: string; title?: string; body?: string; tags?: string[]; locked?: boolean }>> => {
+  return page.evaluate((): Promise<Array<{ id: string; title?: string; body?: string; tags?: string[]; locked?: boolean; deleted?: boolean }>> => {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open('fusen-drafts', 1);
       req.onupgradeneeded = () => req.result.createObjectStore('drafts');
@@ -235,10 +235,13 @@ test('[DATA-03] 削除ボタン: 対象メモのみ一覧から消え、他の�
   expect(listContent).toContain('残るメモ');
   expect(listContent).not.toContain('削除するメモ');
 
-  // IndexedDB にも残るメモのデータが存在することを確認
-  const dbIds = await getAllDrafts(page).then(d => d.map(x => x.id));
-  expect(dbIds).toContain('note-stay');
-  expect(dbIds).not.toContain('note-delete');
+  const drafts = await getAllDrafts(page);
+  expect(drafts.find(draft => draft.id === 'note-stay')).toMatchObject({
+    title: '残るメモ', body: '消えてはいけない',
+  });
+  expect(drafts.find(draft => draft.id === 'note-delete')).toEqual({
+    id: 'note-delete', deleted: true,
+  });
 });
 
 // ============================================================
