@@ -7,7 +7,7 @@ const { execFileSync } = require('node:child_process');
 const args = process.argv.slice(2);
 const value = key => { const i = args.indexOf(key); return i < 0 ? undefined : args[i + 1]; };
 const git = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8' }).trim();
-const root = path.dirname(git(process.cwd(), 'rev-parse', '--path-format=absolute', '--git-common-dir')); 
+const root = path.dirname(git(process.cwd(), 'rev-parse', '--path-format=absolute', '--git-common-dir'));
 const evidence = path.join(root, 'my/保全/画面キャプチャ');
 const css = 'body{font:17px/1.6 Meiryo,sans-serif;margin:24px;color:#222}h1{font-size:26px}h2{font-size:21px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #ccd2da;padding:10px;text-align:left;vertical-align:top;overflow-wrap:anywhere}th{background:#eef2f6}th:first-child{width:7%}th:nth-child(2){width:9%}th:nth-child(3){width:32%}a{color:#284c91}strong{color:#a32323}';
 async function main() {
