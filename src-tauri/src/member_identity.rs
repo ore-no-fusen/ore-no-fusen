@@ -103,6 +103,26 @@ fn environment() -> &'static str {
     }
     option_env!("FUSEN_MEMBER_ENV").unwrap_or(if cfg!(debug_assertions) { "development" } else { "disabled" })
 }
+
+/// Feedback remains available in an unpackaged release, while unknown packages fail closed.
+#[tauri::command]
+pub fn feedback_environment() -> &'static str {
+    let member_environment = environment();
+    #[cfg(windows)]
+    let unpackaged = windows::ApplicationModel::Package::Current()
+        .err().is_some_and(|error| error.code().0 as u32 == 0x80073D54);
+    #[cfg(not(windows))]
+    let unpackaged = false;
+    select_feedback_environment(member_environment, unpackaged && !cfg!(debug_assertions))
+}
+fn select_feedback_environment(member_environment: &str, unpackaged_release: bool) -> &'static str {
+    match member_environment {
+        "production" => "production",
+        "development" => "development",
+        "disabled" if unpackaged_release => "production",
+        _ => "disabled",
+    }
+}
 fn endpoint() -> Result<String,String> {
     let url=match environment() {
         "development"=>option_env!("FUSEN_MEMBER_DEV_API_URL").unwrap_or("https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/members"),
@@ -575,6 +595,14 @@ fn unprotect(bytes:&[u8])->Result<Vec<u8>,String>{use windows::Win32::{Foundatio
 #[cfg(test)]
 mod segment_tests {
     use super::*;
+    #[test]
+    fn feedback_environment_routes_known_packages_and_unpacked_release_safely() {
+        assert_eq!(select_feedback_environment("production", false), "production");
+        assert_eq!(select_feedback_environment("development", false), "development");
+        assert_eq!(select_feedback_environment("disabled", false), "disabled");
+        assert_eq!(select_feedback_environment("disabled", true), "production");
+        assert_eq!(select_feedback_environment("unexpected", true), "disabled");
+    }
     #[test]
     fn launcher_store_records_counts_and_days_only_with_consent() {
         let now = chrono::DateTime::parse_from_rfc3339("2026-10-11T00:00:00Z").unwrap().with_timezone(&Utc);

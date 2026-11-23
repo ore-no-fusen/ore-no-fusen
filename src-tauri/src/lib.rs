@@ -6511,6 +6511,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             member_identity::member_get,
+            member_identity::feedback_environment,
             member_identity::member_consent_prompt_event,
             member_identity::member_record_batch,
             member_identity::member_flush,

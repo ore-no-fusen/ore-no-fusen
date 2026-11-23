@@ -84,6 +84,25 @@ test('本文送信の結果が不明なときは再送せず入力を保持す�
   expect(attempts).toBe(1);
 });
 
+for (const environment of ['production', 'development'] as const) {
+  test(`お便り送信は${environment}環境に対応したサーバーへ届く`, async ({ page }) => {
+    await mockTauriAPI(page, { feedbackEnvironment: environment });
+    let destination = '';
+    await page.route('**/conversation/poll', route => route.fulfill({ json: { messages: [] } }));
+    await page.route('**/conversation/messages', route => {
+      destination = route.request().url();
+      return route.fulfill({ json: { success: true } });
+    });
+    await page.goto('/');
+    await page.waitForFunction(() => (window as any).__MOCK_HAS_LISTENER__('fusen:open_settings'));
+    await page.evaluate(() => (window as any).__MOCK_EMIT__('fusen:open_settings', { tab: 'conversation' }));
+    await page.getByPlaceholder('開発者に伝えたいことを書いてください').fill('接続先の確認');
+    await page.getByRole('button', { name: '送信', exact: true }).click();
+    const host = environment === 'production' ? 'ore-no-fusen.vercel.app' : 'ore-no-fusen-git-develop-uch54s-projects.vercel.app';
+    await expect.poll(() => destination).toBe(`https://${host}/api/feedback/conversation/messages`);
+  });
+}
+
 test('作者の開発版から本番へ手動取り込みでき、切替時にsecretと自動設定を解除する', async ({ page }) => {
   await mockTauriAPI(page, { language: 'en' });
   const requests: string[] = [];

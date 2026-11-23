@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const imageMocks = vi.hoisted(() => ({ compressFeedbackImage: vi.fn() }));
 const appMocks = vi.hoisted(() => ({ getVersion: vi.fn() }));
+const coreMocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('./feedbackImage', () => ({ compressFeedbackImage: imageMocks.compressFeedbackImage }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: appMocks.getVersion }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: coreMocks.invoke }));
 import {
   ackFeedbackConversationMessages,
   clearFeedbackConversationIdentity,
@@ -11,6 +13,7 @@ import {
   getDeveloperFeedbackApiBaseUrl,
   getFeedbackAppVersion,
   getFeedbackApiBaseUrl,
+  resolveFeedbackApiBaseUrl,
   getFeedbackConversationIdentity,
   getFeedbackConversationUnreadState,
   getOrCreateFeedbackConversationIdentity,
@@ -273,6 +276,28 @@ describe('feedback conversation identity', () => {
     });
 
     expect(getFeedbackApiBaseUrl()).toBe('https://ore-no-fusen.vercel.app/api/feedback');
+  });
+
+  it('routes packaged desktop feedback by its actual package environment and fails closed', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    coreMocks.invoke.mockResolvedValueOnce('development');
+    await expect(resolveFeedbackApiBaseUrl()).resolves.toBe('https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback');
+    coreMocks.invoke.mockResolvedValueOnce('production');
+    await expect(resolveFeedbackApiBaseUrl()).resolves.toBe('https://ore-no-fusen.vercel.app/api/feedback');
+    coreMocks.invoke.mockResolvedValueOnce('disabled');
+    await expect(resolveFeedbackApiBaseUrl()).rejects.toThrow('Feedback environment unavailable');
+    coreMocks.invoke.mockRejectedValueOnce(new Error('unavailable'));
+    await expect(resolveFeedbackApiBaseUrl()).rejects.toThrow();
+  });
+
+  it('polls only the development endpoint from a packaged development app', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    coreMocks.invoke.mockResolvedValue('development');
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+    await pollFeedbackConversationMessages({ conversationId: 'one', secretToken: 'secret' }, request);
+    expect(request.mock.calls[0][0]).toBe('https://ore-no-fusen-git-develop-uch54s-projects.vercel.app/api/feedback/conversation/poll');
   });
 
   it('uses the develop branch API for developer-only actions in local development', () => {

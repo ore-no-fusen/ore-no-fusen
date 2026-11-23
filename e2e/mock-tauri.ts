@@ -9,7 +9,7 @@ import type { AppSettings } from '../lib/settings-store';
  * - ファイルシステム操作（読み書き）のインメモリ/仮想的な再現
  * - ウィンドウイベント・メニューイベントの発火制御
  */
-export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; editorHotkeyFail?: boolean; startupStateFailure?: boolean; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
+export async function mockTauriAPI(page: Page, options: { settings?: Partial<AppSettings>; language?: 'ja' | 'en'; iphoneReturn?: boolean; trashBroken?: boolean; editorHotkeyFail?: boolean; startupStateFailure?: boolean; feedbackEnvironment?: 'production' | 'development'; announcements?: Array<{ id: string; title: string; body: string; createdAt: string }> } = {}) {
     await page.addInitScript((mockOptions) => {
         (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
@@ -46,6 +46,10 @@ export async function mockTauriAPI(page: Page, options: { settings?: Partial<App
 
             // コマンド別レスポンス定義
             switch (cmd) {
+                case 'member_get':
+                    return { environment: mockOptions.feedbackEnvironment ?? 'development', generalNumber: null };
+                case 'feedback_environment':
+                    return mockOptions.feedbackEnvironment ?? 'development';
                 // ノート読み込み
                 case 'fusen_read_note':
                     return {

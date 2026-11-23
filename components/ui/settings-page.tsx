@@ -66,7 +66,7 @@ import {
     clearFeedbackConversationIdentity,
     deleteFeedbackUploadedAttachment,
     deleteFeedbackConversation,
-    getFeedbackApiBaseUrl,
+    resolveFeedbackApiBaseUrl,
     getFeedbackConversationIdentity,
     getOrCreateFeedbackConversationIdentity,
     getUnreadDeveloperReplyIds,
@@ -2546,8 +2546,7 @@ function FeedbackSection({ t, language }: { t: (key: any) => string; language: L
             // Vercel上のAPIに送信 (CORS対応済み)
 
             // 環境に応じてAPIのエンドポイントを切り替え
-            const isDev = process.env.NODE_ENV === 'development';
-            const apiUrl = `${getFeedbackApiBaseUrl()}/conversation/messages`;
+            const apiUrl = `${await resolveFeedbackApiBaseUrl()}/conversation/messages`;
             const conversationIdentity = getOrCreateFeedbackConversationIdentity();
             await linkFeedbackMember(conversationIdentity);
 
@@ -2786,8 +2785,8 @@ function getFeedbackApiTargetLabel(apiBaseUrl: string): string {
 function DeveloperConversationSection({ language }: { language: Language }) {
     const isEnglish = language === 'en'
     const conversationIdentity = useMemo(() => getOrCreateFeedbackConversationIdentity(), [])
-    const feedbackApiBaseUrl = getFeedbackApiBaseUrl()
-    const feedbackApiTargetLabel = getFeedbackApiTargetLabel(feedbackApiBaseUrl)
+    const [feedbackApiBaseUrl, setFeedbackApiBaseUrl] = useState('')
+    const feedbackApiTargetLabel = feedbackApiBaseUrl ? getFeedbackApiTargetLabel(feedbackApiBaseUrl) : (isEnglish ? 'Checking' : '確認中')
     const [messages, setMessages] = useState<BoardMessage[]>([])
     const [announcements, setAnnouncements] = useState<ReceivedAnnouncement[]>([])
     const [replyTarget, setReplyTarget] = useState<ReceivedAnnouncement | null>(null)
@@ -2803,6 +2802,12 @@ function DeveloperConversationSection({ language }: { language: Language }) {
     const timeline = useMemo(() => buildConversationTimeline(announcements, messages), [announcements, messages])
     const historyRef = useRef<HTMLDivElement>(null)
     const scrollToLatestRef = useRef(true)
+
+    useEffect(() => {
+        let cancelled = false
+        void resolveFeedbackApiBaseUrl().then(url => { if (!cancelled) setFeedbackApiBaseUrl(url) }).catch(() => { if (!cancelled) setError('Feedback environment unavailable') })
+        return () => { cancelled = true }
+    }, [])
 
     useEffect(() => {
         const syncVisibility = () => setFeedbackConversationBoardOpen(document.visibilityState === 'visible')
@@ -2928,7 +2933,7 @@ function DeveloperConversationSection({ language }: { language: Language }) {
                 ))
                 uploadedAttachmentIds.length = 0
             }
-            const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/messages`, {
+            const response = await fetch(`${await resolveFeedbackApiBaseUrl()}/conversation/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

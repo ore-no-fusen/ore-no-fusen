@@ -55,7 +55,7 @@ export async function loadFeedbackReplyImage(
   fileId: string,
   signal: AbortSignal,
 ): Promise<Blob> {
-  const response = await fetch(`${getFeedbackApiBaseUrl()}/conversation/reply-image`, {
+  const response = await fetch(`${await resolveFeedbackApiBaseUrl()}/conversation/reply-image`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...identity, fileId }), signal,
   });
@@ -80,7 +80,7 @@ export async function uploadFeedbackAttachment(
   const prepared = await compressFeedbackImage(file);
   const form = feedbackImageForm(identity);
   form.set('image', prepared, 'image');
-  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/image`, {
+  const response = await fetchImpl(`${await resolveFeedbackApiBaseUrl()}/conversation/image`, {
     method: 'POST', body: form,
   });
   if (!response.ok) throw new Error(`Image storage error: ${response.status}`);
@@ -98,7 +98,7 @@ export async function deleteFeedbackUploadedAttachment(
 ): Promise<boolean> {
   const form = feedbackImageForm(identity);
   form.set('fileId', fileId);
-  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/image`, {
+  const response = await fetchImpl(`${await resolveFeedbackApiBaseUrl()}/conversation/image`, {
     method: 'DELETE', body: form,
   });
   return response.ok || response.status === 404;
@@ -274,7 +274,7 @@ export async function pollFeedbackConversationMessages(
   identity: FeedbackConversationIdentity,
   fetchImpl: typeof fetch = fetch,
 ): Promise<FeedbackConversationMessage[]> {
-  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/poll`, {
+  const response = await fetchImpl(`${await resolveFeedbackApiBaseUrl()}/conversation/poll`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(identity),
@@ -290,7 +290,7 @@ export async function ackFeedbackConversationMessages(
   fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
   if (messageIds.length === 0) return true;
-  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/ack`, {
+  const response = await fetchImpl(`${await resolveFeedbackApiBaseUrl()}/conversation/ack`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...identity, messageIds }),
@@ -304,7 +304,7 @@ export async function deleteFeedbackConversation(
   identity: FeedbackConversationIdentity,
   fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
-  const response = await fetchImpl(`${getFeedbackApiBaseUrl()}/conversation/delete`, {
+  const response = await fetchImpl(`${await resolveFeedbackApiBaseUrl()}/conversation/delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(identity),
@@ -330,6 +330,21 @@ export function getFeedbackApiBaseUrl(): string {
   }
 
   return PRODUCTION_FEEDBACK_API_BASE_URL;
+}
+
+/** Use the installed package environment; never fall back to production when detection fails. */
+export async function resolveFeedbackApiBaseUrl(): Promise<string> {
+  if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const environment = await invoke<string>('feedback_environment');
+    if (environment === 'production') return PRODUCTION_FEEDBACK_API_BASE_URL;
+    if (environment === 'development') {
+      if (process.env.NODE_ENV === 'development') return getFeedbackApiBaseUrl();
+      return DEVELOP_FEEDBACK_API_BASE_URL;
+    }
+    throw new Error('Feedback environment unavailable');
+  }
+  return getFeedbackApiBaseUrl();
 }
 
 export function getDeveloperFeedbackApiBaseUrl(): string {

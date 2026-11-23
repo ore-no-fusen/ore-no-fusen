@@ -136,7 +136,7 @@ PCのピン・色・文字サイズ・透明度の操作→保存は `StickyNote
 |外部サービス・API|Siri API|[route.test.ts](../app/api/siri-send/route.test.ts)|
 |外部サービス・API|会員API|[service.test.ts](../app/api/members/lib/service.test.ts)|
 |外部サービス・API|会員番号の画面|[SupportMemberNumber.test.tsx](../app/components/SupportMemberNumber.test.tsx)|
-|外部サービス・API|お便り本文|[feedbackConversation.test.ts](../app/utils/feedbackConversation.test.ts)|
+|外部サービス・API|お便り本文・PCの接続先|[feedbackConversation.test.ts](../app/utils/feedbackConversation.test.ts)|
 |外部サービス・API|お便り画像|[feedbackImage.test.ts](../app/utils/feedbackImage.test.ts)|
 |外部サービス・API|お便り画像の非公開保存・送信・削除|[image/route.test.ts](../app/api/feedback/conversation/image/route.test.ts)、[messages/route.test.ts](../app/api/feedback/conversation/messages/route.test.ts)|
 |外部サービス・API|Discord画像返信の取込と会話所有者への配信|[ingest/run.test.ts](../app/api/feedback/discord/ingest/run.test.ts)、[reply-image/route.test.ts](../app/api/feedback/conversation/reply-image/route.test.ts)|

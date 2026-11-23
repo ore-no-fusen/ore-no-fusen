@@ -445,7 +445,7 @@
           "file": "app/components/SupportMemberNumber.test.tsx"
         },
         {
-          "when": "お便り本文",
+          "when": "お便り本文・PCの接続先",
           "file": "app/utils/feedbackConversation.test.ts"
         },
         {
