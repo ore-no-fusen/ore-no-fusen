@@ -1601,7 +1601,7 @@ export default function LandingPage() {
                             target="_blank"
                             className="text-[#5C7A3E] hover:text-[#3A5020] transition-colors"
                         >
-                            💬 {isEn ? 'Send Feedback' : 'フィードバックを送る'}
+                            𝕏 {isEn ? 'X (@onfstudio) — dev notes & radio' : 'X（@onfstudio）｜開発とラジオ'}
                         </Link>
                     </div>
                 </div>
@@ -1622,6 +1622,9 @@ export default function LandingPage() {
                             </Link>
                             <Link href={publicGuideLinks(isEn ? 'en' : 'ja').manual} target="_blank" className="hover:text-[#5A4830] transition-colors">
                                 {isEn ? 'User Guide' : 'マニュアル'}
+                            </Link>
+                            <Link href="https://x.com/onfstudio" target="_blank" className="hover:text-[#5A4830] transition-colors">
+                                {isEn ? 'X (@onfstudio)' : 'X（@onfstudio）'}
                             </Link>
                         </div>
                     </div>
