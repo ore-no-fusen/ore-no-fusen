@@ -5,8 +5,6 @@ import { extractConversationIdFromDiscordEmbeds } from '../../lib/security';
 
 const mocks = vi.hoisted(() => ({
   store: null as ReturnType<typeof createMemoryFeedbackConversationStore> | null,
-  getPrivateImageFileMetadata: vi.fn(),
-  createPrivateImageViewUrl: vi.fn(),
   readFeedbackImage: vi.fn(),
 }));
 vi.mock('../../lib/blob-storage', async (original) => ({
@@ -18,17 +16,8 @@ vi.mock('../../lib/store', async (original) => {
   return { ...actual, createFeedbackConversationStore: () => mocks.store };
 });
 vi.mock('../../../members/lib/conversation-number', () => ({ conversationMemberNumber: vi.fn(async () => null) }));
-vi.mock('../../lib/appwrite-storage', async (original) => {
-  const actual = await original<typeof import('../../lib/appwrite-storage')>();
-  return {
-    ...actual,
-    getPrivateImageFileMetadata: mocks.getPrivateImageFileMetadata,
-    createPrivateImageViewUrl: mocks.createPrivateImageViewUrl,
-  };
-});
 
 import { POST } from './route';
-import { FeedbackImageStorageError } from '../../lib/appwrite-storage';
 
 function request(body: Record<string, unknown>) {
   return new Request('http://localhost/api/feedback/conversation/messages', {
@@ -42,7 +31,6 @@ describe('conversation messages attachments', () => {
     vi.clearAllMocks();
     mocks.store = createMemoryFeedbackConversationStore();
     process.env.DISCORD_WEBHOOK_URL = 'https://discord.example/webhook';
-    mocks.createPrivateImageViewUrl.mockResolvedValue('https://image.example/view');
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'discord-1' }), { status: 200 })));
   });
 
@@ -56,46 +44,15 @@ describe('conversation messages attachments', () => {
     expect(extractConversationIdFromDiscordEmbeds(payload.embeds)).toBeNull();
   });
 
-  it('sends an owned image to Discord together with the required body text', async () => {
-    await mocks.store!.createConversation({
-      conversationId: 'conversation-a', secretTokenHash: hashSecretToken('secret-a'), appwriteUserId: 'fb_user-a',
-      deliveryEnabled: true, shadowOnly: false, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
-    });
-    mocks.getPrivateImageFileMetadata.mockResolvedValue({
-      fileId: 'upload-a', mimeType: 'image/webp', byteSize: 80,
-      permissions: ['read("user:fb_user-a")', 'delete("user:fb_user-a")'],
-    });
-
-    const response = await POST(request({
-      conversationId: 'conversation-a', secretToken: 'secret-a', content: '画像を確認してください', fileIds: ['upload-a'],
-    }));
-
-    expect(response.status).toBe(200);
-    expect(mocks.createPrivateImageViewUrl).toHaveBeenCalledWith('upload-a');
-    const discordInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
-    expect(JSON.parse(String(discordInit.body))).toMatchObject({
-      embeds: [
-        { fields: expect.arrayContaining([{ name: '内容', value: '画像を確認してください' }]) },
-        { image: { url: 'https://image.example/view' } },
-      ],
-    });
-  });
-
-  it('rejects an image not owned by the conversation before calling Discord', async () => {
-    await mocks.store!.createConversation({
-      conversationId: 'conversation-a', secretTokenHash: hashSecretToken('secret-a'), appwriteUserId: 'fb_user-a',
-      deliveryEnabled: true, shadowOnly: false, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
-    });
-    mocks.getPrivateImageFileMetadata.mockResolvedValue({
-      fileId: 'upload-a', mimeType: 'image/webp', byteSize: 80,
-      permissions: ['read("user:someone-else")', 'delete("user:someone-else")'],
-    });
-
-    const response = await POST(request({
-      conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: ['upload-a'],
-    }));
-    expect(response.status).toBe(400);
+  it('rejects retired attachment IDs unless the client can report text-only delivery', async () => {
+    const input = { conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: ['upload-a'] };
+    expect((await POST(request(input))).status).toBe(404);
     expect(fetch).not.toHaveBeenCalled();
+    const response = await POST(request({ ...input, allowTextOnlyOnImageFailure: true }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ imagesOmitted: true });
+    expect(mocks.readFeedbackImage).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects more than three images', async () => {
@@ -131,14 +88,10 @@ describe('conversation messages attachments', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('sends only text on image storage failure when the client can report it', async () => {
-    await mocks.store!.createConversation({
-      conversationId: 'conversation-a', secretTokenHash: hashSecretToken('secret-a'), appwriteUserId: 'fb_user-a',
-      deliveryEnabled: true, shadowOnly: false, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
-    });
-    mocks.getPrivateImageFileMetadata.mockRejectedValue(new FeedbackImageStorageError('unavailable', 403));
-    const input = { conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: ['upload-a'] };
-    expect((await POST(request(input))).status).toBe(404);
+  it('sends only text on Blob storage failure when the client can report it', async () => {
+    mocks.readFeedbackImage.mockRejectedValue(new Error('Storage unavailable'));
+    const input = { conversationId: 'conversation-a', secretToken: 'secret-a', content: '本文', fileIds: ['b_' + 'a'.repeat(32)] };
+    expect((await POST(request(input))).status).toBe(500);
     expect(fetch).not.toHaveBeenCalled();
     const response = await POST(request({ ...input, allowTextOnlyOnImageFailure: true }));
     expect(response.status).toBe(200);

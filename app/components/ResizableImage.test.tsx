@@ -34,7 +34,7 @@ describe('ResizableImage', () => {
     it('retries an existing external image only after the file picker approves it', async () => {
         const path = 'C:/Pictures/old.png';
         mockInvoke.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-        render(<ResizableImage src={path} alt="old image" />);
+        render(<ResizableImage src={path} alt="old image" baseOffset={0} onResizeEnd={vi.fn()} />);
         const img = screen.getByRole('img');
         await waitFor(() => expect(img.getAttribute('src')).toBe(`asset://${path}`));
         fireEvent.error(img);

@@ -13,14 +13,6 @@ import { createFeedbackConversationStore } from '../../lib/store';
 import { feedbackEnvironment, feedbackDiscordConversationFieldName } from '../../lib/environment';
 import { conversationMemberNumber } from '../../../members/lib/conversation-number';
 import { BLOB_IMAGE_ID, readFeedbackImage } from '../../lib/blob-storage';
-import {
-  createPrivateImageViewUrl,
-  FeedbackImageStorageError,
-  getPrivateImageFileMetadata,
-} from '../../lib/appwrite-storage';
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 function corsHeaders() {
   return {
@@ -83,38 +75,24 @@ export async function POST(req: Request) {
       createdAt: now, updatedAt: now,
     });
     const conversation = await store.getConversation(conversationId);
-    const verifiedFileIds: string[] = [];
     const blobImages: NonNullable<Awaited<ReturnType<typeof readFeedbackImage>>>[] = [];
-    let discordImageUrls: string[] = [];
-    let imagesOmitted = false;
-    try {
-      for (const fileId of providedFileIds) {
-        if (BLOB_IMAGE_ID.test(fileId)) {
+    let imagesOmitted = providedFileIds.some(fileId => !BLOB_IMAGE_ID.test(fileId));
+    if (imagesOmitted && body.allowTextOnlyOnImageFailure !== true) {
+      throw new FeedbackRequestError('Image not found', 404);
+    }
+    if (!imagesOmitted) {
+      try {
+        for (const fileId of providedFileIds) {
           const image = await readFeedbackImage(conversationId, fileId);
           if (!image) throw new FeedbackRequestError('Image not found', 404);
           blobImages.push(image);
-          continue;
         }
-        if (!conversation?.appwriteUserId) throw new FeedbackRequestError('Image not found', 404);
-        const metadata = await getPrivateImageFileMetadata(fileId);
-        const expectedRead = `read("user:${conversation.appwriteUserId}")`;
-        const expectedDelete = `delete("user:${conversation.appwriteUserId}")`;
-        if (!ALLOWED_IMAGE_TYPES.has(metadata.mimeType)
-          || metadata.byteSize < 1
-          || metadata.byteSize > MAX_IMAGE_BYTES
-          || !metadata.permissions.includes(expectedRead)
-          || !metadata.permissions.includes(expectedDelete)) {
-          throw new FeedbackRequestError('Invalid image file', 400);
-        }
-        verifiedFileIds.push(metadata.fileId);
+      } catch (error) {
+        // Only opt-in clients can report omitted attachments. Preserve ownership errors.
+        if (body.allowTextOnlyOnImageFailure !== true || error instanceof FeedbackRequestError) throw error;
+        imagesOmitted = true;
+        blobImages.length = 0;
       }
-      discordImageUrls = await Promise.all(verifiedFileIds.map((fileId) => createPrivateImageViewUrl(fileId)));
-    } catch (error) {
-      // Only opt-in clients can explain a partial delivery. Never suppress ownership or validation errors.
-      if (body.allowTextOnlyOnImageFailure !== true || error instanceof FeedbackRequestError) throw error;
-      imagesOmitted = true;
-      discordImageUrls = [];
-      blobImages.length = 0;
     }
     const recentMessages = await store.listLatestMessages(conversationId, 5);
     const memberNumber = await conversationMemberNumber(conversationId).catch(() => null);
@@ -144,7 +122,7 @@ export async function POST(req: Request) {
     const discordUrl = new URL(webhookUrl);
     discordUrl.searchParams.set('wait', 'true');
     const payload = {
-      embeds: [embed, ...discordImageUrls.map((url) => ({ image: { url } }))],
+      embeds: [embed],
     };
     const form = blobImages.length ? new FormData() : null;
     if (form) {
@@ -196,10 +174,6 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof FeedbackRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers: corsHeaders() });
-    }
-    if (error instanceof FeedbackImageStorageError) {
-      const status = error.status >= 500 ? 503 : 404;
-      return NextResponse.json({ error: status === 503 ? 'Image storage unavailable' : 'Image not found' }, { status, headers: corsHeaders() });
     }
     console.error('Feedback conversation message error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders() });
