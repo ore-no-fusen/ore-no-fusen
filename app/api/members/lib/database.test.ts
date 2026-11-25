@@ -32,3 +32,37 @@ describe('letter delivery cache', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+describe('listPaths', () => {
+  it('queries only the document names under the prefix, without reading payloads', async () => {
+    const calls: Array<{ url: string; body: any }> = [];
+    const fetchMock = vi.fn(async (url: string, init: any) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return { ok: true, json: async () => ([
+        { document: { name: 'projects/p/databases/(default)/documents/member_environments/production/usage_history/subjA_2026-W43' } },
+        { document: { name: 'projects/p/databases/(default)/documents/member_environments/production/usage_history/subjA_2026-W44' } },
+        { readTime: '2026-11-26T00:00:00Z' },
+      ]) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const db = new FirestoreMemberDatabase('email', 'key', 'p', '(default)', 'production');
+    await expect(db.listPaths('usage_history', 'subjA_')).resolves.toEqual([
+      'usage_history/subjA_2026-W43', 'usage_history/subjA_2026-W44',
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(calls[0].url).toContain('member_environments/production:runQuery');
+    const query = calls[0].body.structuredQuery;
+    expect(query.from).toEqual([{ collectionId: 'usage_history' }]);
+    const filters = query.where.compositeFilter.filters;
+    expect(filters[0].fieldFilter.op).toBe('GREATER_THAN_OR_EQUAL');
+    expect(filters[0].fieldFilter.value.referenceValue).toBe(
+      'projects/p/databases/(default)/documents/member_environments/production/usage_history/subjA_');
+    expect(filters[1].fieldFilter.op).toBe('LESS_THAN');
+    expect(filters[1].fieldFilter.value.referenceValue).toBe(
+      'projects/p/databases/(default)/documents/member_environments/production/usage_history/subjA`');
+  });
+  it('returns an empty list when nothing matches', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ([{ readTime: '2026-11-26T00:00:00Z' }]) })));
+    const db = new FirestoreMemberDatabase('email', 'key', 'p', '(default)', 'production');
+    await expect(db.listPaths('usage_history', 'nobody_')).resolves.toEqual([]);
+  });
+});

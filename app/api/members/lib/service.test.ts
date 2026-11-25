@@ -10,6 +10,7 @@ class MemoryDb implements MemberDatabase {
     for(const c of changes)this.rows.set(c.path,{value:c.value,version:String(++this.version)}); return true;
   }
   async list<T>(collection:string){return [...this.rows].filter(([p])=>p.startsWith(`${collection}/`)).map(([path,row])=>({path,...row as Row<T>}));}
+  async listPaths(collection:string,documentPrefix:string){return [...this.rows.keys()].filter(p=>p.startsWith(`${collection}/${documentPrefix}`));}
   async remove(paths:string[]){for(const path of paths)this.rows.delete(path);}
 }
 const auth={memberId:'123e4567-e89b-42d3-a456-426614174000',secretToken:'a'.repeat(43)};
@@ -76,7 +77,7 @@ describe('member heartbeat', () => {
     now = new Date('2026-10-22T00:00:00Z');
     // Exercise the same shared-list path as Firestore's delivery cache.
     const cachedDb: MemberDatabase = {
-      get: db.get.bind(db), commit: db.commit.bind(db), list: db.list.bind(db), remove: db.remove.bind(db),
+      get: db.get.bind(db), commit: db.commit.bind(db), list: db.list.bind(db), listPaths: db.listPaths.bind(db), remove: db.remove.bind(db),
       deliveryAnnouncements: <T,>() => db.list<T>('announcements'),
     };
     const cachedService = new MemberService(cachedDb, () => now);
