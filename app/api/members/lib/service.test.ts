@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Change, MemberDatabase, Row } from './database';
 import { MemberService } from './service';
 
@@ -212,8 +212,12 @@ describe('member heartbeat', () => {
     const report={week:'2026-W41',schema:3,appVersion:'5.8.0',supportedFeatures:['note_edited'],features:{},days:{'2026-10-12':{observedAt:'2026-10-12T10:00:00Z',observedThrough:'2026-10-12T12:00:00Z',supportedFeatures:['note_edited'],features:{}}}};
     await service.recordUsage(auth,'2026-W41',[],true,0,3,[report],'123e4567-e89b-42d3-a456-426614174000',null);
     expect(await db.list<any>('usage_history')).toHaveLength(1);
+    const otherSubjectPath = 'usage_history/otherSubject_2026-W41_reporter';
+    await db.commit([{ path: otherSubjectPath, value: { untouched: true }, version: null }]);
+    const list = vi.spyOn(db, 'list');
     await service.heartbeat(auth,'2026-W41',[],false,0,'5.8.0',3);
-    expect(await db.list<any>('usage_history')).toHaveLength(0);
+    expect(list).not.toHaveBeenCalledWith('usage_history');
+    expect((await db.list('usage_history')).map(row => row.path)).toEqual([otherSubjectPath]);
     expect((await db.get<any>(`members/${auth.memberId}`))!.value).toMatchObject({usageConsent:false,usageFeatures:[]});
   });
 
