@@ -9,7 +9,7 @@ DISCORD_GATEWAY_ENABLED = "false"
 GATEWAY_DELIVERY_ENVIRONMENTS = "development"
 
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/15 * * * *"]
 
 [[durable_objects.bindings]]
 name = "INGEST_COORDINATOR"
