@@ -6,6 +6,7 @@ export interface MemberDatabase {
   get<T>(path: string): Promise<Row<T> | null>;
   commit(changes: Change[]): Promise<boolean>;
   list<T>(collection: string): Promise<Array<Row<T> & { path: string }>>;
+  listPaths(collection: string, documentPrefix: string): Promise<string[]>;
   deliveryAnnouncements?<T>(): Promise<Array<Row<T> & { path: string }>>;
   remove(paths: string[]): Promise<void>;
 }
@@ -66,6 +67,44 @@ export class FirestoreMemberDatabase implements MemberDatabase {
       if (result.length > 30_000) throw new Error('Report exceeds supported size');
     } while (token);
     return result;
+  }
+  async listPaths(collection: string, documentPrefix: string): Promise<string[]> {
+    // Fetch only the document names under the given ID prefix, via a __name__
+    // range query. Unlike list(), this never reads or parses other documents'
+    // payloads, so its cost stays proportional to the matching documents.
+    const parent = `${this.root}/${this.prefix.replace(/\/$/, '')}`;
+    const startName = `${parent}/${collection}/${documentPrefix}`;
+    const endName = startName.slice(0, -1) + String.fromCharCode(startName.charCodeAt(startName.length - 1) + 1);
+    const paths: string[] = [];
+    const pageSize = 300;
+    for (let offset = 0; ; offset += pageSize) {
+      const response = await this.request(`/${this.prefix.replace(/\/$/, '')}:runQuery`, {
+        method: 'POST',
+        body: JSON.stringify({
+          structuredQuery: {
+            select: { fields: [{ fieldPath: '__name__' }] },
+            from: [{ collectionId: collection }],
+            where: {
+              compositeFilter: {
+                op: 'AND',
+                filters: [
+                  { fieldFilter: { field: { fieldPath: '__name__' }, op: 'GREATER_THAN_OR_EQUAL', value: { referenceValue: startName } } },
+                  { fieldFilter: { field: { fieldPath: '__name__' }, op: 'LESS_THAN', value: { referenceValue: endName } } },
+                ],
+              },
+            },
+            offset, limit: pageSize,
+          },
+        }),
+      });
+      if (!response.ok) throw new Error('Member database read failed');
+      const rows = await response.json() as Array<{ document?: { name: string } }>;
+      const docs = rows.filter(row => row.document);
+      for (const row of docs) paths.push(`${collection}/${row.document!.name.split('/').pop()}`);
+      if (paths.length > 30_000) throw new Error('Report exceeds supported size');
+      if (docs.length < pageSize) break;
+    }
+    return paths;
   }
   async remove(paths: string[]): Promise<void> {
     for (let i = 0; i < paths.length; i += 400) {

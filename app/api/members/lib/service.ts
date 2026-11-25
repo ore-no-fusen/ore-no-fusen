@@ -207,8 +207,11 @@ export class MemberService {
     throw new FeedbackRequestError('Usage update busy; retry later', 503);
   }
   private async clearUsageHistory(analyticsSubject:string) {
-    const histories=await this.db.list<{analyticsSubject?:string}>('usage_history');
-    await this.db.remove(histories.filter(row=>row.path.startsWith(`usage_history/${analyticsSubject}_`)).map(row=>row.path));
+    // Delete only this member's history documents. listPaths resolves the
+    // member's document names by prefix, so the cost no longer grows with
+    // the total number of members' history documents.
+    const paths=await this.db.listPaths('usage_history',`${analyticsSubject}_`);
+    await this.db.remove(paths);
   }
   async linkConversation(auth: Credentials, conversationId: unknown, conversationSecret: unknown) {
     if (typeof conversationId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(conversationId) || typeof conversationSecret !== 'string' || !/^[a-zA-Z0-9_-]{32,200}$/.test(conversationSecret)) throw new FeedbackRequestError('Invalid conversation credentials',400);
