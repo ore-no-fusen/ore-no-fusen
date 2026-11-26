@@ -4,7 +4,20 @@ import { memberDatabase } from '../lib/database';
 import { requireReportToken } from '../lib/report-auth';
 import { credentials, MemberService, publicMember } from '../lib/service';
 
-export async function GET() { return NextResponse.json({ error: 'Method not allowed' }, { status: 405 }); }
+// Bump this version for each change to the deployed member API.
+// 1.0.0 starts tracking with the member-scoped history cleanup from PR #159.
+const MEMBER_API_VERSION = '1.0.0';
+const responseHeaders = {
+  'Cache-Control': 'no-store',
+  'X-Member-API-Version': MEMBER_API_VERSION,
+};
+
+export async function GET(req: Request) {
+  if (new URL(req.url).pathname === '/api/members/version') {
+    return NextResponse.json({ version: MEMBER_API_VERSION }, { headers: responseHeaders });
+  }
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405, headers: responseHeaders });
+}
 export async function POST(req: Request) {
   try {
     const operation = new URL(req.url).pathname.split('/').pop();
@@ -15,7 +28,7 @@ export async function POST(req: Request) {
     if (operation === 'lookup') {
       requireReportToken(req);
       result = await service.lookupByGeneralNumber(body.generalNumber);
-      return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json(result, { headers: responseHeaders });
     }
     const auth = credentials(body);
     switch (operation) {
@@ -27,9 +40,9 @@ export async function POST(req: Request) {
       case 'usage': result = await service.recordUsage(auth, body.week, body.features, body.consent, body.openMinutes, body.usageSchema, body.history, body.reporterId, body.firstUseAt, body.consentStatus); break;
       default: throw new FeedbackRequestError('Not found', 404);
     }
-    return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(result, { headers: responseHeaders });
   } catch (error) {
     const status = error instanceof FeedbackRequestError ? error.status : 503;
-    return NextResponse.json({ error: error instanceof FeedbackRequestError ? error.message : 'Member service unavailable' }, { status, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ error: error instanceof FeedbackRequestError ? error.message : 'Member service unavailable' }, { status, headers: responseHeaders });
   }
 }
